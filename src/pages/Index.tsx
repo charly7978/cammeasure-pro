@@ -16,6 +16,7 @@ import { CameraView } from '@/components/CameraView';
 import { CalibrationPanel, type CalibrationData } from '@/components/CalibrationPanel';
 import { MeasurementControls, type MeasurementMode } from '@/components/MeasurementControls';
 import { MeasurementEngine, type MeasurementResult, type MeasurementPoint } from '@/components/MeasurementEngine';
+import { type DetectedObject } from '@/components/RealTimeMeasurement';
 import { useDeviceSensors } from '@/hooks/useDeviceSensors';
 import { useOpenCV } from '@/hooks/useOpenCV';
 
@@ -26,6 +27,8 @@ const Index = () => {
   const [measurementResult, setMeasurementResult] = useState<MeasurementResult | null>(null);
   const [capturedImage, setCapturedImage] = useState<ImageData | null>(null);
   const [detectedEdges, setDetectedEdges] = useState<MeasurementPoint[]>([]);
+  const [realTimeObjects, setRealTimeObjects] = useState<DetectedObject[]>([]);
+  const [objectCount, setObjectCount] = useState(0);
   
   const { sensorData, isListening, startListening, stopListening } = useDeviceSensors();
   const { isLoaded: isOpenCVLoaded, error: openCVError } = useOpenCV();
@@ -83,7 +86,29 @@ const Index = () => {
     setDetectedEdges(edges);
   };
 
+  const handleRealTimeObjects = (objects: DetectedObject[]) => {
+    setRealTimeObjects(objects);
+    setObjectCount(objects.length);
+    
+    // Auto-generate measurement result from the best object
+    if (objects.length > 0 && calibrationData?.isCalibrated) {
+      const bestObject = objects.reduce((best, current) => 
+        current.confidence > best.confidence ? current : best
+      );
+      
+      const result: MeasurementResult = {
+        distance2D: Math.max(bestObject.dimensions.width, bestObject.dimensions.height),
+        area: bestObject.dimensions.area,
+        unit: bestObject.dimensions.unit,
+        confidence: bestObject.confidence
+      };
+      
+      setMeasurementResult(result);
+    }
+  };
+
   const handleCapture = async () => {
+    // Manually capture an image for detailed analysis
     setActiveTab('camera');
   };
 
@@ -91,11 +116,19 @@ const Index = () => {
     setCapturedImage(null);
     setMeasurementResult(null);
     setDetectedEdges([]);
+    setRealTimeObjects([]);
+    setObjectCount(0);
   };
 
   const handleSave = () => {
-    if (measurementResult) {
-      // Implement save functionality
+    if (measurementResult || realTimeObjects.length > 0) {
+      const dataToSave = {
+        realTimeObjects,
+        measurementResult,
+        timestamp: new Date().toISOString()
+      };
+      localStorage.setItem('cammeasure_data', JSON.stringify(dataToSave));
+      
       toast({
         title: "Medición guardada",
         description: "Los datos han sido guardados localmente"
@@ -104,9 +137,9 @@ const Index = () => {
   };
 
   const handleExport = () => {
-    if (measurementResult) {
-      // Implement export functionality
+    if (measurementResult || realTimeObjects.length > 0) {
       const data = {
+        realTimeObjects,
         result: measurementResult,
         calibration: calibrationData,
         timestamp: new Date().toISOString(),
@@ -140,7 +173,7 @@ const Index = () => {
               CamMeasure Pro
             </h1>
             <p className="text-muted-foreground">
-              Sistema de medición de precisión con visión computacional
+              Medición en tiempo real con visión computacional
             </p>
           </div>
         </div>
@@ -170,8 +203,52 @@ const Index = () => {
             <Target className="w-3 h-3 mr-1" />
             {calibrationData?.isCalibrated ? 'Calibrado' : 'Sin Calibrar'}
           </Badge>
+
+          {objectCount > 0 && (
+            <Badge 
+              variant="outline"
+              className="border-measurement-active text-measurement-active animate-measurement-pulse"
+            >
+              <Target className="w-3 h-3 mr-1" />
+              {objectCount} objeto{objectCount !== 1 ? 's' : ''} detectado{objectCount !== 1 ? 's' : ''}
+            </Badge>
+          )}
         </div>
       </div>
+
+      {/* Real-time Measurement Info */}
+      {realTimeObjects.length > 0 && calibrationData?.isCalibrated && (
+        <Card className="p-4 bg-gradient-measurement border-measurement-active/30 shadow-active">
+          <h3 className="font-semibold text-measurement-active mb-3 flex items-center gap-2">
+            <Target className="w-4 h-4" />
+            Medición en Tiempo Real
+          </h3>
+          <div className="grid grid-cols-2 gap-4">
+            {realTimeObjects.slice(0, 2).map((obj, index) => (
+              <div key={obj.id} className="space-y-2">
+                <p className="text-xs text-muted-foreground">Objeto {index + 1}</p>
+                <div className="space-y-1 text-sm">
+                  <p className="font-mono text-measurement-active">
+                    W: {obj.dimensions.width < 1000 ? 
+                      `${obj.dimensions.width.toFixed(1)}${obj.dimensions.unit}` : 
+                      `${(obj.dimensions.width/1000).toFixed(2)}m`
+                    }
+                  </p>
+                  <p className="font-mono text-accent">
+                    H: {obj.dimensions.height < 1000 ? 
+                      `${obj.dimensions.height.toFixed(1)}${obj.dimensions.unit}` : 
+                      `${(obj.dimensions.height/1000).toFixed(2)}m`
+                    }
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Conf: {(obj.confidence * 100).toFixed(0)}%
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       {/* Main Interface */}
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as any)}>
@@ -204,7 +281,21 @@ const Index = () => {
             <CameraView
               onImageCapture={handleImageCapture}
               isActive={activeTab === 'camera'}
+              calibrationData={calibrationData}
+              onRealTimeObjects={handleRealTimeObjects}
             />
+            
+            {/* Quick Instructions */}
+            <Card className="p-4 bg-primary/5 border-primary/20">
+              <h4 className="font-medium mb-2 text-primary">🎯 Instrucciones de Uso</h4>
+              <ul className="text-sm text-muted-foreground space-y-1">
+                <li>• Apunta la cámara hacia el objeto que quieres medir</li>
+                <li>• La aplicación detectará automáticamente los objetos</li>
+                <li>• Las dimensiones aparecerán en tiempo real sobre la imagen</li>
+                <li>• Para mayor precisión, calibra primero en la pestaña "Calibración"</li>
+                <li>• El botón ⏸️/▶️ pausa/reanuda la detección automática</li>
+              </ul>
+            </Card>
           </TabsContent>
 
           <TabsContent value="calibration" className="space-y-4">
@@ -254,7 +345,7 @@ const Index = () => {
               <div className="space-y-4">
                 {capturedImage && (
                   <Card className="p-4">
-                    <h4 className="font-medium mb-3">Análisis de Imagen</h4>
+                    <h4 className="font-medium mb-3">Análisis Detallado</h4>
                     <MeasurementEngine
                       imageData={capturedImage}
                       calibrationData={calibrationData}
@@ -264,13 +355,60 @@ const Index = () => {
                   </Card>
                 )}
                 
-                {!capturedImage && (
+                {!capturedImage && realTimeObjects.length === 0 && (
                   <Card className="p-8 text-center">
                     <Camera className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                    <h3 className="text-lg font-semibold mb-2">No hay imagen capturada</h3>
+                    <h3 className="text-lg font-semibold mb-2">Sin datos de medición</h3>
                     <p className="text-muted-foreground">
-                      Vaya a la pestaña de cámara para capturar una imagen
+                      Vaya a la pestaña de cámara para ver mediciones en tiempo real
                     </p>
+                  </Card>
+                )}
+
+                {realTimeObjects.length > 0 && (
+                  <Card className="p-4">
+                    <h4 className="font-medium mb-3">Objetos Detectados en Tiempo Real</h4>
+                    <div className="space-y-3">
+                      {realTimeObjects.map((obj, index) => (
+                        <div key={obj.id} className="p-3 bg-secondary/30 rounded-lg">
+                          <div className="flex justify-between items-start mb-2">
+                            <h5 className="text-sm font-medium">Objeto {index + 1}</h5>
+                            <Badge variant="outline" className="text-xs">
+                              {(obj.confidence * 100).toFixed(0)}% conf.
+                            </Badge>
+                          </div>
+                          <div className="grid grid-cols-3 gap-2 text-xs">
+                            <div>
+                              <p className="text-muted-foreground">Ancho</p>
+                              <p className="font-mono text-measurement-active">
+                                {obj.dimensions.width < 1000 ? 
+                                  `${obj.dimensions.width.toFixed(1)}${obj.dimensions.unit}` : 
+                                  `${(obj.dimensions.width/1000).toFixed(2)}m`
+                                }
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-muted-foreground">Alto</p>
+                              <p className="font-mono text-accent">
+                                {obj.dimensions.height < 1000 ? 
+                                  `${obj.dimensions.height.toFixed(1)}${obj.dimensions.unit}` : 
+                                  `${(obj.dimensions.height/1000).toFixed(2)}m`
+                                }
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-muted-foreground">Área</p>
+                              <p className="font-mono text-primary">
+                                {obj.dimensions.area < 1000000 ? 
+                                  `${obj.dimensions.area.toFixed(0)}${obj.dimensions.unit}²` : 
+                                  `${(obj.dimensions.area/1000000).toFixed(2)}m²`
+                                }
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </Card>
                 )}
               </div>

@@ -37,9 +37,16 @@ export const MeasurementOverlay: React.FC<MeasurementOverlayProps> = ({
     return 'border-measurement-inactive bg-measurement-inactive/20 text-measurement-inactive';
   };
 
+  // Función para evitar superposición de etiquetas
+  const calculateLabelPosition = (obj: any, index: number) => {
+    const baseTop = (obj.bounds.y * scaleY) - 60;
+    const offset = index * 40; // Separar etiquetas verticalmente
+    return Math.max(10, baseTop - offset); // No ir más arriba del borde superior
+  };
+
   return (
     <div className="absolute inset-0 pointer-events-none">
-      {objects.map((obj) => (
+      {objects.map((obj, index) => (
         <div key={obj.id}>
           {/* Bounding Box */}
           <div
@@ -53,75 +60,98 @@ export const MeasurementOverlay: React.FC<MeasurementOverlayProps> = ({
           >
             {/* Center Point */}
             <div 
-              className="absolute w-2 h-2 bg-measurement-active rounded-full animate-measurement-pulse"
+              className="absolute w-3 h-3 bg-measurement-active rounded-full animate-measurement-pulse border-2 border-white"
               style={{
                 left: '50%',
                 top: '50%',
                 transform: 'translate(-50%, -50%)'
               }}
             />
+            
+            {/* Object Number */}
+            <div 
+              className="absolute -top-6 -left-2 w-6 h-6 bg-measurement-active text-black rounded-full flex items-center justify-center text-xs font-bold"
+            >
+              {index + 1}
+            </div>
           </div>
 
-          {/* Measurement Labels */}
+          {/* Measurement Labels - Posicionadas para evitar superposición */}
           <div
-            className={`absolute ${getConfidenceColor(obj.confidence).split(' ')[2]} font-mono text-xs px-2 py-1 rounded backdrop-blur-sm`}
+            className="absolute z-10 font-mono text-sm px-3 py-2 rounded-lg shadow-lg border"
             style={{
-              left: `${obj.bounds.x * scaleX}px`,
-              top: `${(obj.bounds.y * scaleY) - 30}px`,
-              backgroundColor: 'rgba(0, 0, 0, 0.8)',
+              left: `${Math.min(obj.bounds.x * scaleX, containerWidth - 200)}px`,
+              top: `${calculateLabelPosition(obj, index)}px`,
+              backgroundColor: 'rgba(0, 0, 0, 0.9)',
+              borderColor: obj.confidence > 0.8 ? 'hsl(var(--measurement-active))' : 'hsl(var(--calibration))',
+              color: obj.confidence > 0.8 ? 'hsl(var(--measurement-active))' : 'hsl(var(--calibration))',
+              minWidth: '180px'
             }}
           >
-            <div className="flex flex-col items-start gap-1">
-              <div className="flex items-center gap-2">
-                <span>W: {formatDimension(obj.dimensions.width, obj.dimensions.unit)}</span>
-                <span>H: {formatDimension(obj.dimensions.height, obj.dimensions.unit)}</span>
+            <div className="space-y-1">
+              <div className="flex justify-between items-center">
+                <span className="text-xs opacity-80">Objeto {index + 1}</span>
+                <span className="text-xs bg-white/20 px-1 rounded">
+                  {(obj.confidence * 100).toFixed(0)}%
+                </span>
               </div>
+              
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <span className="opacity-70">W:</span>
+                  <span className="ml-1 font-bold">
+                    {formatDimension(obj.dimensions.width, obj.dimensions.unit)}
+                  </span>
+                </div>
+                <div>
+                  <span className="opacity-70">H:</span>
+                  <span className="ml-1 font-bold">
+                    {formatDimension(obj.dimensions.height, obj.dimensions.unit)}
+                  </span>
+                </div>
+              </div>
+              
               {obj.dimensions.unit !== 'px' && (
-                <div className="text-xs opacity-80">
-                  Area: {formatDimension(obj.dimensions.area, obj.dimensions.unit + '²')}
+                <div className="text-xs opacity-80 border-t border-white/20 pt-1">
+                  <span className="opacity-70">Área:</span>
+                  <span className="ml-1">
+                    {formatDimension(obj.dimensions.area, obj.dimensions.unit + '²')}
+                  </span>
                 </div>
               )}
-              <div className="text-xs opacity-60">
-                Conf: {(obj.confidence * 100).toFixed(0)}%
+            </div>
+          </div>
+
+          {/* Líneas de dimensión simplificadas - solo para el objeto principal */}
+          {index === 0 && (
+            <>
+              {/* Width line */}
+              <div
+                className="absolute border-t-2 border-measurement-active opacity-80"
+                style={{
+                  left: `${obj.bounds.x * scaleX}px`,
+                  top: `${(obj.bounds.y + obj.bounds.height + 15) * scaleY}px`,
+                  width: `${obj.bounds.width * scaleX}px`,
+                }}
+              >
+                <div className="absolute left-0 top-0 w-0.5 h-4 bg-measurement-active -translate-y-2"></div>
+                <div className="absolute right-0 top-0 w-0.5 h-4 bg-measurement-active -translate-y-2"></div>
               </div>
-            </div>
-          </div>
 
-          {/* Dimension Lines */}
-          {/* Width line */}
-          <div
-            className="absolute border-t-2 border-measurement-active"
-            style={{
-              left: `${obj.bounds.x * scaleX}px`,
-              top: `${(obj.bounds.y + obj.bounds.height + 10) * scaleY}px`,
-              width: `${obj.bounds.width * scaleX}px`,
-            }}
-          >
-            <div className="absolute left-0 top-0 w-0.5 h-3 bg-measurement-active -translate-y-1"></div>
-            <div className="absolute right-0 top-0 w-0.5 h-3 bg-measurement-active -translate-y-1"></div>
-            <div className="absolute left-1/2 top-1 transform -translate-x-1/2 text-xs text-measurement-active font-mono bg-black/80 px-1 rounded">
-              {formatDimension(obj.dimensions.width, obj.dimensions.unit)}
-            </div>
-          </div>
-
-          {/* Height line */}
-          <div
-            className="absolute border-l-2 border-accent"
-            style={{
-              left: `${(obj.bounds.x + obj.bounds.width + 10) * scaleX}px`,
-              top: `${obj.bounds.y * scaleY}px`,
-              height: `${obj.bounds.height * scaleY}px`,
-            }}
-          >
-            <div className="absolute top-0 left-0 h-0.5 w-3 bg-accent -translate-x-1"></div>
-            <div className="absolute bottom-0 left-0 h-0.5 w-3 bg-accent -translate-x-1"></div>
-            <div 
-              className="absolute left-2 top-1/2 transform -translate-y-1/2 text-xs text-accent font-mono bg-black/80 px-1 rounded"
-              style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}
-            >
-              {formatDimension(obj.dimensions.height, obj.dimensions.unit)}
-            </div>
-          </div>
+              {/* Height line */}
+              <div
+                className="absolute border-l-2 border-accent opacity-80"
+                style={{
+                  left: `${(obj.bounds.x + obj.bounds.width + 15) * scaleX}px`,
+                  top: `${obj.bounds.y * scaleY}px`,
+                  height: `${obj.bounds.height * scaleY}px`,
+                }}
+              >
+                <div className="absolute top-0 left-0 h-0.5 w-4 bg-accent -translate-x-2"></div>
+                <div className="absolute bottom-0 left-0 h-0.5 w-4 bg-accent -translate-x-2"></div>
+              </div>
+            </>
+          )}
         </div>
       ))}
     </div>

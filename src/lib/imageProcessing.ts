@@ -1,11 +1,10 @@
-
-
 export interface BoundingRect {
   x: number;
   y: number;
   width: number;
   height: number;
   area: number;
+  confidence?: number; // Opcional para compatibilidad con el worker
 }
 
 /**
@@ -47,7 +46,14 @@ export function detectContours(
       const area = cv.contourArea(contour);
       if (area >= minArea) {
         const rect = cv.boundingRect(contour);
-        rects.push({ x: rect.x, y: rect.y, width: rect.width, height: rect.height, area });
+        rects.push({ 
+          x: rect.x, 
+          y: rect.y, 
+          width: rect.width, 
+          height: rect.height, 
+          area,
+          confidence: 0.7 // Valor por defecto
+        });
       }
       contour.delete();
     }

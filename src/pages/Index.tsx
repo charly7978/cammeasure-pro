@@ -9,7 +9,9 @@ import {
   Settings,
   Ruler,
   Smartphone,
-  Cpu
+  Cpu,
+  AlertTriangle,
+  Box
 } from 'lucide-react';
 
 import { CameraView } from '@/components/CameraView';
@@ -31,12 +33,12 @@ const Index = () => {
   const [realTimeObjects, setRealTimeObjects] = useState<DetectedObject[]>([]);
   const [objectCount, setObjectCount] = useState(0);
   const lastToastRef = useRef<string>('');
+  const [showCalibrationWarning, setShowCalibrationWarning] = useState(true);
   
   const { sensorData, isListening, startListening, stopListening } = useDeviceSensors();
   const { isLoaded: isOpenCVLoaded, error: openCVError } = useOpenCV();
 
   useEffect(() => {
-    // Start sensor monitoring
     startListening();
     
     return () => {
@@ -45,17 +47,29 @@ const Index = () => {
   }, []);
 
   useEffect(() => {
-    // Solo log del error, no mostrar toast molesto
     if (openCVError) {
       console.warn('OpenCV status:', openCVError);
     }
   }, [openCVError]);
 
+  // Mostrar advertencia de calibración si no está calibrado
+  useEffect(() => {
+    if (!calibration?.isCalibrated && showCalibrationWarning) {
+      const timer = setTimeout(() => {
+        toast({
+          title: "⚠️ Calibración Requerida",
+          description: "Ve a Calibración para medidas precisas en mm/cm"
+        });
+      }, 2000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [calibration?.isCalibrated, showCalibrationWarning]);
+
   const handleImageCapture = (imageData: ImageData) => {
     setCapturedImage(imageData);
     setActiveTab('measurements');
     
-    // Prevenir toast duplicado
     const toastMessage = "Imagen capturada";
     if (lastToastRef.current !== toastMessage) {
       lastToastRef.current = toastMessage;
@@ -70,12 +84,13 @@ const Index = () => {
     setCalibration(data);
     
     if (data.isCalibrated) {
+      setShowCalibrationWarning(false);
       const toastMessage = "Sistema calibrado";
       if (lastToastRef.current !== toastMessage) {
         lastToastRef.current = toastMessage;
         toast({
           title: toastMessage,
-          description: "Mediciones precisas activadas"
+          description: `Factor: ${data.pixelsPerMm.toFixed(2)} px/mm`
         });
       }
     }
@@ -84,13 +99,12 @@ const Index = () => {
   const handleMeasurementResult = (result: MeasurementResult) => {
     setMeasurementResult(result);
     
-    // No mostrar toast para cada medición en tiempo real
-    // Solo para mediciones manuales
+    // Solo mostrar toast para mediciones manuales
     if (capturedImage) {
       const modeText = result.mode ? ` (${result.mode.toUpperCase()})` : '';
       toast({
         title: `Medición completada${modeText}`,
-        description: `${formatDimension(result.distance2D)}`
+        description: `${formatDimension(result.distance2D, result.unit)}`
       });
     }
   };
@@ -105,7 +119,7 @@ const Index = () => {
     
     // Auto-generate measurement result from the best object
     if (objects.length > 0) {
-      const bestObject = objects[0]; // Ya viene ordenado por calidad
+      const bestObject = objects[0];
       
       const result: MeasurementResult = {
         distance2D: Math.max(bestObject.dimensions.width, bestObject.dimensions.height),
@@ -137,6 +151,7 @@ const Index = () => {
         realTimeObjects,
         measurementResult,
         measurementMode,
+        calibration,
         timestamp: new Date().toISOString()
       };
       localStorage.setItem('cammeasure_data', JSON.stringify(dataToSave));
@@ -174,7 +189,12 @@ const Index = () => {
   };
 
   // Función para formatear dimensiones con unidades inteligentes
-  const formatDimension = (value: number): string => {
+  const formatDimension = (value: number, unit: string): string => {
+    if (unit === 'px') {
+      return `${Math.round(value)}px`;
+    }
+    
+    // Para unidades métricas (mm)
     if (value < 10) {
       return `${value.toFixed(1)}mm`;
     } else if (value < 100) {
@@ -186,7 +206,12 @@ const Index = () => {
     }
   };
 
-  const formatArea = (value: number): string => {
+  const formatArea = (value: number, unit: string): string => {
+    if (unit === 'px') {
+      return `${Math.round(value)}px²`;
+    }
+    
+    // Para áreas métricas
     if (value < 1000) {
       return `${Math.round(value)}mm²`;
     } else if (value < 100000) {
@@ -196,9 +221,19 @@ const Index = () => {
     }
   };
 
+  const formatVolume = (value: number): string => {
+    if (value < 1000) {
+      return `${Math.round(value)}mm³`;
+    } else if (value < 1000000) {
+      return `${(value / 1000).toFixed(1)}cm³`;
+    } else {
+      return `${(value / 1000000).toFixed(3)}m³`;
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background p-4 space-y-4">
-      {/* Header - MÁS COMPACTO */}
+      {/* Header */}
       <div className="text-center space-y-3">
         <div className="flex items-center justify-center gap-3">
           <div className="p-2 bg-gradient-primary rounded-lg shadow-measurement">
@@ -209,12 +244,12 @@ const Index = () => {
               CamMeasure Pro
             </h1>
             <p className="text-sm text-muted-foreground">
-              Medición en tiempo real
+              Medición 3D real en tiempo real
             </p>
           </div>
         </div>
 
-        {/* Status Indicators - MÁS COMPACTOS */}
+        {/* Status Indicators */}
         <div className="flex items-center justify-center gap-2 flex-wrap">
           <Badge 
             variant={isOpenCVLoaded ? "default" : "secondary"}
@@ -225,7 +260,7 @@ const Index = () => {
           </Badge>
           
           <Badge 
-            variant={calibration?.isCalibrated ? "default" : "secondary"}
+            variant={calibration?.isCalibrated ? "default" : "destructive"}
             className={`text-xs ${calibration?.isCalibrated ? "bg-calibration text-background" : ""}`}
           >
             <Target className="w-3 h-3 mr-1" />
@@ -235,10 +270,14 @@ const Index = () => {
           {objectCount > 0 && (
             <Badge 
               variant="outline"
-              className="border-measurement-active text-measurement-active text-xs"
+              className={`text-xs ${
+                realTimeObjects[0]?.isReal3D 
+                  ? 'border-purple-400 text-purple-400' 
+                  : 'border-measurement-active text-measurement-active'
+              }`}
             >
               <Target className="w-3 h-3 mr-1" />
-              🎯 Detectado
+              {realTimeObjects[0]?.isReal3D ? '🎯 3D REAL' : '🎯 Detectado'}
             </Badge>
           )}
 
@@ -252,45 +291,138 @@ const Index = () => {
         </div>
       </div>
 
-      {/* Panel de información en tiempo real - COLORES MEJORADOS */}
+      {/* Advertencia de calibración */}
+      {!calibration?.isCalibrated && (
+        <Card className="p-4 bg-amber-500/10 border-amber-500/30">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-500" />
+            <div className="flex-1">
+              <h3 className="font-medium text-amber-500">Calibración Requerida para Mediciones 3D Reales</h3>
+              <p className="text-sm text-amber-600">
+                Las medidas se muestran en píxeles. Calibra para obtener mediciones 3D reales en mm/cm/m.
+              </p>
+            </div>
+            <button 
+              onClick={() => setActiveTab('calibration')}
+              className="px-3 py-1 bg-amber-500 text-black rounded text-sm font-medium hover:bg-amber-400"
+            >
+              Calibrar
+            </button>
+          </div>
+        </Card>
+      )}
+
+      {/* Panel de información en tiempo real - MEJORADO PARA 3D REAL */}
       {realTimeObjects.length > 0 && (
-        <Card className="p-4 bg-gradient-to-r from-green-900/20 to-blue-900/20 border-green-500/30">
-          <h3 className="font-semibold text-green-400 mb-3 flex items-center gap-2">
-            <Target className="w-4 h-4" />
-            🎯 Objeto Detectado
+        <Card className={`p-4 border ${
+          realTimeObjects[0]?.isReal3D 
+            ? 'bg-gradient-to-r from-purple-900/20 to-blue-900/20 border-purple-500/30' 
+            : 'bg-gradient-to-r from-green-900/20 to-blue-900/20 border-green-500/30'
+        }`}>
+          <h3 className={`font-semibold mb-3 flex items-center gap-2 ${
+            realTimeObjects[0]?.isReal3D ? 'text-purple-400' : 'text-green-400'
+          }`}>
+            {realTimeObjects[0]?.isReal3D ? <Box className="w-4 h-4" /> : <Target className="w-4 h-4" />}
+            {realTimeObjects[0]?.isReal3D ? '🎯 OBJETO 3D REAL DETECTADO' : '🎯 Objeto Detectado'} 
+            {!calibration?.isCalibrated && '(en píxeles)'}
           </h3>
-          <div className="grid grid-cols-3 gap-4">
-            {realTimeObjects.slice(0, 1).map((obj, index) => (
-              <div key={obj.id} className="space-y-2">
+          
+          {realTimeObjects.slice(0, 1).map((obj, index) => (
+            <div key={obj.id} className="space-y-4">
+              {/* Mediciones 2D básicas */}
+              <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-1">
-                  <p className="text-xs text-gray-300">↔️ Ancho</p>
+                  <p className="text-xs text-gray-300">↔️ Ancho {obj.isReal3D ? '(2D)' : ''}</p>
                   <p className="font-mono text-green-400 font-bold text-lg">
-                    {formatDimension(obj.dimensions.width)}
+                    {formatDimension(obj.dimensions.width, obj.dimensions.unit)}
                   </p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-xs text-gray-300">↕️ Alto</p>
+                  <p className="text-xs text-gray-300">↕️ Alto {obj.isReal3D ? '(2D)' : ''}</p>
                   <p className="font-mono text-cyan-400 font-bold text-lg">
-                    {formatDimension(obj.dimensions.height)}
+                    {formatDimension(obj.dimensions.height, obj.dimensions.unit)}
                   </p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-xs text-gray-300">📐 Área</p>
+                  <p className="text-xs text-gray-300">📐 Área {obj.isReal3D ? '(2D)' : ''}</p>
                   <p className="font-mono text-blue-400 font-bold">
-                    {formatArea(obj.dimensions.area)}
+                    {formatArea(obj.dimensions.area, obj.dimensions.unit)}
                   </p>
                 </div>
               </div>
-            ))}
-          </div>
-          <div className="flex justify-between items-center pt-3 border-t border-white/10 mt-3">
-            <span className="text-xs text-gray-400">
-              Confianza: {realTimeObjects[0] ? (realTimeObjects[0].confidence * 100).toFixed(0) : 0}%
-            </span>
-            <span className="text-xs text-gray-400">
-              Factor: {calibration?.pixelsPerMm.toFixed(1)} px/mm
-            </span>
-          </div>
+
+              {/* Mediciones 3D REALES */}
+              {obj.isReal3D && obj.measurements3D && (
+                <div className="border-t border-purple-400/30 pt-4">
+                  <h4 className="text-sm font-bold text-purple-300 mb-3 flex items-center gap-2">
+                    📊 MEDICIONES 3D REALES
+                    <span className="text-xs bg-purple-500/20 px-2 py-1 rounded">REAL</span>
+                  </h4>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <div className="space-y-1">
+                        <p className="text-xs text-gray-300">📏 Ancho 3D Real</p>
+                        <p className="font-mono text-purple-300 font-bold text-lg">
+                          {formatDimension(obj.measurements3D.width3D, 'mm')}
+                        </p>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-xs text-gray-300">📐 Alto 3D Real</p>
+                        <p className="font-mono text-purple-300 font-bold text-lg">
+                          {formatDimension(obj.measurements3D.height3D, 'mm')}
+                        </p>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-xs text-gray-300">🔍 Profundidad Real</p>
+                        <p className="font-mono text-orange-400 font-bold text-lg">
+                          {formatDimension(obj.measurements3D.depth3D, 'mm')}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="space-y-1">
+                        <p className="text-xs text-gray-300">📦 Volumen Real</p>
+                        <p className="font-mono text-yellow-400 font-bold">
+                          {formatVolume(obj.measurements3D.volume3D)}
+                        </p>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-xs text-gray-300">📍 Distancia Real</p>
+                        <p className="font-mono text-green-400 font-bold">
+                          {formatDimension(obj.measurements3D.distance, 'mm')}
+                        </p>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-xs text-gray-300">🎯 Confianza 3D</p>
+                        <p className="font-mono text-white font-bold">
+                          {(obj.measurements3D.confidence * 100).toFixed(1)}%
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Información del sistema */}
+              <div className="flex justify-between items-center pt-3 border-t border-white/10 text-xs text-gray-400">
+                <div className="space-y-1">
+                  <div>Confianza: {(obj.confidence * 100).toFixed(0)}%</div>
+                  <div>
+                    {calibration?.isCalibrated ? 
+                      `Factor: ${calibration.pixelsPerMm.toFixed(2)} px/mm` : 
+                      'Sin calibrar - medidas en píxeles'
+                    }
+                  </div>
+                </div>
+                <div className="text-right space-y-1">
+                  <div className={obj.isReal3D ? 'text-purple-300 font-bold' : ''}>
+                    {obj.isReal3D ? 'Modo: 3D REAL' : 'Modo: 2D'}
+                  </div>
+                  <div>{obj.isReal3D ? 'Structure from Motion' : 'Detección básica'}</div>
+                </div>
+              </div>
+            </div>
+          ))}
         </Card>
       )}
 
@@ -322,7 +454,6 @@ const Index = () => {
 
         <div className="mt-4">
           <TabsContent value="camera" className="space-y-4">
-            {/* CÁMARA AMPLIADA - Ocupa la mayor parte del espacio */}
             <CameraView
               onImageCapture={handleImageCapture}
               isActive={activeTab === 'camera'}
@@ -330,13 +461,18 @@ const Index = () => {
               onRealTimeObjects={handleRealTimeObjects}
             />
             
-            {/* Instrucciones compactas */}
+            {/* Instrucciones */}
             <Card className="p-3 bg-primary/5 border-primary/20">
-              <h4 className="font-medium mb-2 text-primary text-sm">🎯 Instrucciones</h4>
+              <h4 className="font-medium mb-2 text-primary text-sm">🎯 Instrucciones para Medición 3D Real</h4>
               <ul className="text-xs text-muted-foreground space-y-1">
                 <li>• Apunta hacia el objeto y mantén centrado</li>
-                <li>• Las medidas aparecen automáticamente en mm/cm/m</li>
-                <li>• Sistema pre-calibrado para uso inmediato</li>
+                <li>• {calibration?.isCalibrated ? 
+                  'Sistema calibrado: mediciones 3D reales disponibles' : 
+                  'Calibra primero para mediciones 3D reales (actualmente en píxeles)'
+                }</li>
+                <li>• Mueve ligeramente la cámara para capturar múltiples ángulos</li>
+                <li>• El sistema usa Structure from Motion para calcular profundidad real</li>
+                <li>• Las mediciones 3D aparecen automáticamente cuando hay suficientes datos</li>
               </ul>
             </Card>
           </TabsContent>
@@ -369,47 +505,100 @@ const Index = () => {
                     <Camera className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
                     <h3 className="text-lg font-semibold mb-2">Sin datos</h3>
                     <p className="text-muted-foreground">
-                      Ve a la cámara para mediciones en tiempo real
+                      Ve a la cámara para mediciones 3D reales en tiempo real
                     </p>
                   </Card>
                 )}
 
                 {realTimeObjects.length > 0 && (
-                  <Card className="p-4 bg-gradient-to-r from-green-900/10 to-blue-900/10 border-green-500/20">
-                    <h4 className="font-medium mb-3 text-green-400">🎯 Objeto en Tiempo Real</h4>
+                  <Card className={`p-4 ${
+                    realTimeObjects[0]?.isReal3D 
+                      ? 'bg-gradient-to-r from-purple-900/10 to-blue-900/10 border-purple-500/20' 
+                      : 'bg-gradient-to-r from-green-900/10 to-blue-900/10 border-green-500/20'
+                  }`}>
+                    <h4 className={`font-medium mb-3 ${
+                      realTimeObjects[0]?.isReal3D ? 'text-purple-400' : 'text-green-400'
+                    }`}>
+                      {realTimeObjects[0]?.isReal3D ? '🎯 Objeto 3D Real en Tiempo Real' : '🎯 Objeto en Tiempo Real'} 
+                      {!calibration?.isCalibrated && '(píxeles)'}
+                    </h4>
                     <div className="space-y-3">
                       {realTimeObjects.slice(0, 1).map((obj, index) => (
                         <div key={obj.id} className="p-4 bg-black/20 rounded-lg">
                           <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
                               <div>
-                                <p className="text-gray-300 text-sm">↔️ Ancho</p>
+                                <p className="text-gray-300 text-sm">↔️ Ancho {obj.isReal3D ? '(2D)' : ''}</p>
                                 <p className="font-mono text-green-400 font-bold text-xl">
-                                  {formatDimension(obj.dimensions.width)}
+                                  {formatDimension(obj.dimensions.width, obj.dimensions.unit)}
                                 </p>
                               </div>
                               <div>
-                                <p className="text-gray-300 text-sm">📐 Área</p>
+                                <p className="text-gray-300 text-sm">📐 Área {obj.isReal3D ? '(2D)' : ''}</p>
                                 <p className="font-mono text-blue-400 font-bold">
-                                  {formatArea(obj.dimensions.area)}
+                                  {formatArea(obj.dimensions.area, obj.dimensions.unit)}
                                 </p>
                               </div>
+                              {obj.isReal3D && obj.measurements3D && (
+                                <div>
+                                  <p className="text-gray-300 text-sm">🔍 Profundidad Real</p>
+                                  <p className="font-mono text-orange-400 font-bold text-xl">
+                                    {formatDimension(obj.measurements3D.depth3D, 'mm')}
+                                  </p>
+                                </div>
+                              )}
                             </div>
                             <div className="space-y-2">
                               <div>
-                                <p className="text-gray-300 text-sm">↕️ Alto</p>
+                                <p className="text-gray-300 text-sm">↕️ Alto {obj.isReal3D ? '(2D)' : ''}</p>
                                 <p className="font-mono text-cyan-400 font-bold text-xl">
-                                  {formatDimension(obj.dimensions.height)}
+                                  {formatDimension(obj.dimensions.height, obj.dimensions.unit)}
                                 </p>
                               </div>
                               <div>
                                 <p className="text-gray-300 text-sm">📏 Diagonal</p>
                                 <p className="font-mono text-yellow-400 font-bold">
-                                  {formatDimension(Math.sqrt(obj.dimensions.width ** 2 + obj.dimensions.height ** 2))}
+                                  {formatDimension(
+                                    Math.sqrt(obj.dimensions.width ** 2 + obj.dimensions.height ** 2), 
+                                    obj.dimensions.unit
+                                  )}
                                 </p>
                               </div>
+                              {obj.isReal3D && obj.measurements3D && (
+                                <div>
+                                  <p className="text-gray-300 text-sm">📦 Volumen Real</p>
+                                  <p className="font-mono text-yellow-400 font-bold text-xl">
+                                    {formatVolume(obj.measurements3D.volume3D)}
+                                  </p>
+                                </div>
+                              )}
                             </div>
                           </div>
+                          
+                          {obj.isReal3D && obj.measurements3D && (
+                            <div className="mt-3 pt-3 border-t border-purple-400/30">
+                              <div className="grid grid-cols-3 gap-4 text-sm">
+                                <div>
+                                  <p className="text-gray-400">📏 Ancho 3D Real</p>
+                                  <p className="font-mono text-purple-300 font-bold">
+                                    {formatDimension(obj.measurements3D.width3D, 'mm')}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-gray-400">📐 Alto 3D Real</p>
+                                  <p className="font-mono text-purple-300 font-bold">
+                                    {formatDimension(obj.measurements3D.height3D, 'mm')}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-gray-400">📍 Distancia</p>
+                                  <p className="font-mono text-green-400 font-bold">
+                                    {formatDimension(obj.measurements3D.distance, 'mm')}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>

@@ -106,10 +106,9 @@ function calculateOverlap(rect1: any, rect2: any) {
   return overlapArea / unionArea;
 }
 
-// Detección de contornos usando OpenCV
+// Detección de contornos usando OpenCV MEJORADA
 function detectContoursOpenCV(imageData: ImageData, minArea: number) {
   if (!isOpenCVReady || !cv) {
-    // Fallback a detección nativa si OpenCV no está disponible
     return detectContoursNative(imageData, minArea);
   }
 
@@ -121,61 +120,76 @@ function detectContoursOpenCV(imageData: ImageData, minArea: number) {
     const gray = new cv.Mat();
     cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
     
-    // Aplicar desenfoque gaussiano más fuerte para reducir ruido
-    const blurred = new cv.Mat();
-    cv.GaussianBlur(gray, blurred, new cv.Size(9, 9), 0);
+    // Aplicar filtro bilateral para reducir ruido manteniendo bordes
+    const bilateral = new cv.Mat();
+    cv.bilateralFilter(gray, bilateral, 9, 75, 75);
     
-    // Detección de bordes Canny con umbrales más altos para ser más selectivo
+    // Aplicar desenfoque gaussiano suave
+    const blurred = new cv.Mat();
+    cv.GaussianBlur(bilateral, blurred, new cv.Size(5, 5), 0);
+    
+    // Detección de bordes Canny con parámetros optimizados
     const edges = new cv.Mat();
-    cv.Canny(blurred, edges, 80, 200);
+    cv.Canny(blurred, edges, 50, 150, 3, false);
     
     // Operación morfológica para cerrar pequeños huecos
-    const kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(5, 5));
-    cv.morphologyEx(edges, edges, cv.MORPH_CLOSE, kernel);
-    kernel.delete();
+    const kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(3, 3));
+    const closed = new cv.Mat();
+    cv.morphologyEx(edges, closed, cv.MORPH_CLOSE, kernel);
+    
+    // Dilatación para conectar bordes cercanos
+    const dilated = new cv.Mat();
+    cv.dilate(closed, dilated, kernel, new cv.Point(-1, -1), 1);
     
     // Encontrar contornos
     const contours = new cv.MatVector();
     const hierarchy = new cv.Mat();
-    cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+    cv.findContours(dilated, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
     
     const rects = [];
     const imageArea = imageData.width * imageData.height;
     
-    // Procesar cada contorno con filtros más estrictos
+    // Procesar cada contorno con filtros mejorados
     for (let i = 0; i < contours.size(); i++) {
       const contour = contours.get(i);
+      
+      // Aproximar el contorno para reducir puntos
+      const epsilon = 0.02 * cv.arcLength(contour, true);
+      const approx = new cv.Mat();
+      cv.approxPolyDP(contour, approx, epsilon, true);
       
       // Obtener rectángulo delimitador
       const rect = cv.boundingRect(contour);
       
-      // Calcular propiedades del contorno para mejor detección
+      // Calcular propiedades del contorno
       const area = cv.contourArea(contour);
       const perimeter = cv.arcLength(contour, true);
       
-      // Calcular circularidad para filtrar formas no deseadas
+      // Calcular métricas de calidad
       const circularity = (4 * Math.PI * area) / (perimeter * perimeter);
-      
-      // Calcular relación de aspecto
       const aspectRatio = rect.width / rect.height;
-      
-      // Calcular densidad del área (área del contorno vs área del rectángulo)
       const rectArea = rect.width * rect.height;
-      const density = area / rectArea;
+      const extent = area / rectArea; // Qué tan lleno está el rectángulo
+      const solidity = area / cv.contourArea(cv.convexHull(contour, new cv.Mat(), false, true));
       
-      // Filtros más estrictos:
-      // 1. Área mínima más grande
-      // 2. Área máxima (no más del 30% de la imagen)
-      // 3. Circularidad mínima
-      // 4. Relación de aspecto razonable
-      // 5. Densidad mínima
-      // 6. Dimensiones mínimas
-      if (area >= minArea * 3 && 
-          area <= imageArea * 0.3 &&
-          circularity > 0.2 && 
-          aspectRatio > 0.3 && aspectRatio < 3.0 &&
-          density > 0.4 &&
-          rect.width > 30 && rect.height > 30) {
+      // Filtros más inteligentes para objetos reales
+      const isValidSize = area >= minArea && area <= imageArea * 0.4;
+      const isValidShape = aspectRatio > 0.2 && aspectRatio < 5.0;
+      const isValidExtent = extent > 0.3; // Al menos 30% del rectángulo está lleno
+      const isValidSolidity = solidity > 0.7; // Forma relativamente sólida
+      const isValidCircularity = circularity > 0.1; // No demasiado irregular
+      const hasMinimumSize = rect.width > 30 && rect.height > 30;
+      
+      if (isValidSize && isValidShape && isValidExtent && isValidSolidity && 
+          isValidCircularity && hasMinimumSize) {
+        
+        // Calcular confianza basada en múltiples factores
+        const sizeScore = Math.min(area / (minArea * 5), 1.0);
+        const shapeScore = Math.min(circularity * 2, 1.0);
+        const solidityScore = solidity;
+        const extentScore = extent;
+        
+        const confidence = (sizeScore * 0.3 + shapeScore * 0.2 + solidityScore * 0.3 + extentScore * 0.2);
         
         rects.push({
           x: rect.x,
@@ -183,16 +197,25 @@ function detectContoursOpenCV(imageData: ImageData, minArea: number) {
           width: rect.width,
           height: rect.height,
           area: area,
-          confidence: Math.min(circularity * density * 2, 1.0) // Calcular confianza basada en forma
+          confidence: Math.min(confidence, 1.0),
+          circularity: circularity,
+          solidity: solidity,
+          extent: extent
         });
       }
+      
+      approx.delete();
     }
     
     // Liberar memoria
     src.delete();
     gray.delete();
+    bilateral.delete();
     blurred.delete();
     edges.delete();
+    closed.delete();
+    dilated.delete();
+    kernel.delete();
     contours.delete();
     hierarchy.delete();
     
@@ -202,72 +225,81 @@ function detectContoursOpenCV(imageData: ImageData, minArea: number) {
     // Ordenar por confianza y área
     filteredRects.sort((a, b) => (b.confidence * b.area) - (a.confidence * a.area));
     
-    // Retornar solo los 2 mejores objetos
-    return filteredRects.slice(0, 2);
+    // Retornar solo el mejor objeto
+    return filteredRects.slice(0, 1);
     
   } catch (error) {
     console.error('OpenCV detection error:', error);
-    // Fallback a detección nativa
     return detectContoursNative(imageData, minArea);
   }
 }
 
-// Detección nativa (fallback) - también mejorada para ser más estricta
+// Detección nativa mejorada (fallback)
 function detectContoursNative(imageData: ImageData, minArea: number) {
   const { width, height, data } = imageData;
   const rects = [];
   
-  // Simple edge detection using Sobel operator
+  // Convertir a escala de grises
+  const gray = new Uint8Array(width * height);
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    gray[i / 4] = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+  }
+  
+  // Aplicar filtro de mediana para reducir ruido
+  const filtered = applyMedianFilter(gray, width, height);
+  
+  // Detección de bordes mejorada usando Sobel
   const edges = new Uint8Array(width * height);
   
-  // Convert to grayscale and detect edges with higher threshold
   for (let y = 1; y < height - 1; y++) {
     for (let x = 1; x < width - 1; x++) {
-      const idx = (y * width + x) * 4;
+      const idx = y * width + x;
       
-      // Convert to grayscale
-      const gray = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
-      
-      // Sobel X
+      // Operador Sobel X
       const sobelX = 
-        -1 * getGrayValue(data, x - 1, y - 1, width) +
-        -2 * getGrayValue(data, x - 1, y, width) +
-        -1 * getGrayValue(data, x - 1, y + 1, width) +
-         1 * getGrayValue(data, x + 1, y - 1, width) +
-         2 * getGrayValue(data, x + 1, y, width) +
-         1 * getGrayValue(data, x + 1, y + 1, width);
+        -1 * filtered[(y-1) * width + (x-1)] + 1 * filtered[(y-1) * width + (x+1)] +
+        -2 * filtered[y * width + (x-1)] + 2 * filtered[y * width + (x+1)] +
+        -1 * filtered[(y+1) * width + (x-1)] + 1 * filtered[(y+1) * width + (x+1)];
       
-      // Sobel Y
+      // Operador Sobel Y
       const sobelY = 
-        -1 * getGrayValue(data, x - 1, y - 1, width) +
-        -2 * getGrayValue(data, x, y - 1, width) +
-        -1 * getGrayValue(data, x + 1, y - 1, width) +
-         1 * getGrayValue(data, x - 1, y + 1, width) +
-         2 * getGrayValue(data, x, y + 1, width) +
-         1 * getGrayValue(data, x + 1, y + 1, width);
+        -1 * filtered[(y-1) * width + (x-1)] + -2 * filtered[(y-1) * width + x] + -1 * filtered[(y-1) * width + (x+1)] +
+        1 * filtered[(y+1) * width + (x-1)] + 2 * filtered[(y+1) * width + x] + 1 * filtered[(y+1) * width + (x+1)];
       
-      // Magnitude with higher threshold
+      // Magnitud del gradiente
       const magnitude = Math.sqrt(sobelX * sobelX + sobelY * sobelY);
-      edges[y * width + x] = magnitude > 80 ? 255 : 0; // Increased threshold
+      edges[idx] = magnitude > 60 ? 255 : 0;
     }
   }
   
-  // Find bounding boxes of connected components
+  // Operación de cierre morfológico
+  const closed = applyMorphologicalClosing(edges, width, height);
+  
+  // Encontrar componentes conectados
   const visited = new Array(width * height).fill(false);
   const imageArea = width * height;
   
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const idx = y * width + x;
-      if (edges[idx] > 0 && !visited[idx]) {
-        const rect = floodFill(edges, visited, x, y, width, height);
+      if (closed[idx] > 0 && !visited[idx]) {
+        const rect = floodFill(closed, visited, x, y, width, height);
         const area = rect.width * rect.height;
         
-        // More strict filtering for native detection
-        if (area >= minArea * 2 && 
-            area <= imageArea * 0.3 &&
-            rect.width > 20 && rect.height > 20 &&
-            rect.width / rect.height > 0.3 && rect.width / rect.height < 3.0) {
+        // Filtros similares a OpenCV
+        const aspectRatio = rect.width / rect.height;
+        const sizeRatio = area / imageArea;
+        
+        if (area >= minArea && 
+            area <= imageArea * 0.4 &&
+            aspectRatio > 0.2 && aspectRatio < 5.0 &&
+            rect.width > 30 && rect.height > 30 &&
+            sizeRatio > 0.001 && sizeRatio < 0.3) {
+          
+          const confidence = Math.min(area / (minArea * 3), 1.0);
           
           rects.push({
             x: rect.x,
@@ -275,26 +307,76 @@ function detectContoursNative(imageData: ImageData, minArea: number) {
             width: rect.width,
             height: rect.height,
             area: area,
-            confidence: Math.min(area / (minArea * 10), 1.0) // Simple confidence based on size
+            confidence: confidence
           });
         }
       }
     }
   }
   
-  // Filter overlapping rectangles
+  // Filtrar objetos superpuestos
   const filteredRects = filterOverlappingRects(rects);
   
-  // Sort by confidence and area
+  // Ordenar por confianza y área
   filteredRects.sort((a, b) => (b.confidence * b.area) - (a.confidence * a.area));
   
-  // Return only top 2 objects
-  return filteredRects.slice(0, 2);
+  // Retornar solo el mejor objeto
+  return filteredRects.slice(0, 1);
 }
 
-function getGrayValue(data: Uint8ClampedArray, x: number, y: number, width: number) {
-  const idx = (y * width + x) * 4;
-  return (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
+// Filtro de mediana para reducir ruido
+function applyMedianFilter(data: Uint8Array, width: number, height: number): Uint8Array {
+  const filtered = new Uint8Array(width * height);
+  
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      const neighbors = [];
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          neighbors.push(data[(y + dy) * width + (x + dx)]);
+        }
+      }
+      neighbors.sort((a, b) => a - b);
+      filtered[y * width + x] = neighbors[4]; // Mediana de 9 elementos
+    }
+  }
+  
+  return filtered;
+}
+
+// Operación morfológica de cierre
+function applyMorphologicalClosing(data: Uint8Array, width: number, height: number): Uint8Array {
+  // Dilatación seguida de erosi��n
+  const dilated = new Uint8Array(width * height);
+  const closed = new Uint8Array(width * height);
+  
+  // Dilatación
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      let maxVal = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          maxVal = Math.max(maxVal, data[(y + dy) * width + (x + dx)]);
+        }
+      }
+      dilated[y * width + x] = maxVal;
+    }
+  }
+  
+  // Erosión
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      let minVal = 255;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          minVal = Math.min(minVal, dilated[(y + dy) * width + (x + dx)]);
+        }
+      }
+      closed[y * width + x] = minVal;
+    }
+  }
+  
+  return closed;
 }
 
 function floodFill(edges: Uint8Array, visited: boolean[], startX: number, startY: number, width: number, height: number) {

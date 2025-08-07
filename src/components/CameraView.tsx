@@ -316,15 +316,14 @@ export const CameraView: React.FC<CameraViewProps> = ({
           </div>
         )}
 
-        {/* Real-time Processing Component */}
-        {isRealTimeMeasurement && (
-          <RealTimeMeasurement
-            videoRef={videoRef}
-            calibrationData={calibrationData}
-            onObjectsDetected={handleObjectsDetected}
-            isActive={isActive && isRealTimeMeasurement}
-          />
-        )}
+          {/* Real-time Processing Component */}
+          {isRealTimeMeasurement && (
+            <RealTimeMeasurement
+              videoRef={videoRef}
+              onObjectsDetected={handleObjectsDetected}
+              isActive={isActive && isRealTimeMeasurement}
+            />
+          )}
       </Card>
 
       {/* Hidden canvas for image capture */}

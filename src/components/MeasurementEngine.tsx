@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useMeasurementWorker } from '@/hooks/useMeasurementWorker';
 import { useCalibration } from '@/hooks/useCalibration';
+import type { CalibrationData } from '@/components/CalibrationPanel';
 
 export interface MeasurementPoint {
   x: number;
@@ -21,17 +22,18 @@ export interface MeasurementResult {
 
 interface MeasurementEngineProps {
   imageData: ImageData | null;
+  calibrationData: CalibrationData | null;
   onMeasurementResult: (result: MeasurementResult) => void;
   onDetectedEdges: (edges: MeasurementPoint[]) => void;
 }
 
 export const MeasurementEngine: React.FC<MeasurementEngineProps> = ({
   imageData,
+  calibrationData,
   onMeasurementResult,
   onDetectedEdges
 }) => {
   const { detect } = useMeasurementWorker();
-  const { calibrationData } = useCalibration(); // Use global calibration
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [measurementPoints, setMeasurementPoints] = useState<MeasurementPoint[]>([]);
 

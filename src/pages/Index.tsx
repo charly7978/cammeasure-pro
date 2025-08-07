@@ -11,7 +11,8 @@ import {
   Smartphone,
   Cpu,
   AlertTriangle,
-  Box
+  Box,
+  Zap
 } from 'lucide-react';
 
 import { CameraView } from '@/components/CameraView';
@@ -231,8 +232,8 @@ const Index = () => {
     }
   };
 
-  // Verificar si un objeto tiene mediciones 3D reales
-  const hasReal3D = (obj: DetectedObject): boolean => {
+  // Verificar si un objeto tiene mediciones 3D estimadas
+  const hasEstimated3D = (obj: DetectedObject): boolean => {
     return !!(obj.isReal3D && obj.measurements3D);
   };
 
@@ -254,7 +255,7 @@ const Index = () => {
               CamMeasure Pro
             </h1>
             <p className="text-sm text-muted-foreground">
-              Medición 3D real en tiempo real
+              Medición optimizada en tiempo real
             </p>
           </div>
         </div>
@@ -262,11 +263,11 @@ const Index = () => {
         {/* Status Indicators */}
         <div className="flex items-center justify-center gap-2 flex-wrap">
           <Badge 
-            variant={isOpenCVLoaded ? "default" : "secondary"}
-            className={`text-xs ${isOpenCVLoaded ? "bg-measurement-active text-background" : ""}`}
+            variant="default"
+            className="text-xs bg-green-500 text-white"
           >
-            <Cpu className="w-3 h-3 mr-1" />
-            {isOpenCVLoaded ? 'OpenCV' : 'Básico'}
+            <Zap className="w-3 h-3 mr-1" />
+            OPTIMIZADO
           </Badge>
           
           <Badge 
@@ -281,13 +282,13 @@ const Index = () => {
             <Badge 
               variant="outline"
               className={`text-xs ${
-                realTimeObjects[0] && hasReal3D(realTimeObjects[0])
+                realTimeObjects[0] && hasEstimated3D(realTimeObjects[0])
                   ? 'border-purple-400 text-purple-400' 
                   : 'border-measurement-active text-measurement-active'
               }`}
             >
               <Target className="w-3 h-3 mr-1" />
-              {realTimeObjects[0] && hasReal3D(realTimeObjects[0]) ? '🎯 3D REAL' : '🎯 Detectado'}
+              {realTimeObjects[0] && hasEstimated3D(realTimeObjects[0]) ? '🎯 3D ESTIMADO' : '🎯 Detectado'}
             </Badge>
           )}
 
@@ -307,9 +308,9 @@ const Index = () => {
           <div className="flex items-center gap-3">
             <AlertTriangle className="w-5 h-5 text-amber-500" />
             <div className="flex-1">
-              <h3 className="font-medium text-amber-500">Calibración Requerida para Mediciones 3D Reales</h3>
+              <h3 className="font-medium text-amber-500">Calibración Requerida para Mediciones Precisas</h3>
               <p className="text-sm text-amber-600">
-                Las medidas se muestran en píxeles. Calibra para obtener mediciones 3D reales en mm/cm/m.
+                Las medidas se muestran en píxeles. Calibra para obtener mediciones precisas en mm/cm/m.
               </p>
             </div>
             <button 
@@ -322,72 +323,72 @@ const Index = () => {
         </Card>
       )}
 
-      {/* Panel de información en tiempo real - MEJORADO PARA 3D REAL */}
+      {/* Panel de información en tiempo real - OPTIMIZADO */}
       {realTimeObjects.length > 0 && (
         <Card className={`p-4 border ${
-          realTimeObjects[0] && hasReal3D(realTimeObjects[0])
+          realTimeObjects[0] && hasEstimated3D(realTimeObjects[0])
             ? 'bg-gradient-to-r from-purple-900/20 to-blue-900/20 border-purple-500/30' 
             : 'bg-gradient-to-r from-green-900/20 to-blue-900/20 border-green-500/30'
         }`}>
           <h3 className={`font-semibold mb-3 flex items-center gap-2 ${
-            realTimeObjects[0] && hasReal3D(realTimeObjects[0]) ? 'text-purple-400' : 'text-green-400'
+            realTimeObjects[0] && hasEstimated3D(realTimeObjects[0]) ? 'text-purple-400' : 'text-green-400'
           }`}>
-            {realTimeObjects[0] && hasReal3D(realTimeObjects[0]) ? <Box className="w-4 h-4" /> : <Target className="w-4 h-4" />}
-            {realTimeObjects[0] && hasReal3D(realTimeObjects[0]) ? '🎯 OBJETO 3D REAL DETECTADO' : '🎯 Objeto Detectado'} 
+            {realTimeObjects[0] && hasEstimated3D(realTimeObjects[0]) ? <Box className="w-4 h-4" /> : <Target className="w-4 h-4" />}
+            {realTimeObjects[0] && hasEstimated3D(realTimeObjects[0]) ? '🎯 OBJETO 3D ESTIMADO' : '🎯 Objeto Detectado'} 
             {!calibration?.isCalibrated && '(en píxeles)'}
           </h3>
           
           {realTimeObjects.slice(0, 1).map((obj, index) => {
             const measurements3D = get3DMeasurements(obj);
-            const isReal3D = hasReal3D(obj);
+            const hasEst3D = hasEstimated3D(obj);
             
             return (
               <div key={obj.id} className="space-y-4">
                 {/* Mediciones 2D básicas */}
                 <div className="grid grid-cols-3 gap-4">
                   <div className="space-y-1">
-                    <p className="text-xs text-gray-300">↔️ Ancho {isReal3D ? '(2D)' : ''}</p>
+                    <p className="text-xs text-gray-300">↔️ Ancho {hasEst3D ? '(2D)' : ''}</p>
                     <p className="font-mono text-green-400 font-bold text-lg">
                       {formatDimension(obj.dimensions.width, obj.dimensions.unit)}
                     </p>
                   </div>
                   <div className="space-y-1">
-                    <p className="text-xs text-gray-300">↕️ Alto {isReal3D ? '(2D)' : ''}</p>
+                    <p className="text-xs text-gray-300">↕️ Alto {hasEst3D ? '(2D)' : ''}</p>
                     <p className="font-mono text-cyan-400 font-bold text-lg">
                       {formatDimension(obj.dimensions.height, obj.dimensions.unit)}
                     </p>
                   </div>
                   <div className="space-y-1">
-                    <p className="text-xs text-gray-300">📐 Área {isReal3D ? '(2D)' : ''}</p>
+                    <p className="text-xs text-gray-300">📐 Área {hasEst3D ? '(2D)' : ''}</p>
                     <p className="font-mono text-blue-400 font-bold">
                       {formatArea(obj.dimensions.area, obj.dimensions.unit)}
                     </p>
                   </div>
                 </div>
 
-                {/* Mediciones 3D REALES */}
-                {isReal3D && measurements3D && (
+                {/* Mediciones 3D ESTIMADAS */}
+                {hasEst3D && measurements3D && (
                   <div className="border-t border-purple-400/30 pt-4">
                     <h4 className="text-sm font-bold text-purple-300 mb-3 flex items-center gap-2">
-                      📊 MEDICIONES 3D REALES
-                      <span className="text-xs bg-purple-500/20 px-2 py-1 rounded">REAL</span>
+                      📊 ESTIMACIONES 3D RÁPIDAS
+                      <span className="text-xs bg-purple-500/20 px-2 py-1 rounded">ESTIMADO</span>
                     </h4>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <div className="space-y-1">
-                          <p className="text-xs text-gray-300">📏 Ancho 3D Real</p>
+                          <p className="text-xs text-gray-300">📏 Ancho 3D</p>
                           <p className="font-mono text-purple-300 font-bold text-lg">
                             {formatDimension(measurements3D.width3D, 'mm')}
                           </p>
                         </div>
                         <div className="space-y-1">
-                          <p className="text-xs text-gray-300">📐 Alto 3D Real</p>
+                          <p className="text-xs text-gray-300">📐 Alto 3D</p>
                           <p className="font-mono text-purple-300 font-bold text-lg">
                             {formatDimension(measurements3D.height3D, 'mm')}
                           </p>
                         </div>
                         <div className="space-y-1">
-                          <p className="text-xs text-gray-300">🔍 Profundidad Real</p>
+                          <p className="text-xs text-gray-300">🔍 Profundidad Est.</p>
                           <p className="font-mono text-orange-400 font-bold text-lg">
                             {formatDimension(measurements3D.depth3D, 'mm')}
                           </p>
@@ -395,21 +396,21 @@ const Index = () => {
                       </div>
                       <div className="space-y-2">
                         <div className="space-y-1">
-                          <p className="text-xs text-gray-300">📦 Volumen Real</p>
+                          <p className="text-xs text-gray-300">📦 Volumen Est.</p>
                           <p className="font-mono text-yellow-400 font-bold">
                             {formatVolume(measurements3D.volume3D)}
                           </p>
                         </div>
                         <div className="space-y-1">
-                          <p className="text-xs text-gray-300">📍 Distancia Real</p>
+                          <p className="text-xs text-gray-300">📍 Distancia Est.</p>
                           <p className="font-mono text-green-400 font-bold">
                             {formatDimension(measurements3D.distance, 'mm')}
                           </p>
                         </div>
                         <div className="space-y-1">
-                          <p className="text-xs text-gray-300">🎯 Confianza 3D</p>
+                          <p className="text-xs text-gray-300">🎯 Confianza</p>
                           <p className="font-mono text-white font-bold">
-                            {(measurements3D.confidence * 100).toFixed(1)}%
+                            {(measurements3D.confidence * 100).toFixed(0)}%
                           </p>
                         </div>
                       </div>
@@ -429,10 +430,10 @@ const Index = () => {
                     </div>
                   </div>
                   <div className="text-right space-y-1">
-                    <div className={isReal3D ? 'text-purple-300 font-bold' : ''}>
-                      {isReal3D ? 'Modo: 3D REAL' : 'Modo: 2D'}
+                    <div className={hasEst3D ? 'text-purple-300 font-bold' : ''}>
+                      {hasEst3D ? 'Modo: 3D ESTIMADO' : 'Modo: 2D'}
                     </div>
-                    <div>{isReal3D ? 'Structure from Motion' : 'Detección básica'}</div>
+                    <div>{hasEst3D ? 'Estimación rápida' : 'Detección básica'}</div>
                   </div>
                 </div>
               </div>
@@ -478,16 +479,16 @@ const Index = () => {
             
             {/* Instrucciones */}
             <Card className="p-3 bg-primary/5 border-primary/20">
-              <h4 className="font-medium mb-2 text-primary text-sm">🎯 Instrucciones para Medición 3D Real</h4>
+              <h4 className="font-medium mb-2 text-primary text-sm">🎯 Instrucciones Optimizadas</h4>
               <ul className="text-xs text-muted-foreground space-y-1">
                 <li>• Apunta hacia el objeto y mantén centrado</li>
                 <li>• {calibration?.isCalibrated ? 
-                  'Sistema calibrado: mediciones 3D reales disponibles' : 
-                  'Calibra primero para mediciones 3D reales (actualmente en píxeles)'
+                  'Sistema calibrado: mediciones precisas disponibles' : 
+                  'Calibra primero para mediciones precisas (actualmente en píxeles)'
                 }</li>
-                <li>• Mueve ligeramente la cámara para capturar múltiples ángulos</li>
-                <li>• El sistema usa Structure from Motion para calcular profundidad real</li>
-                <li>• Las mediciones 3D aparecen automáticamente cuando hay suficientes datos</li>
+                <li>• Sistema optimizado para rendimiento sin congelación</li>
+                <li>• Las estimaciones 3D aparecen automáticamente</li>
+                <li>• Procesamiento rápido para mejor experiencia</li>
               </ul>
             </Card>
           </TabsContent>
@@ -520,47 +521,47 @@ const Index = () => {
                     <Camera className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
                     <h3 className="text-lg font-semibold mb-2">Sin datos</h3>
                     <p className="text-muted-foreground">
-                      Ve a la cámara para mediciones 3D reales en tiempo real
+                      Ve a la cámara para mediciones optimizadas en tiempo real
                     </p>
                   </Card>
                 )}
 
                 {realTimeObjects.length > 0 && (
                   <Card className={`p-4 ${
-                    realTimeObjects[0] && hasReal3D(realTimeObjects[0])
+                    realTimeObjects[0] && hasEstimated3D(realTimeObjects[0])
                       ? 'bg-gradient-to-r from-purple-900/10 to-blue-900/10 border-purple-500/20' 
                       : 'bg-gradient-to-r from-green-900/10 to-blue-900/10 border-green-500/20'
                   }`}>
                     <h4 className={`font-medium mb-3 ${
-                      realTimeObjects[0] && hasReal3D(realTimeObjects[0]) ? 'text-purple-400' : 'text-green-400'
+                      realTimeObjects[0] && hasEstimated3D(realTimeObjects[0]) ? 'text-purple-400' : 'text-green-400'
                     }`}>
-                      {realTimeObjects[0] && hasReal3D(realTimeObjects[0]) ? '🎯 Objeto 3D Real en Tiempo Real' : '🎯 Objeto en Tiempo Real'} 
+                      {realTimeObjects[0] && hasEstimated3D(realTimeObjects[0]) ? '🎯 Objeto 3D Estimado' : '🎯 Objeto en Tiempo Real'} 
                       {!calibration?.isCalibrated && '(píxeles)'}
                     </h4>
                     <div className="space-y-3">
                       {realTimeObjects.slice(0, 1).map((obj, index) => {
                         const measurements3D = get3DMeasurements(obj);
-                        const isReal3D = hasReal3D(obj);
+                        const hasEst3D = hasEstimated3D(obj);
                         
                         return (
                           <div key={obj.id} className="p-4 bg-black/20 rounded-lg">
                             <div className="grid grid-cols-2 gap-4">
                               <div className="space-y-2">
                                 <div>
-                                  <p className="text-gray-300 text-sm">↔️ Ancho {isReal3D ? '(2D)' : ''}</p>
+                                  <p className="text-gray-300 text-sm">↔️ Ancho {hasEst3D ? '(2D)' : ''}</p>
                                   <p className="font-mono text-green-400 font-bold text-xl">
                                     {formatDimension(obj.dimensions.width, obj.dimensions.unit)}
                                   </p>
                                 </div>
                                 <div>
-                                  <p className="text-gray-300 text-sm">📐 Área {isReal3D ? '(2D)' : ''}</p>
+                                  <p className="text-gray-300 text-sm">📐 Área {hasEst3D ? '(2D)' : ''}</p>
                                   <p className="font-mono text-blue-400 font-bold">
                                     {formatArea(obj.dimensions.area, obj.dimensions.unit)}
                                   </p>
                                 </div>
-                                {isReal3D && measurements3D && (
+                                {hasEst3D && measurements3D && (
                                   <div>
-                                    <p className="text-gray-300 text-sm">🔍 Profundidad Real</p>
+                                    <p className="text-gray-300 text-sm">🔍 Profundidad Est.</p>
                                     <p className="font-mono text-orange-400 font-bold text-xl">
                                       {formatDimension(measurements3D.depth3D, 'mm')}
                                     </p>
@@ -569,7 +570,7 @@ const Index = () => {
                               </div>
                               <div className="space-y-2">
                                 <div>
-                                  <p className="text-gray-300 text-sm">↕️ Alto {isReal3D ? '(2D)' : ''}</p>
+                                  <p className="text-gray-300 text-sm">↕️ Alto {hasEst3D ? '(2D)' : ''}</p>
                                   <p className="font-mono text-cyan-400 font-bold text-xl">
                                     {formatDimension(obj.dimensions.height, obj.dimensions.unit)}
                                   </p>
@@ -583,9 +584,9 @@ const Index = () => {
                                     )}
                                   </p>
                                 </div>
-                                {isReal3D && measurements3D && (
+                                {hasEst3D && measurements3D && (
                                   <div>
-                                    <p className="text-gray-300 text-sm">📦 Volumen Real</p>
+                                    <p className="text-gray-300 text-sm">📦 Volumen Est.</p>
                                     <p className="font-mono text-yellow-400 font-bold text-xl">
                                       {formatVolume(measurements3D.volume3D)}
                                     </p>
@@ -593,31 +594,6 @@ const Index = () => {
                                 )}
                               </div>
                             </div>
-                            
-                            {isReal3D && measurements3D && (
-                              <div className="mt-3 pt-3 border-t border-purple-400/30">
-                                <div className="grid grid-cols-3 gap-4 text-sm">
-                                  <div>
-                                    <p className="text-gray-400">📏 Ancho 3D Real</p>
-                                    <p className="font-mono text-purple-300 font-bold">
-                                      {formatDimension(measurements3D.width3D, 'mm')}
-                                    </p>
-                                  </div>
-                                  <div>
-                                    <p className="text-gray-400">📐 Alto 3D Real</p>
-                                    <p className="font-mono text-purple-300 font-bold">
-                                      {formatDimension(measurements3D.height3D, 'mm')}
-                                    </p>
-                                  </div>
-                                  <div>
-                                    <p className="text-gray-400">📍 Distancia</p>
-                                    <p className="font-mono text-green-400 font-bold">
-                                      {formatDimension(measurements3D.distance, 'mm')}
-                                    </p>
-                                  </div>
-                                </div>
-                              </div>
-                            )}
                           </div>
                         );
                       })}

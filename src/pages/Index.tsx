@@ -77,7 +77,7 @@ const Index = () => {
     const modeText = result.mode ? ` (${result.mode.toUpperCase()})` : '';
     toast({
       title: `Medición completada${modeText}`,
-      description: `Distancia: ${formatDimension(result.distance2D, result.unit)}`
+      description: `Distancia: ${formatDimension(result.distance2D)}`
     });
   };
 
@@ -90,10 +90,8 @@ const Index = () => {
     setObjectCount(objects.length);
     
     // Auto-generate measurement result from the best object
-    if (objects.length > 0 && calibration?.isCalibrated) {
-      const bestObject = objects.reduce((best, current) => 
-        current.confidence > best.confidence ? current : best
-      );
+    if (objects.length > 0) {
+      const bestObject = objects[0]; // Ya viene ordenado por calidad
       
       const result: MeasurementResult = {
         distance2D: Math.max(bestObject.dimensions.width, bestObject.dimensions.height),
@@ -163,22 +161,28 @@ const Index = () => {
   };
 
   // Función para formatear dimensiones con unidades inteligentes
-  const formatDimension = (value: number, unit: string): string => {
-    if (unit === 'mm') {
-      if (value < 100) return `${value.toFixed(1)}mm`;
-      if (value < 1000) return `${(value / 10).toFixed(1)}cm`;
+  const formatDimension = (value: number): string => {
+    // Siempre asumir que el valor viene en mm
+    if (value < 10) {
+      return `${value.toFixed(1)}mm`;
+    } else if (value < 100) {
+      return `${value.toFixed(0)}mm`;
+    } else if (value < 1000) {
+      return `${(value / 10).toFixed(1)}cm`;
+    } else {
       return `${(value / 1000).toFixed(2)}m`;
     }
-    return `${Math.round(value)}px`;
   };
 
-  const formatArea = (value: number, unit: string): string => {
-    if (unit === 'mm²') {
-      if (value < 10000) return `${Math.round(value)}mm²`;
-      if (value < 1000000) return `${(value / 100).toFixed(1)}cm²`;
-      return `${(value / 1000000).toFixed(2)}m²`;
+  const formatArea = (value: number): string => {
+    // Área en mm²
+    if (value < 1000) {
+      return `${Math.round(value)}mm²`;
+    } else if (value < 100000) {
+      return `${(value / 100).toFixed(1)}cm²`;
+    } else {
+      return `${(value / 1000000).toFixed(3)}m²`;
     }
-    return `${Math.round(value)}px²`;
   };
 
   return (
@@ -231,7 +235,7 @@ const Index = () => {
               className="border-measurement-active text-measurement-active animate-measurement-pulse"
             >
               <Target className="w-3 h-3 mr-1" />
-              {objectCount} objeto{objectCount !== 1 ? 's' : ''} detectado{objectCount !== 1 ? 's' : ''}
+              🎯 Objeto detectado
             </Badge>
           )}
 
@@ -247,29 +251,43 @@ const Index = () => {
       </div>
 
       {/* Real-time Measurement Info */}
-      {realTimeObjects.length > 0 && calibration?.isCalibrated && (
+      {realTimeObjects.length > 0 && (
         <Card className="p-4 bg-gradient-measurement border-measurement-active/30 shadow-active">
           <h3 className="font-semibold text-measurement-active mb-3 flex items-center gap-2">
             <Target className="w-4 h-4" />
-            Medición en Tiempo Real ({measurementMode.toUpperCase()})
+            🎯 Medición en Tiempo Real ({measurementMode.toUpperCase()})
           </h3>
-          <div className="grid grid-cols-2 gap-4">
-            {realTimeObjects.slice(0, 2).map((obj, index) => (
+          <div className="grid grid-cols-1 gap-4">
+            {realTimeObjects.slice(0, 1).map((obj, index) => (
               <div key={obj.id} className="space-y-2">
-                <p className="text-xs text-muted-foreground">Objeto {index + 1}</p>
-                <div className="space-y-1 text-sm">
-                  <p className="font-mono text-measurement-active">
-                    Ancho: {formatDimension(obj.dimensions.width, obj.dimensions.unit)}
-                  </p>
-                  <p className="font-mono text-accent">
-                    Alto: {formatDimension(obj.dimensions.height, obj.dimensions.unit)}
-                  </p>
-                  <p className="font-mono text-primary">
-                    Área: {formatArea(obj.dimensions.area, obj.dimensions.unit + '²')}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
+                <p className="text-sm font-bold text-measurement-active">🎯 Mejor Objeto Detectado</p>
+                <div className="grid grid-cols-3 gap-4 text-sm">
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">↔️ Ancho</p>
+                    <p className="font-mono text-measurement-active font-bold">
+                      {formatDimension(obj.dimensions.width)}
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">↕️ Alto</p>
+                    <p className="font-mono text-accent font-bold">
+                      {formatDimension(obj.dimensions.height)}
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">📐 Área</p>
+                    <p className="font-mono text-primary font-bold">
+                      {formatArea(obj.dimensions.area)}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex justify-between items-center pt-2 border-t border-white/20">
+                  <span className="text-xs text-muted-foreground">
                     Confianza: {(obj.confidence * 100).toFixed(0)}%
-                  </p>
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    Factor: {calibration?.pixelsPerMm.toFixed(1)} px/mm
+                  </span>
                 </div>
               </div>
             ))}
@@ -317,11 +335,11 @@ const Index = () => {
               <h4 className="font-medium mb-2 text-primary">🎯 Instrucciones de Uso</h4>
               <ul className="text-sm text-muted-foreground space-y-1">
                 <li>• Apunta la cámara hacia el objeto que quieres medir</li>
-                <li>• La aplicación detectará automáticamente los objetos</li>
-                <li>• Las dimensiones aparecerán en tiempo real sobre la imagen</li>
-                <li>• Para mayor precisión, calibra primero en la pestaña "Calibración"</li>
-                <li>• El botón ⏸️/▶️ pausa/reanuda la detección automática</li>
-                <li>• Cambia el modo de medición en la pestaña "Mediciones"</li>
+                <li>• La aplicación detectará automáticamente el mejor objeto</li>
+                <li>• Las dimensiones aparecerán en tiempo real en mm/cm/m</li>
+                <li>• Mantén el objeto centrado para mejor precisión</li>
+                <li>• El sistema está pre-calibrado para mediciones básicas</li>
+                <li>• Para mayor precisión, calibra en la pestaña "Calibración"</li>
               </ul>
             </Card>
           </TabsContent>
@@ -396,34 +414,44 @@ const Index = () => {
 
                 {realTimeObjects.length > 0 && (
                   <Card className="p-4">
-                    <h4 className="font-medium mb-3">Objetos Detectados en Tiempo Real</h4>
+                    <h4 className="font-medium mb-3">🎯 Objeto Detectado en Tiempo Real</h4>
                     <div className="space-y-3">
-                      {realTimeObjects.map((obj, index) => (
-                        <div key={obj.id} className="p-3 bg-secondary/30 rounded-lg">
-                          <div className="flex justify-between items-start mb-2">
-                            <h5 className="text-sm font-medium">Objeto {index + 1}</h5>
-                            <Badge variant="outline" className="text-xs">
-                              {(obj.confidence * 100).toFixed(0)}% conf.
+                      {realTimeObjects.slice(0, 1).map((obj, index) => (
+                        <div key={obj.id} className="p-4 bg-measurement-active/10 border border-measurement-active/30 rounded-lg">
+                          <div className="flex justify-between items-start mb-3">
+                            <h5 className="text-lg font-bold text-measurement-active">🎯 Mejor Objeto</h5>
+                            <Badge variant="outline" className="text-sm border-measurement-active text-measurement-active">
+                              {(obj.confidence * 100).toFixed(0)}% confianza
                             </Badge>
                           </div>
-                          <div className="grid grid-cols-3 gap-2 text-xs">
-                            <div>
-                              <p className="text-muted-foreground">Ancho</p>
-                              <p className="font-mono text-measurement-active">
-                                {formatDimension(obj.dimensions.width, obj.dimensions.unit)}
-                              </p>
+                          <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div className="space-y-2">
+                              <div>
+                                <p className="text-muted-foreground">↔️ Ancho</p>
+                                <p className="font-mono text-measurement-active font-bold text-lg">
+                                  {formatDimension(obj.dimensions.width)}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-muted-foreground">📐 Área</p>
+                                <p className="font-mono text-primary font-bold">
+                                  {formatArea(obj.dimensions.area)}
+                                </p>
+                              </div>
                             </div>
-                            <div>
-                              <p className="text-muted-foreground">Alto</p>
-                              <p className="font-mono text-accent">
-                                {formatDimension(obj.dimensions.height, obj.dimensions.unit)}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-muted-foreground">Área</p>
-                              <p className="font-mono text-primary">
-                                {formatArea(obj.dimensions.area, obj.dimensions.unit + '²')}
-                              </p>
+                            <div className="space-y-2">
+                              <div>
+                                <p className="text-muted-foreground">↕️ Alto</p>
+                                <p className="font-mono text-accent font-bold text-lg">
+                                  {formatDimension(obj.dimensions.height)}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-muted-foreground">📏 Diagonal</p>
+                                <p className="font-mono text-calibration font-bold">
+                                  {formatDimension(Math.sqrt(obj.dimensions.width ** 2 + obj.dimensions.height ** 2))}
+                                </p>
+                              </div>
                             </div>
                           </div>
                         </div>

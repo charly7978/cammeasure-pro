@@ -21,9 +21,9 @@ export const CalibrationProvider = ({ children }: { children: ReactNode }) => {
   const [calibration, setCalibration] = useState<CalibrationData | null>({
     focalLength: 4.0,
     sensorSize: 6.17,
-    pixelsPerMm: 157,
+    pixelsPerMm: 8, // Valor realista para mediciones en mm/cm
     referenceObjectSize: 25.4,
-    isCalibrated: false
+    isCalibrated: true // Activado por defecto para mostrar medidas en mm/cm
   });
 
   return (

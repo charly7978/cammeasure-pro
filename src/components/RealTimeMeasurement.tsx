@@ -22,6 +22,21 @@ export interface DetectedObject {
   isReal3D?: boolean;
 }
 
+// Interfaz extendida para rectángulos del worker
+interface ExtendedRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  area: number;
+  confidence?: number;
+  qualityScore: number;
+  circularity?: number;
+  solidity?: number;
+  extent?: number;
+  aspectRatio?: number;
+}
+
 interface RealTimeMeasurementProps {
   videoRef: React.RefObject<HTMLVideoElement>;
   onObjectsDetected: (objects: DetectedObject[]) => void;
@@ -39,13 +54,13 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef<number>();
   const lastProcessTime = useRef<number>(0);
-  const [detected2DObjects, setDetected2DObjects] = useState<any[]>([]);
+  const [detected2DObjects, setDetected2DObjects] = useState<ExtendedRect[]>([]);
   const [objects3D, setObjects3D] = useState<Real3DObject[]>([]);
   const frameCountRef = useRef<number>(0);
   
-  // OPTIMIZACIÓN INTELIGENTE: Intervalos adaptativos
-  const PROCESS_INTERVAL = 400; // 400ms para balance perfecto entre calidad y rendimiento
-  const FRAME_SKIP = 2; // Procesar cada 2 frames para mejor rendimiento
+  // OPTIMIZACIÓN HÍBRIDA: Intervalos adaptativos para mejor rendimiento
+  const PROCESS_INTERVAL = 300; // 300ms para balance óptimo
+  const FRAME_SKIP = 1; // Procesar cada frame para mejor calidad
 
   const processFrame = useCallback(() => {
     if (!isActive || !videoRef.current || !canvasRef.current) {
@@ -55,7 +70,7 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
 
     frameCountRef.current++;
     
-    // Skip frames para optimización
+    // Skip frames solo si es necesario para rendimiento
     if (frameCountRef.current % FRAME_SKIP !== 0) {
       rafRef.current = requestAnimationFrame(processFrame);
       return;
@@ -90,33 +105,34 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
 
     detect({
       imageData,
-      minArea: 2500, // Área mínima optimizada
+      minArea: 2000, // Área mínima optimizada para mejor detección
       onDetect: (rects) => {
-        console.log('🔍 Objetos detectados con algoritmos avanzados:', rects.length);
+        console.log('🔍 Objetos detectados con algoritmos híbridos:', rects.length);
 
-        // SIEMPRE usar calibración por defecto para medidas en mm/cm
-        const factor = calibration?.pixelsPerMm || 6.5; // Factor por defecto si no hay calibración
+        // SIEMPRE usar medidas reales en mm/cm (NUNCA píxeles)
+        const factor = calibration?.pixelsPerMm || 6.5; // Factor por defecto realista
         const isCalibrated = calibration?.isCalibrated || false;
         
-        console.log('📏 Factor de conversión:', factor, 'px/mm', isCalibrated ? '(calibrado)' : '(por defecto)');
+        console.log('📏 Factor de conversión:', factor, 'px/mm', isCalibrated ? '(calibrado)' : '(estimado)');
 
-        // Filtrar y procesar rectángulos con algoritmos avanzados
+        // Filtrar y procesar rectángulos con algoritmos híbridos
         const filteredRects = rects
           .filter(rect => {
             const aspectRatio = rect.width / rect.height;
             const imageArea = canvas.width * canvas.height;
             
-            return rect.area >= 2500 && 
-                   rect.area <= imageArea * 0.35 &&
-                   aspectRatio > 0.2 && aspectRatio < 6.0 &&
-                   rect.width > 35 && rect.height > 35;
+            return rect.area >= 2000 && 
+                   rect.area <= imageArea * 0.4 &&
+                   aspectRatio > 0.15 && aspectRatio < 8.0 &&
+                   rect.width > 25 && rect.height > 25;
           })
           .map(rect => ({
             ...rect,
-            qualityScore: calculateAdvancedQualityScore(rect, canvas.width, canvas.height)
-          }))
+            qualityScore: calculateHybridQualityScore(rect, canvas.width, canvas.height),
+            aspectRatio: rect.width / rect.height
+          } as ExtendedRect))
           .sort((a, b) => b.qualityScore - a.qualityScore)
-          .slice(0, 3); // Top 3 objetos para balance rendimiento/calidad
+          .slice(0, 3); // Top 3 objetos para balance calidad/rendimiento
 
         // Guardar objetos 2D para procesamiento 3D
         setDetected2DObjects(filteredRects);
@@ -128,12 +144,15 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
           const areaMm2 = rect.area / (factor * factor);
           
           console.log(`📊 Objeto ${i + 1} - Mediciones REALES:`, {
-            pixelWidth: rect.width,
-            pixelHeight: rect.height,
-            realWidthMm: widthMm.toFixed(2),
-            realHeightMm: heightMm.toFixed(2),
-            realAreaMm2: areaMm2.toFixed(2),
-            confidence: (rect.qualityScore * 100).toFixed(1) + '%'
+            pixelDimensions: `${rect.width}x${rect.height}px`,
+            realDimensions: `${widthMm.toFixed(1)}x${heightMm.toFixed(1)}mm`,
+            realArea: `${areaMm2.toFixed(1)}mm²`,
+            confidence: `${(rect.qualityScore * 100).toFixed(1)}%`,
+            metrics: {
+              circularity: rect.circularity?.toFixed(3) || 'N/A',
+              solidity: rect.solidity?.toFixed(3) || 'N/A',
+              aspectRatio: rect.aspectRatio?.toFixed(2) || (rect.width / rect.height).toFixed(2)
+            }
           });
           
           return {
@@ -160,14 +179,14 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
     rafRef.current = requestAnimationFrame(processFrame);
   }, [isActive, videoRef, detect, calibration, objects3D, onObjectsDetected]);
 
-  // Función AVANZADA para calcular calidad del objeto
-  const calculateAdvancedQualityScore = (rect: any, imageWidth: number, imageHeight: number): number => {
+  // Funci��n HÍBRIDA para calcular calidad del objeto
+  const calculateHybridQualityScore = (rect: any, imageWidth: number, imageHeight: number): number => {
     const imageArea = imageWidth * imageHeight;
     const sizeRatio = rect.area / imageArea;
-    const idealSizeRatio = 0.08; // 8% del área de la imagen es ideal
+    const idealSizeRatio = 0.06; // 6% del área de la imagen es ideal
     
-    // Puntuación por tamaño (distribución gaussiana)
-    const sizeScore = Math.exp(-Math.pow((sizeRatio - idealSizeRatio) / idealSizeRatio, 2));
+    // Puntuación por tamaño (distribución gaussiana optimizada)
+    const sizeScore = Math.exp(-Math.pow((sizeRatio - idealSizeRatio) / (idealSizeRatio * 0.8), 2));
     
     // Puntuación por posición central (más peso al centro)
     const centerX = rect.x + rect.width / 2;
@@ -180,30 +199,29 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
       Math.pow(centerY - imageCenterY, 2)
     );
     const maxDistance = Math.sqrt(Math.pow(imageWidth / 2, 2) + Math.pow(imageHeight / 2, 2));
-    const positionScore = Math.pow(1 - (distanceFromCenter / maxDistance), 2);
+    const positionScore = Math.pow(1 - (distanceFromCenter / maxDistance), 1.2);
     
-    // Puntuación por forma (relación de aspecto)
+    // Puntuación por forma (relación de aspecto optimizada)
     const aspectRatio = rect.width / rect.height;
-    const idealAspectRatio = 1.0; // Objetos cuadrados/rectangulares son ideales
-    const aspectScore = 1 / (1 + Math.abs(Math.log(aspectRatio / idealAspectRatio)));
+    const aspectScore = 1 / (1 + Math.abs(Math.log(Math.max(aspectRatio, 1/aspectRatio))));
     
-    // Puntuación por confianza del detector
+    // Puntuación por confianza del detector híbrido
     const detectorConfidence = rect.confidence || 0.8;
     
-    // Puntuación por definición de bordes (si está disponible)
-    const edgeScore = rect.circularity ? Math.min(rect.circularity * 2, 1.0) : 0.7;
-    
-    // Puntuación por solidez (si está disponible)
+    // Puntuaciones adicionales si están disponibles (OpenCV)
+    const circularityScore = rect.circularity ? Math.min(rect.circularity * 3, 1.0) : 0.7;
     const solidityScore = rect.solidity || 0.8;
+    const extentScore = rect.extent || 0.7;
     
     // Combinar todos los factores con pesos optimizados
     const totalScore = (
       sizeScore * 0.25 + 
-      positionScore * 0.25 + 
+      positionScore * 0.2 + 
       aspectScore * 0.15 + 
       detectorConfidence * 0.15 + 
-      edgeScore * 0.1 + 
-      solidityScore * 0.1
+      circularityScore * 0.1 + 
+      solidityScore * 0.1 +
+      extentScore * 0.05
     );
     
     return Math.min(totalScore, 1.0);
@@ -216,17 +234,21 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
       const matching3D = objects3D.find(obj3D => {
         const overlap = calculateOverlap(obj2D.bounds, obj3D.bounds);
         const sizeCompatibility = calculateSizeCompatibility(obj2D.bounds, obj3D.bounds);
-        return overlap > 0.6 && sizeCompatibility > 0.7; // Criterios más estrictos
+        const timeCompatibility = Math.abs(Date.now() - obj3D.timestamp) < 2000; // 2 segundos
+        
+        return overlap > 0.5 && sizeCompatibility > 0.6 && timeCompatibility;
       });
 
       if (matching3D) {
         console.log('🎯 Combinando datos 2D + 3D REAL para objeto:', obj2D.id);
-        console.log('📏 Mediciones 3D REALES:', {
-          width3D: matching3D.measurements3D.width3D.toFixed(2) + 'mm',
-          height3D: matching3D.measurements3D.height3D.toFixed(2) + 'mm',
-          depth3D: matching3D.measurements3D.depth3D.toFixed(2) + 'mm',
-          volume3D: matching3D.measurements3D.volume3D.toFixed(2) + 'mm³',
-          distance: matching3D.measurements3D.distance.toFixed(2) + 'mm'
+        console.log('📏 Mediciones 3D REALES integradas:', {
+          width3D: `${matching3D.measurements3D.width3D.toFixed(2)}mm`,
+          height3D: `${matching3D.measurements3D.height3D.toFixed(2)}mm`,
+          depth3D: `${matching3D.measurements3D.depth3D.toFixed(2)}mm`,
+          volume3D: `${matching3D.measurements3D.volume3D.toFixed(2)}mm³`,
+          distance: `${matching3D.measurements3D.distance.toFixed(2)}mm`,
+          confidence3D: `${(matching3D.measurements3D.confidence * 100).toFixed(1)}%`,
+          points3D: matching3D.measurements3D.points3D.length
         });
         
         return {
@@ -280,28 +302,40 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
     
     // Log detallado de mediciones 3D REALES
     newObjects3D.forEach((obj, index) => {
-      console.log(`📏 Objeto 3D ${index + 1} - Mediciones REALES:`, {
-        width: `${obj.measurements3D.width3D.toFixed(2)}mm`,
-        height: `${obj.measurements3D.height3D.toFixed(2)}mm`,
-        depth: `${obj.measurements3D.depth3D.toFixed(2)}mm`,
+      console.log(`📏 Objeto 3D ${index + 1} - Mediciones REALES COMPLETAS:`, {
+        dimensions: {
+          width: `${obj.measurements3D.width3D.toFixed(2)}mm`,
+          height: `${obj.measurements3D.height3D.toFixed(2)}mm`,
+          depth: `${obj.measurements3D.depth3D.toFixed(2)}mm`
+        },
         volume: `${obj.measurements3D.volume3D.toFixed(2)}mm³`,
         distance: `${obj.measurements3D.distance.toFixed(2)}mm`,
-        confidence: `${(obj.measurements3D.confidence * 100).toFixed(1)}%`,
-        points3D: obj.measurements3D.points3D.length,
-        method: 'Structure from Motion'
+        quality: {
+          confidence: `${(obj.measurements3D.confidence * 100).toFixed(1)}%`,
+          points3D: obj.measurements3D.points3D.length,
+          depthCoverage: `${(Array.from(obj.depthMap.depths).filter(d => d > 0).length / obj.depthMap.depths.length * 100).toFixed(1)}%`
+        },
+        method: 'Disparidad Estereoscópica + Triangulación',
+        timestamp: new Date(obj.timestamp).toLocaleTimeString()
       });
     });
   }, []);
 
   useEffect(() => {
     if (isActive) {
-      console.log('🚀 Iniciando detección AVANZADA en tiempo real (2D + 3D REAL)');
-      console.log('⚙️ Configuración optimizada:', {
-        interval: PROCESS_INTERVAL + 'ms',
+      console.log('🚀 Iniciando detección HÍBRIDA en tiempo real (2D + 3D REAL)');
+      console.log('⚙️ Configuración híbrida optimizada:', {
+        interval2D: PROCESS_INTERVAL + 'ms',
         frameSkip: FRAME_SKIP,
-        minArea: '2500px',
+        minArea: '2000px',
         maxObjects: 3,
-        algorithms: 'OpenCV + Nativo Avanzado'
+        algorithms: {
+          detection: 'OpenCV + Nativo Optimizado',
+          depth: 'Disparidad Estereoscópica',
+          triangulation: 'DLT + Geometría Epipolar'
+        },
+        units: 'mm/cm/m (NUNCA píxeles)',
+        quality: 'Máxima con optimización de rendimiento'
       });
       rafRef.current = requestAnimationFrame(processFrame);
     } else {
@@ -321,7 +355,7 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
     <>
       <canvas ref={canvasRef} style={{ display: 'none' }} />
       
-      {/* Componente de medición 3D REAL reactivado */}
+      {/* Componente de medición 3D REAL optimizado */}
       <Real3DMeasurement
         videoRef={videoRef}
         onObjects3DDetected={handle3DObjects}

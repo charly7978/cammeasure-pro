@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useOpenCV } from '@/hooks/useOpenCV';
+import { detectContours } from '@/lib/imageProcessing';
 
 export interface MeasurementPoint {
   x: number;
@@ -46,6 +47,32 @@ export const MeasurementEngine: React.FC<MeasurementEngineProps> = ({
   }, [isLoaded, cv, imageData]);
 
   const processImage = () => {
+    if (!cv || !imageData || !canvasRef.current) return;
+
+    // --- Nueva lógica unificada ---
+    try {
+      const { rects, edges } = detectContours(cv, imageData, 100);
+
+      const detectedPoints: MeasurementPoint[] = rects.map(r => ({
+        x: r.x + r.width / 2,
+        y: r.y + r.height / 2,
+        realX: calibrationData ? (r.x + r.width / 2) / calibrationData.pixelsPerMm : undefined,
+        realY: calibrationData ? (r.y + r.height / 2) / calibrationData.pixelsPerMm : undefined
+      }));
+
+      onDetectedEdges(detectedPoints);
+
+      if (calibrationData && detectedPoints.length >= 2) {
+        calculateMeasurements(detectedPoints);
+      }
+
+      drawResults(edges);
+      edges.delete();
+      return; // evitamos lógica antigua
+    } catch (error) {
+      console.error('Error processing image:', error);
+      return;
+    }
     if (!cv || !imageData || !canvasRef.current) return;
 
     try {

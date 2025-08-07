@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useOpenCV } from '@/hooks/useOpenCV';
+import { useMeasurementWorker } from '@/hooks/useMeasurementWorker';
 
 export interface DetectedObject {
   id: string;
@@ -38,13 +39,14 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
   onObjectsDetected,
   isActive
 }) => {
-  const { isLoaded, cv } = useOpenCV();
+  const { isLoaded } = useOpenCV();
+  const { detect } = useMeasurementWorker();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationFrameRef = useRef<number>();
   const [isProcessing, setIsProcessing] = useState(false);
 
   const processFrame = useCallback(() => {
-    if (!isLoaded || !cv || !videoRef.current || !canvasRef.current || !isActive) {
+    if (!isLoaded || !videoRef.current || !canvasRef.current || !isActive) {
       return;
     }
 
@@ -72,11 +74,33 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
       // Get image data for OpenCV processing
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
       
-      // Process with OpenCV
-      const detectedObjects = detectObjectsInFrame(imageData);
-      
-      // Notify parent component
-      onObjectsDetected(detectedObjects);
+      // Procesar en Worker
+      detect({
+        imageData,
+        minArea: 500,
+        onDetect: (rects) => {
+          const objects = rects.map((rect, i) => {
+            let realWidth = rect.width;
+            let realHeight = rect.height;
+            let realArea = rect.area;
+            let unit = 'px';
+            if (calibrationData?.isCalibrated && calibrationData.pixelsPerMm > 0) {
+              realWidth = rect.width / calibrationData.pixelsPerMm;
+              realHeight = rect.height / calibrationData.pixelsPerMm;
+              realArea = rect.area / (calibrationData.pixelsPerMm * calibrationData.pixelsPerMm);
+              unit = 'mm';
+            }
+            return {
+              id: `obj_${i}_${Date.now()}`,
+              bounds: rect,
+              dimensions: { width: realWidth, height: realHeight, area: realArea, unit },
+              confidence: Math.min(0.5 + Math.min(rect.area / 5000, 0.5), 1),
+              center: { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 }
+            };
+          });
+          onObjectsDetected(objects);
+        }
+      });
       
     } catch (error) {
       console.error('Error processing frame:', error);
@@ -85,9 +109,47 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
       // Continue processing next frame
       animationFrameRef.current = requestAnimationFrame(processFrame);
     }
-  }, [isLoaded, cv, videoRef, isActive, onObjectsDetected]);
+  }, [isLoaded, videoRef, isActive, onObjectsDetected]);
 
-  const detectObjectsInFrame = (imageData: ImageData): DetectedObject[] => {
+  // procesamiento delegado al Worker
+
+/*
+    if (!cv) return [];
+
+    try {
+      const { rects, edges } = detectContours(cv, imageData, 500);
+
+      const detectedObjects: DetectedObject[] = rects.map((rect, i) => {
+        // Calcular dimensiones reales
+        let realWidth = rect.width;
+        let realHeight = rect.height;
+        let realArea = rect.area;
+        let unit = 'px';
+        if (calibrationData?.isCalibrated && calibrationData.pixelsPerMm > 0) {
+          realWidth = rect.width / calibrationData.pixelsPerMm;
+          realHeight = rect.height / calibrationData.pixelsPerMm;
+          realArea = rect.area / (calibrationData.pixelsPerMm * calibrationData.pixelsPerMm);
+          unit = 'mm';
+        }
+
+        // Simple confidence basado en área
+        const confidence = Math.min(0.5 + Math.min(rect.area / 5000, 0.5), 1);
+
+        return {
+          id: `obj_${i}_${Date.now()}`,
+          bounds: rect,
+          dimensions: { width: realWidth, height: realHeight, area: realArea, unit },
+          confidence,
+          center: { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 }
+        };
+      });
+
+      edges.delete();
+      return detectedObjects;
+    } catch (error) {
+      console.error('Error in object detection:', error);
+      return [];
+    */
     if (!cv) return [];
 
     try {

@@ -24,12 +24,13 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
 }) => {
   const { isLoaded } = useOpenCV();
   const { detect } = useMeasurementWorker();
-  const { calibrationData } = useCalibration();
+  const { calibration } = useCalibration();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef<number>();
 
   const processFrame = useCallback(() => {
-    if (!isActive || !isLoaded || !videoRef.current || !canvasRef.current) {
+    if (!isActive || !videoRef.current || !canvasRef.current) {
+      rafRef.current = requestAnimationFrame(processFrame);
       return;
     }
 
@@ -56,8 +57,8 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
       imageData,
       minArea: 500,
       onDetect: (rects) => {
-        const factor = calibrationData.isCalibrated ? calibrationData.pixelsPerMm : 1;
-        const unit = calibrationData.isCalibrated ? 'mm' : 'px';
+        const factor = calibration?.isCalibrated ? calibration.pixelsPerMm : 1;
+        const unit = calibration?.isCalibrated ? 'mm' : 'px';
 
         const objects: DetectedObject[] = rects.map((rect, i) => ({
           id: `obj_${i}_${Date.now()}`,
@@ -77,16 +78,20 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
     });
 
     rafRef.current = requestAnimationFrame(processFrame);
-  }, [isActive, isLoaded, videoRef, detect, calibrationData, onObjectsDetected]);
+  }, [isActive, videoRef, detect, calibration, onObjectsDetected]);
 
   useEffect(() => {
     if (isActive) {
       rafRef.current = requestAnimationFrame(processFrame);
     } else {
-      rafRef.current && cancelAnimationFrame(rafRef.current);
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+      }
     }
     return () => {
-      rafRef.current && cancelAnimationFrame(rafRef.current);
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+      }
     };
   }, [isActive, processFrame]);
 

@@ -1,7 +1,10 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useState, ReactNode } from 'react';
 
 export interface CalibrationData {
+  focalLength: number;
+  sensorSize: number;
   pixelsPerMm: number;
+  referenceObjectSize: number;
   isCalibrated: boolean;
 }
 
@@ -15,7 +18,13 @@ export const CalibrationContext = createContext<CalibrationContextValue | undefi
 );
 
 export const CalibrationProvider = ({ children }: { children: ReactNode }) => {
-  const [calibration, setCalibration] = useState<CalibrationData | null>(null);
+  const [calibration, setCalibration] = useState<CalibrationData | null>({
+    focalLength: 4.0,
+    sensorSize: 6.17,
+    pixelsPerMm: 157,
+    referenceObjectSize: 25.4,
+    isCalibrated: false
+  });
 
   return (
     <CalibrationContext.Provider value={{ calibration, setCalibration }}>
@@ -24,8 +33,4 @@ export const CalibrationProvider = ({ children }: { children: ReactNode }) => {
   );
 };
 
-export const useCalibration = () => {
-  const ctx = useContext(CalibrationContext);
-  if (!ctx) throw new Error('useCalibration must be used within CalibrationProvider');
-  return ctx;
-};
+export type CalibrationContextType = CalibrationContextValue;

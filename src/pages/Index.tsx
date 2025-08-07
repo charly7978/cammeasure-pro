@@ -19,10 +19,11 @@ import { MeasurementEngine, type MeasurementResult, type MeasurementPoint } from
 import { type DetectedObject } from '@/components/RealTimeMeasurement';
 import { useDeviceSensors } from '@/hooks/useDeviceSensors';
 import { useOpenCV } from '@/hooks/useOpenCV';
+import { useCalibration } from '@/hooks/useCalibration';
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState<'camera' | 'calibration' | 'measurements'>('camera');
-  const [calibrationData, setCalibrationData] = useState<CalibrationData | null>(null);
+  const { calibration, setCalibration } = useCalibration();
   const [measurementMode, setMeasurementMode] = useState<MeasurementMode>('2d');
   const [measurementResult, setMeasurementResult] = useState<MeasurementResult | null>(null);
   const [capturedImage, setCapturedImage] = useState<ImageData | null>(null);
@@ -63,7 +64,7 @@ const Index = () => {
   };
 
   const handleCalibrationChange = (data: CalibrationData) => {
-    setCalibrationData(data);
+    setCalibration(data);
     
     if (data.isCalibrated) {
       toast({
@@ -91,7 +92,7 @@ const Index = () => {
     setObjectCount(objects.length);
     
     // Auto-generate measurement result from the best object
-    if (objects.length > 0 && calibrationData?.isCalibrated) {
+    if (objects.length > 0 && calibration?.isCalibrated) {
       const bestObject = objects.reduce((best, current) => 
         current.confidence > best.confidence ? current : best
       );
@@ -141,7 +142,7 @@ const Index = () => {
       const data = {
         realTimeObjects,
         result: measurementResult,
-        calibration: calibrationData,
+        calibration: calibration,
         timestamp: new Date().toISOString(),
         deviceInfo: sensorData?.deviceInfo
       };
@@ -197,11 +198,11 @@ const Index = () => {
           </Badge>
           
           <Badge 
-            variant={calibrationData?.isCalibrated ? "default" : "secondary"}
-            className={calibrationData?.isCalibrated ? "bg-calibration text-background" : ""}
+            variant={calibration?.isCalibrated ? "default" : "secondary"}
+            className={calibration?.isCalibrated ? "bg-calibration text-background" : ""}
           >
             <Target className="w-3 h-3 mr-1" />
-            {calibrationData?.isCalibrated ? 'Calibrado' : 'Sin Calibrar'}
+            {calibration?.isCalibrated ? 'Calibrado' : 'Sin Calibrar'}
           </Badge>
 
           {objectCount > 0 && (
@@ -217,7 +218,7 @@ const Index = () => {
       </div>
 
       {/* Real-time Measurement Info */}
-      {realTimeObjects.length > 0 && calibrationData?.isCalibrated && (
+      {realTimeObjects.length > 0 && calibration?.isCalibrated && (
         <Card className="p-4 bg-gradient-measurement border-measurement-active/30 shadow-active">
           <h3 className="font-semibold text-measurement-active mb-3 flex items-center gap-2">
             <Target className="w-4 h-4" />
@@ -281,7 +282,7 @@ const Index = () => {
             <CameraView
               onImageCapture={handleImageCapture}
               isActive={activeTab === 'camera'}
-              calibrationData={calibrationData}
+              calibrationData={calibration}
               onRealTimeObjects={handleRealTimeObjects}
             />
             
@@ -348,7 +349,7 @@ const Index = () => {
                     <h4 className="font-medium mb-3">Análisis Detallado</h4>
                     <MeasurementEngine
                       imageData={capturedImage}
-                      calibrationData={calibrationData}
+                      calibrationData={calibration}
                       onMeasurementResult={handleMeasurementResult}
                       onDetectedEdges={handleDetectedEdges}
                     />
@@ -418,7 +419,7 @@ const Index = () => {
                   measurementMode={measurementMode}
                   onModeChange={setMeasurementMode}
                   measurementResult={measurementResult}
-                  isCalibrated={calibrationData?.isCalibrated || false}
+                  isCalibrated={calibration?.isCalibrated || false}
                   onCapture={handleCapture}
                   onReset={handleReset}
                   onSave={handleSave}

@@ -15,10 +15,12 @@ export const useOpenCV = () => {
     // Check if OpenCV is already loaded
     if (window.cv && window.cv.Mat) {
       setIsLoaded(true);
+      setIsLoading(false);
       return;
     }
 
     setIsLoading(true);
+    setError(null);
     
     // Try multiple CDN sources for OpenCV
     const opencvSources = [
@@ -27,8 +29,8 @@ export const useOpenCV = () => {
       'https://unpkg.com/opencv.js@4.8.0/opencv.js'
     ];
 
-    let currentSourceIndex = 0;
     let loadTimeout: NodeJS.Timeout;
+    let currentScript: HTMLScriptElement | null = null;
 
     const loadOpenCV = (source: string): Promise<void> => {
       return new Promise((resolve, reject) => {
@@ -38,51 +40,67 @@ export const useOpenCV = () => {
           existingScript.remove();
         }
 
-        const script = document.createElement('script');
-        script.src = source;
-        script.async = true;
-        script.crossOrigin = 'anonymous';
+        currentScript = document.createElement('script');
+        currentScript.src = source;
+        currentScript.async = true;
+        currentScript.crossOrigin = 'anonymous';
         
         // Set timeout for loading
         loadTimeout = setTimeout(() => {
+          if (currentScript) {
+            currentScript.remove();
+          }
           reject(new Error(`OpenCV loading timeout for ${source}`));
-        }, 30000); // 30 seconds timeout
+        }, 45000); // 45 seconds timeout
 
-        script.onload = () => {
+        currentScript.onload = () => {
           clearTimeout(loadTimeout);
-          const checkCV = () => {
+          
+          // Wait for OpenCV to initialize
+          const checkCV = (attempts = 0) => {
             if (window.cv && window.cv.Mat) {
               setIsLoaded(true);
+              setIsLoading(false);
               setError(null);
               console.log('OpenCV loaded successfully from:', source);
               resolve();
+            } else if (attempts < 100) { // Max 10 seconds wait
+              setTimeout(() => checkCV(attempts + 1), 100);
             } else {
-              setTimeout(checkCV, 100);
+              reject(new Error('OpenCV failed to initialize after loading'));
             }
           };
+          
+          // Start checking immediately
           checkCV();
         };
 
-        script.onerror = () => {
+        currentScript.onerror = () => {
           clearTimeout(loadTimeout);
+          if (currentScript) {
+            currentScript.remove();
+          }
           reject(new Error(`Failed to load OpenCV from ${source}`));
         };
 
-        document.head.appendChild(script);
+        document.head.appendChild(currentScript);
       });
     };
 
     const tryLoadOpenCV = async () => {
       for (let i = 0; i < opencvSources.length; i++) {
         try {
+          console.log(`Attempting to load OpenCV from: ${opencvSources[i]}`);
           await loadOpenCV(opencvSources[i]);
           return; // Success, exit the loop
         } catch (err) {
           console.warn(`Failed to load OpenCV from ${opencvSources[i]}:`, err);
           if (i === opencvSources.length - 1) {
-            // Last source failed
-            setError('Failed to load OpenCV from all sources. Please check your internet connection.');
+            // Last source failed - continue without OpenCV
+            console.warn('OpenCV could not be loaded from any source. Continuing with fallback detection.');
+            setError('OpenCV no disponible. Usando detección básica.');
             setIsLoading(false);
+            setIsLoaded(false); // Set to false but don't block the app
           }
         }
       }
@@ -94,9 +112,8 @@ export const useOpenCV = () => {
       if (loadTimeout) {
         clearTimeout(loadTimeout);
       }
-      const script = document.querySelector('script[src*="opencv.js"]');
-      if (script) {
-        script.remove();
+      if (currentScript) {
+        currentScript.remove();
       }
     };
   }, []);

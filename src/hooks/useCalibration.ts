@@ -1,5 +1,5 @@
 import { useContext } from 'react';
-import { CalibrationContext, CalibrationContextType } from '@/lib/calibrationContext';
+import { CalibrationContext } from '@/lib/calibrationContext';
 
 /**
  * Custom hook to access the calibration context.
@@ -8,7 +8,7 @@ import { CalibrationContext, CalibrationContextType } from '@/lib/calibrationCon
  * @returns The calibration context value.
  * @throws An error if used outside of a CalibrationProvider.
  */
-export const useCalibration = (): CalibrationContextType => {
+export const useCalibration = () => {
   const context = useContext(CalibrationContext);
   if (context === undefined) {
     throw new Error('useCalibration must be used within a CalibrationProvider');

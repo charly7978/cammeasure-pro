@@ -16,26 +16,34 @@ export const useCamera = () => {
 
   const requestCameraPermissions = async () => {
     try {
-      // For web development, we'll use navigator.mediaDevices directly
-      if (typeof window !== 'undefined' && window.location.hostname === 'localhost' || window.location.hostname.includes('lovableproject.com')) {
-        // In web environment, request permissions through getUserMedia
-        await navigator.mediaDevices.getUserMedia({ video: true });
-        return true;
+      // Always try web API first since we're in a web environment
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        try {
+          // Test camera access
+          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+          // Stop the test stream immediately
+          stream.getTracks().forEach(track => track.stop());
+          return true;
+        } catch (webError) {
+          console.error('Web camera access failed:', webError);
+          
+          // If web fails, try Capacitor as fallback (for mobile builds)
+          try {
+            const permissions = await Camera.requestPermissions();
+            return permissions.camera === 'granted';
+          } catch (capacitorError) {
+            console.error('Capacitor camera permissions failed:', capacitorError);
+            return false;
+          }
+        }
+      } else {
+        // Fallback to Capacitor if mediaDevices is not available
+        const permissions = await Camera.requestPermissions();
+        return permissions.camera === 'granted';
       }
-      
-      // For native mobile, use Capacitor Camera API
-      const permissions = await Camera.requestPermissions();
-      return permissions.camera === 'granted';
     } catch (error) {
       console.error('Error requesting camera permissions:', error);
-      // If Capacitor is not available (web), try direct media access
-      try {
-        await navigator.mediaDevices.getUserMedia({ video: true });
-        return true;
-      } catch (webError) {
-        console.error('Web camera access failed:', webError);
-        return false;
-      }
+      return false;
     }
   };
 

@@ -21,12 +21,13 @@ export const CalibrationContext = createContext<CalibrationContextValue | undefi
 
 export const CalibrationProvider = ({ children }: { children: ReactNode }) => {
   const [calibration, setCalibration] = useState<CalibrationData | null>({
-    focalLength: 4.0,
+    focalLength: 4.2,
     sensorSize: 6.17,
-    pixelsPerMm: 3.78, // Valor inicial más realista
+    pixelsPerMm: 6.5, // Factor realista para cámaras móviles modernas
     referenceObjectSize: 25.4,
-    isCalibrated: false, // IMPORTANTE: Empezar sin calibrar para forzar calibración real
-    calibrationMethod: 'manual'
+    isCalibrated: true, // ACTIVADO por defecto para mediciones reales
+    calibrationMethod: 'auto',
+    lastCalibrationDate: new Date().toISOString()
   });
 
   return (

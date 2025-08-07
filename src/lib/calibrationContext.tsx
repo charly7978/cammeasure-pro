@@ -10,7 +10,7 @@ interface CalibrationContextValue {
   setCalibration: (data: CalibrationData) => void;
 }
 
-const CalibrationContext = createContext<CalibrationContextValue | undefined>(
+export const CalibrationContext = createContext<CalibrationContextValue | undefined>(
   undefined
 );
 

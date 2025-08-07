@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
-import { useOpenCV } from '@/hooks/useOpenCV';
-import { detectContours } from '@/lib/imageProcessing';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { useMeasurementWorker } from '@/hooks/useMeasurementWorker';
+import { useCalibration } from '@/hooks/useCalibration';
 
 export interface MeasurementPoint {
   x: number;
@@ -21,130 +21,90 @@ export interface MeasurementResult {
 
 interface MeasurementEngineProps {
   imageData: ImageData | null;
-  calibrationData: {
-    focalLength: number;
-    sensorSize: number;
-    pixelsPerMm: number;
-  } | null;
   onMeasurementResult: (result: MeasurementResult) => void;
   onDetectedEdges: (edges: MeasurementPoint[]) => void;
 }
 
 export const MeasurementEngine: React.FC<MeasurementEngineProps> = ({
   imageData,
-  calibrationData,
   onMeasurementResult,
   onDetectedEdges
 }) => {
-  const { isLoaded, cv } = useOpenCV();
+  const { detect } = useMeasurementWorker();
+  const { calibrationData } = useCalibration(); // Use global calibration
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [measurementPoints, setMeasurementPoints] = useState<MeasurementPoint[]>([]);
 
+  const drawResults = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Clear canvas and redraw the base image
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (imageData) {
+      canvas.width = imageData.width;
+      canvas.height = imageData.height;
+      ctx.putImageData(imageData, 0, 0);
+    }
+
+    // Draw manual measurement points and lines
+    measurementPoints.forEach((point, index) => {
+      ctx.beginPath();
+      ctx.arc(point.x, point.y, 5, 0, 2 * Math.PI);
+      ctx.fillStyle = index === 0 ? '#84cc16' : '#06b6d4';
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    });
+
+    if (measurementPoints.length > 1) {
+      ctx.beginPath();
+      ctx.moveTo(measurementPoints[0].x, measurementPoints[0].y);
+      for (let i = 1; i < measurementPoints.length; i++) {
+        ctx.lineTo(measurementPoints[i].x, measurementPoints[i].y);
+      }
+      ctx.strokeStyle = '#fb923c'; // Orange line
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+  }, [imageData, measurementPoints]);
+
   useEffect(() => {
-    if (!isLoaded || !cv || !imageData || !canvasRef.current) return;
+    if (imageData) {
+      // Automated detection via worker
+      detect({
+        imageData,
+        minArea: 100,
+        onDetect: (rects) => {
+          const detectedPoints: MeasurementPoint[] = rects.map(r => ({
+            x: r.x + r.width / 2,
+            y: r.y + r.height / 2,
+          }));
+          onDetectedEdges(detectedPoints);
 
-    processImage();
-  }, [isLoaded, cv, imageData]);
-
-  const processImage = () => {
-    if (!cv || !imageData || !canvasRef.current) return;
-
-    // --- Nueva lógica unificada ---
-    try {
-      const { rects, edges } = detectContours(cv, imageData, 100);
-
-      const detectedPoints: MeasurementPoint[] = rects.map(r => ({
-        x: r.x + r.width / 2,
-        y: r.y + r.height / 2,
-        realX: calibrationData ? (r.x + r.width / 2) / calibrationData.pixelsPerMm : undefined,
-        realY: calibrationData ? (r.y + r.height / 2) / calibrationData.pixelsPerMm : undefined
-      }));
-
-      onDetectedEdges(detectedPoints);
-
-      if (calibrationData && detectedPoints.length >= 2) {
-        calculateMeasurements(detectedPoints);
-      }
-
-      drawResults(edges);
-      edges.delete();
-      return; // evitamos lógica antigua
-    } catch (error) {
-      console.error('Error processing image:', error);
-      return;
+          if (detectedPoints.length >= 2) {
+            calculateMeasurements(detectedPoints);
+          }
+        },
+      });
     }
-    if (!cv || !imageData || !canvasRef.current) return;
+    // Always redraw when image or manual points change
+    drawResults();
+  }, [imageData, detect, onDetectedEdges, drawResults]);
 
-    try {
-      // Convert ImageData to OpenCV Mat
-      const src = cv.matFromImageData(imageData);
-      const gray = new cv.Mat();
-      const edges = new cv.Mat();
-      const contours = new cv.MatVector();
-      const hierarchy = new cv.Mat();
-
-      // Convert to grayscale
-      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-
-      // Apply Gaussian blur to reduce noise
-      cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 0, 0, cv.BORDER_DEFAULT);
-
-      // Canny edge detection
-      cv.Canny(gray, edges, 50, 150, 3, false);
-
-      // Find contours
-      cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-
-      // Process contours and extract measurement points
-      const detectedPoints: MeasurementPoint[] = [];
-      
-      for (let i = 0; i < contours.size(); i++) {
-        const contour = contours.get(i);
-        const area = cv.contourArea(contour);
-        
-        // Filter contours by area (avoid noise)
-        if (area > 100) {
-          // Get bounding rectangle
-          const rect = cv.boundingRect(contour);
-          
-          // Calculate center point
-          const centerX = rect.x + rect.width / 2;
-          const centerY = rect.y + rect.height / 2;
-          
-          detectedPoints.push({
-            x: centerX,
-            y: centerY,
-            realX: calibrationData ? centerX / calibrationData.pixelsPerMm : undefined,
-            realY: calibrationData ? centerY / calibrationData.pixelsPerMm : undefined
-          });
-        }
-        contour.delete();
-      }
-
-      onDetectedEdges(detectedPoints);
-
-      // Calculate measurements if we have calibration data
-      if (calibrationData && detectedPoints.length >= 2) {
-        calculateMeasurements(detectedPoints);
-      }
-
-      // Draw results on canvas
-      drawResults(edges);
-
-      // Cleanup
-      src.delete();
-      gray.delete();
-      edges.delete();
-      contours.delete();
-      hierarchy.delete();
-
-    } catch (error) {
-      console.error('Error processing image:', error);
+  useEffect(() => {
+    // Recalculate manual measurements if points or calibration changes
+    if (measurementPoints.length >= 2) {
+      calculateMeasurements(measurementPoints);
     }
-  };
+  }, [measurementPoints, calibrationData]);
 
   const calculateMeasurements = (points: MeasurementPoint[]) => {
-    if (!calibrationData || points.length < 2) return;
+    // Use global calibration data
+    if (!calibrationData?.isCalibrated || points.length < 2) return;
 
     // Calculate 2D distance between first two points
     const point1 = points[0];
@@ -184,35 +144,9 @@ export const MeasurementEngine: React.FC<MeasurementEngineProps> = ({
     return Math.abs(area) / 2;
   };
 
-  const drawResults = (processedMat: any) => {
-    if (!canvasRef.current || !cv) return;
-
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    // Convert OpenCV Mat to ImageData and draw on canvas
-    cv.imshow(canvas, processedMat);
-
-    // Draw measurement points
-    measurementPoints.forEach((point, index) => {
-      ctx.beginPath();
-      ctx.arc(point.x, point.y, 5, 0, 2 * Math.PI);
-      ctx.fillStyle = index === 0 ? '#84cc16' : '#06b6d4';
-      ctx.fill();
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 2;
-      ctx.stroke();
-    });
-  };
-
   const addMeasurementPoint = (x: number, y: number) => {
-    const newPoint: MeasurementPoint = {
-      x,
-      y,
-      realX: calibrationData ? x / calibrationData.pixelsPerMm : undefined,
-      realY: calibrationData ? y / calibrationData.pixelsPerMm : undefined
-    };
+    // Real values will be calculated in `calculateMeasurements` using global calibration
+    const newPoint: MeasurementPoint = { x, y };
 
     setMeasurementPoints(prev => [...prev, newPoint]);
   };

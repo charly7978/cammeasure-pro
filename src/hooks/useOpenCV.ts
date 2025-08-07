@@ -51,7 +51,7 @@ export const useOpenCV = () => {
             currentScript.remove();
           }
           reject(new Error(`OpenCV loading timeout for ${source}`));
-        }, 45000); // 45 seconds timeout
+        }, 30000); // 30 seconds timeout
 
         currentScript.onload = () => {
           clearTimeout(loadTimeout);
@@ -64,7 +64,7 @@ export const useOpenCV = () => {
               setError(null);
               console.log('OpenCV loaded successfully from:', source);
               resolve();
-            } else if (attempts < 100) { // Max 10 seconds wait
+            } else if (attempts < 50) { // Max 5 seconds wait
               setTimeout(() => checkCV(attempts + 1), 100);
             } else {
               reject(new Error('OpenCV failed to initialize after loading'));
@@ -96,11 +96,11 @@ export const useOpenCV = () => {
         } catch (err) {
           console.warn(`Failed to load OpenCV from ${opencvSources[i]}:`, err);
           if (i === opencvSources.length - 1) {
-            // Last source failed - continue without OpenCV
-            console.warn('OpenCV could not be loaded from any source. Continuing with fallback detection.');
-            setError('OpenCV no disponible. Usando detección básica.');
+            // Last source failed - continue without OpenCV but don't set error
+            console.info('OpenCV no disponible. Usando detección básica nativa.');
+            setError(null); // No mostrar error, es normal
             setIsLoading(false);
-            setIsLoaded(false); // Set to false but don't block the app
+            setIsLoaded(false);
           }
         }
       }

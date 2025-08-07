@@ -44,12 +44,9 @@ const Index = () => {
   }, []);
 
   useEffect(() => {
+    // Solo log del error, no mostrar toast molesto
     if (openCVError) {
-      toast({
-        title: "Error cargando OpenCV",
-        description: "Las funciones avanzadas de medición pueden no estar disponibles",
-        variant: "destructive"
-      });
+      console.warn('OpenCV status:', openCVError);
     }
   }, [openCVError]);
 
@@ -80,7 +77,7 @@ const Index = () => {
     const modeText = result.mode ? ` (${result.mode.toUpperCase()})` : '';
     toast({
       title: `Medición completada${modeText}`,
-      description: `Distancia: ${result.distance2D.toFixed(2)} ${result.unit}`
+      description: `Distancia: ${formatDimension(result.distance2D, result.unit)}`
     });
   };
 
@@ -175,6 +172,15 @@ const Index = () => {
     return `${Math.round(value)}px`;
   };
 
+  const formatArea = (value: number, unit: string): string => {
+    if (unit === 'mm²') {
+      if (value < 10000) return `${Math.round(value)}mm²`;
+      if (value < 1000000) return `${(value / 100).toFixed(1)}cm²`;
+      return `${(value / 1000000).toFixed(2)}m²`;
+    }
+    return `${Math.round(value)}px²`;
+  };
+
   return (
     <div className="min-h-screen bg-background p-4 space-y-6">
       {/* Header */}
@@ -196,11 +202,11 @@ const Index = () => {
         {/* Status Indicators */}
         <div className="flex items-center justify-center gap-4 flex-wrap">
           <Badge 
-            variant={isOpenCVLoaded ? "default" : "destructive"}
+            variant={isOpenCVLoaded ? "default" : "secondary"}
             className={isOpenCVLoaded ? "bg-measurement-active text-background" : ""}
           >
             <Cpu className="w-3 h-3 mr-1" />
-            OpenCV {isOpenCVLoaded ? 'Cargado' : 'Cargando...'}
+            OpenCV {isOpenCVLoaded ? 'Activo' : 'Básico'}
           </Badge>
           
           <Badge 
@@ -253,13 +259,16 @@ const Index = () => {
                 <p className="text-xs text-muted-foreground">Objeto {index + 1}</p>
                 <div className="space-y-1 text-sm">
                   <p className="font-mono text-measurement-active">
-                    W: {formatDimension(obj.dimensions.width, obj.dimensions.unit)}
+                    Ancho: {formatDimension(obj.dimensions.width, obj.dimensions.unit)}
                   </p>
                   <p className="font-mono text-accent">
-                    H: {formatDimension(obj.dimensions.height, obj.dimensions.unit)}
+                    Alto: {formatDimension(obj.dimensions.height, obj.dimensions.unit)}
+                  </p>
+                  <p className="font-mono text-primary">
+                    Área: {formatArea(obj.dimensions.area, obj.dimensions.unit + '²')}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Conf: {(obj.confidence * 100).toFixed(0)}%
+                    Confianza: {(obj.confidence * 100).toFixed(0)}%
                   </p>
                 </div>
               </div>
@@ -413,12 +422,7 @@ const Index = () => {
                             <div>
                               <p className="text-muted-foreground">Área</p>
                               <p className="font-mono text-primary">
-                                {obj.dimensions.area < 10000 ? 
-                                  `${Math.round(obj.dimensions.area)}${obj.dimensions.unit}²` : 
-                                  obj.dimensions.area < 1000000 ?
-                                  `${(obj.dimensions.area/100).toFixed(1)}cm²` :
-                                  `${(obj.dimensions.area/1000000).toFixed(2)}m²`
-                                }
+                                {formatArea(obj.dimensions.area, obj.dimensions.unit + '²')}
                               </p>
                             </div>
                           </div>

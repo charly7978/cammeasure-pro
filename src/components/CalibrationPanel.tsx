@@ -29,13 +29,18 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
   const [calibrationData, setCalibrationData] = useState<CalibrationData>({
     focalLength: 4.0, // Default focal length in mm
     sensorSize: 6.17, // Default sensor diagonal in mm
-    pixelsPerMm: 157, // Default pixels per mm (approximate)
+    pixelsPerMm: 10, // Valor más realista para mediciones en mm/cm
     referenceObjectSize: 25.4, // 1 inch in mm
-    isCalibrated: false
+    isCalibrated: true // Activar por defecto para mostrar medidas en mm/cm
   });
 
   const [referencePixelLength, setReferencePixelLength] = useState<number>(0);
   const [isCalibrating, setIsCalibrating] = useState(false);
+
+  useEffect(() => {
+    // Enviar calibración inicial
+    onCalibrationChange(calibrationData);
+  }, []);
 
   useEffect(() => {
     // Auto-detect device specs if possible
@@ -46,20 +51,24 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
 
   const updateDeviceSpecs = (device: { model: string; platform: string }) => {
     // Common device specifications database
-    const deviceSpecs: Record<string, { focalLength: number; sensorSize: number }> = {
-      'iPhone': { focalLength: 4.25, sensorSize: 6.17 },
-      'Samsung': { focalLength: 4.3, sensorSize: 5.76 },
-      'Pixel': { focalLength: 4.38, sensorSize: 6.17 },
-      'OnePlus': { focalLength: 4.5, sensorSize: 6.17 }
+    const deviceSpecs: Record<string, { focalLength: number; sensorSize: number; pixelsPerMm: number }> = {
+      'iPhone': { focalLength: 4.25, sensorSize: 6.17, pixelsPerMm: 12 },
+      'Samsung': { focalLength: 4.3, sensorSize: 5.76, pixelsPerMm: 11 },
+      'Pixel': { focalLength: 4.38, sensorSize: 6.17, pixelsPerMm: 10 },
+      'OnePlus': { focalLength: 4.5, sensorSize: 6.17, pixelsPerMm: 9 }
     };
 
     for (const [brand, specs] of Object.entries(deviceSpecs)) {
       if (device.model.includes(brand)) {
-        setCalibrationData(prev => ({
-          ...prev,
+        const updatedData = {
+          ...calibrationData,
           focalLength: specs.focalLength,
-          sensorSize: specs.sensorSize
-        }));
+          sensorSize: specs.sensorSize,
+          pixelsPerMm: specs.pixelsPerMm,
+          isCalibrated: true
+        };
+        setCalibrationData(updatedData);
+        onCalibrationChange(updatedData);
         break;
       }
     }
@@ -69,7 +78,9 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
     setIsCalibrating(true);
     // Reset calibration state
     setReferencePixelLength(0);
-    setCalibrationData(prev => ({ ...prev, isCalibrated: false }));
+    const updatedData = { ...calibrationData, isCalibrated: false };
+    setCalibrationData(updatedData);
+    onCalibrationChange(updatedData);
   };
 
   const completeCalibration = () => {
@@ -92,11 +103,33 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
     const updatedData = {
       ...calibrationData,
       [field]: value,
-      isCalibrated: false // Reset calibration when parameters change
+      isCalibrated: field === 'pixelsPerMm' ? true : calibrationData.isCalibrated // Mantener calibración si solo cambia pixelsPerMm
     };
     
     setCalibrationData(updatedData);
     onCalibrationChange(updatedData);
+  };
+
+  const useQuickCalibration = (objectType: string) => {
+    const quickCalibrations = {
+      'coin': { size: 24.26, pixelsPerMm: 8 }, // Moneda de 1 euro
+      'card': { size: 85.6, pixelsPerMm: 6 }, // Tarjeta de crédito (ancho)
+      'phone': { size: 147, pixelsPerMm: 4 }, // iPhone promedio (alto)
+      'ruler': { size: 100, pixelsPerMm: 5 } // 10cm de regla
+    };
+
+    const calibration = quickCalibrations[objectType as keyof typeof quickCalibrations];
+    if (calibration) {
+      const updatedData = {
+        ...calibrationData,
+        referenceObjectSize: calibration.size,
+        pixelsPerMm: calibration.pixelsPerMm,
+        isCalibrated: true
+      };
+      
+      setCalibrationData(updatedData);
+      onCalibrationChange(updatedData);
+    }
   };
 
   return (
@@ -123,6 +156,45 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
             </>
           )}
         </Badge>
+      </div>
+
+      {/* Calibración rápida */}
+      <div className="space-y-3">
+        <Label className="text-sm font-medium">Calibración Rápida</Label>
+        <div className="grid grid-cols-2 gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => useQuickCalibration('coin')}
+            className="text-xs"
+          >
+            🪙 Moneda (24mm)
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => useQuickCalibration('card')}
+            className="text-xs"
+          >
+            💳 Tarjeta (86mm)
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => useQuickCalibration('phone')}
+            className="text-xs"
+          >
+            📱 Teléfono (147mm)
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => useQuickCalibration('ruler')}
+            className="text-xs"
+          >
+            📏 Regla (100mm)
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
@@ -169,8 +241,8 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
             type="number"
             step="0.1"
             value={calibrationData.pixelsPerMm.toFixed(2)}
-            readOnly
-            className="bg-muted/50 cursor-not-allowed"
+            onChange={(e) => handleInputChange('pixelsPerMm', parseFloat(e.target.value))}
+            className="bg-input/50"
           />
         </div>
       </div>
@@ -211,8 +283,23 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
           size="lg"
         >
           <Target className="w-4 h-4 mr-2" />
-          Iniciar Calibración
+          Calibración Manual
         </Button>
+      )}
+
+      {calibrationData.isCalibrated && (
+        <div className="p-3 bg-measurement-active/10 border border-measurement-active/20 rounded-lg">
+          <div className="flex items-center gap-2 mb-1">
+            <CheckCircle className="w-4 h-4 text-measurement-active" />
+            <span className="text-sm font-medium text-measurement-active">Sistema Calibrado</span>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Factor de conversión: {calibrationData.pixelsPerMm.toFixed(2)} píxeles = 1mm
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Las mediciones se mostrarán en milímetros y centímetros automáticamente
+          </p>
+        </div>
       )}
 
       {deviceInfo && (

@@ -16,11 +16,26 @@ export const useCamera = () => {
 
   const requestCameraPermissions = async () => {
     try {
+      // For web development, we'll use navigator.mediaDevices directly
+      if (typeof window !== 'undefined' && window.location.hostname === 'localhost' || window.location.hostname.includes('lovableproject.com')) {
+        // In web environment, request permissions through getUserMedia
+        await navigator.mediaDevices.getUserMedia({ video: true });
+        return true;
+      }
+      
+      // For native mobile, use Capacitor Camera API
       const permissions = await Camera.requestPermissions();
       return permissions.camera === 'granted';
     } catch (error) {
       console.error('Error requesting camera permissions:', error);
-      return false;
+      // If Capacitor is not available (web), try direct media access
+      try {
+        await navigator.mediaDevices.getUserMedia({ video: true });
+        return true;
+      } catch (webError) {
+        console.error('Web camera access failed:', webError);
+        return false;
+      }
     }
   };
 

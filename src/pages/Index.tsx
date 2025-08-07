@@ -77,8 +77,9 @@ const Index = () => {
   const handleMeasurementResult = (result: MeasurementResult) => {
     setMeasurementResult(result);
     
+    const modeText = result.mode ? ` (${result.mode.toUpperCase()})` : '';
     toast({
-      title: "Medición completada",
+      title: `Medición completada${modeText}`,
       description: `Distancia: ${result.distance2D.toFixed(2)} ${result.unit}`
     });
   };
@@ -101,7 +102,8 @@ const Index = () => {
         distance2D: Math.max(bestObject.dimensions.width, bestObject.dimensions.height),
         area: bestObject.dimensions.area,
         unit: bestObject.dimensions.unit,
-        confidence: bestObject.confidence
+        confidence: bestObject.confidence,
+        mode: measurementMode
       };
       
       setMeasurementResult(result);
@@ -126,6 +128,7 @@ const Index = () => {
       const dataToSave = {
         realTimeObjects,
         measurementResult,
+        measurementMode,
         timestamp: new Date().toISOString()
       };
       localStorage.setItem('cammeasure_data', JSON.stringify(dataToSave));
@@ -143,6 +146,7 @@ const Index = () => {
         realTimeObjects,
         result: measurementResult,
         calibration: calibration,
+        measurementMode,
         timestamp: new Date().toISOString(),
         deviceInfo: sensorData?.deviceInfo
       };
@@ -151,7 +155,7 @@ const Index = () => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `measurement-${Date.now()}.json`;
+      a.download = `measurement-${measurementMode}-${Date.now()}.json`;
       a.click();
       
       toast({
@@ -159,6 +163,16 @@ const Index = () => {
         description: "Archivo de medición descargado"
       });
     }
+  };
+
+  // Función para formatear dimensiones con unidades inteligentes
+  const formatDimension = (value: number, unit: string): string => {
+    if (unit === 'mm') {
+      if (value < 100) return `${value.toFixed(1)}mm`;
+      if (value < 1000) return `${(value / 10).toFixed(1)}cm`;
+      return `${(value / 1000).toFixed(2)}m`;
+    }
+    return `${Math.round(value)}px`;
   };
 
   return (
@@ -214,6 +228,15 @@ const Index = () => {
               {objectCount} objeto{objectCount !== 1 ? 's' : ''} detectado{objectCount !== 1 ? 's' : ''}
             </Badge>
           )}
+
+          {/* Measurement Mode Indicator */}
+          <Badge 
+            variant="outline"
+            className="border-accent text-accent"
+          >
+            <Ruler className="w-3 h-3 mr-1" />
+            Modo: {measurementMode.toUpperCase()}
+          </Badge>
         </div>
       </div>
 
@@ -222,7 +245,7 @@ const Index = () => {
         <Card className="p-4 bg-gradient-measurement border-measurement-active/30 shadow-active">
           <h3 className="font-semibold text-measurement-active mb-3 flex items-center gap-2">
             <Target className="w-4 h-4" />
-            Medición en Tiempo Real
+            Medición en Tiempo Real ({measurementMode.toUpperCase()})
           </h3>
           <div className="grid grid-cols-2 gap-4">
             {realTimeObjects.slice(0, 2).map((obj, index) => (
@@ -230,16 +253,10 @@ const Index = () => {
                 <p className="text-xs text-muted-foreground">Objeto {index + 1}</p>
                 <div className="space-y-1 text-sm">
                   <p className="font-mono text-measurement-active">
-                    W: {obj.dimensions.width < 1000 ? 
-                      `${obj.dimensions.width.toFixed(1)}${obj.dimensions.unit}` : 
-                      `${(obj.dimensions.width/1000).toFixed(2)}m`
-                    }
+                    W: {formatDimension(obj.dimensions.width, obj.dimensions.unit)}
                   </p>
                   <p className="font-mono text-accent">
-                    H: {obj.dimensions.height < 1000 ? 
-                      `${obj.dimensions.height.toFixed(1)}${obj.dimensions.unit}` : 
-                      `${(obj.dimensions.height/1000).toFixed(2)}m`
-                    }
+                    H: {formatDimension(obj.dimensions.height, obj.dimensions.unit)}
                   </p>
                   <p className="text-xs text-muted-foreground">
                     Conf: {(obj.confidence * 100).toFixed(0)}%
@@ -295,6 +312,7 @@ const Index = () => {
                 <li>• Las dimensiones aparecerán en tiempo real sobre la imagen</li>
                 <li>• Para mayor precisión, calibra primero en la pestaña "Calibración"</li>
                 <li>• El botón ⏸️/▶️ pausa/reanuda la detección automática</li>
+                <li>• Cambia el modo de medición en la pestaña "Mediciones"</li>
               </ul>
             </Card>
           </TabsContent>
@@ -346,12 +364,13 @@ const Index = () => {
               <div className="space-y-4">
                 {capturedImage && (
                   <Card className="p-4">
-                    <h4 className="font-medium mb-3">Análisis Detallado</h4>
+                    <h4 className="font-medium mb-3">Análisis Detallado - Modo {measurementMode.toUpperCase()}</h4>
                     <MeasurementEngine
                       imageData={capturedImage}
                       calibrationData={calibration}
                       onMeasurementResult={handleMeasurementResult}
                       onDetectedEdges={handleDetectedEdges}
+                      measurementMode={measurementMode}
                     />
                   </Card>
                 )}
@@ -382,26 +401,22 @@ const Index = () => {
                             <div>
                               <p className="text-muted-foreground">Ancho</p>
                               <p className="font-mono text-measurement-active">
-                                {obj.dimensions.width < 1000 ? 
-                                  `${obj.dimensions.width.toFixed(1)}${obj.dimensions.unit}` : 
-                                  `${(obj.dimensions.width/1000).toFixed(2)}m`
-                                }
+                                {formatDimension(obj.dimensions.width, obj.dimensions.unit)}
                               </p>
                             </div>
                             <div>
                               <p className="text-muted-foreground">Alto</p>
                               <p className="font-mono text-accent">
-                                {obj.dimensions.height < 1000 ? 
-                                  `${obj.dimensions.height.toFixed(1)}${obj.dimensions.unit}` : 
-                                  `${(obj.dimensions.height/1000).toFixed(2)}m`
-                                }
+                                {formatDimension(obj.dimensions.height, obj.dimensions.unit)}
                               </p>
                             </div>
                             <div>
                               <p className="text-muted-foreground">Área</p>
                               <p className="font-mono text-primary">
-                                {obj.dimensions.area < 1000000 ? 
-                                  `${obj.dimensions.area.toFixed(0)}${obj.dimensions.unit}²` : 
+                                {obj.dimensions.area < 10000 ? 
+                                  `${Math.round(obj.dimensions.area)}${obj.dimensions.unit}²` : 
+                                  obj.dimensions.area < 1000000 ?
+                                  `${(obj.dimensions.area/100).toFixed(1)}cm²` :
                                   `${(obj.dimensions.area/1000000).toFixed(2)}m²`
                                 }
                               </p>

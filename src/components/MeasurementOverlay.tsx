@@ -24,11 +24,38 @@ export const MeasurementOverlay: React.FC<MeasurementOverlayProps> = ({
 
   const formatDimension = (value: number, unit: string): string => {
     if (unit === 'mm') {
-      if (value < 10) return `${value.toFixed(1)}mm`;
-      if (value < 1000) return `${Math.round(value)}mm`;
-      return `${(value / 1000).toFixed(2)}m`;
+      // Para objetos pequeños (menos de 100mm = 10cm)
+      if (value < 100) {
+        return `${value.toFixed(1)}mm`;
+      }
+      // Para objetos medianos (100mm a 1000mm = 10cm a 100cm)
+      else if (value < 1000) {
+        return `${(value / 10).toFixed(1)}cm`;
+      }
+      // Para objetos grandes (más de 1000mm = 1m)
+      else {
+        return `${(value / 1000).toFixed(2)}m`;
+      }
     }
     return `${Math.round(value)}px`;
+  };
+
+  const formatArea = (value: number, unit: string): string => {
+    if (unit === 'mm²') {
+      // Área pequeña (menos de 10,000 mm² = 100 cm²)
+      if (value < 10000) {
+        return `${Math.round(value)}mm²`;
+      }
+      // Área mediana (10,000 mm² a 1,000,000 mm² = 100 cm² a 1 m²)
+      else if (value < 1000000) {
+        return `${(value / 100).toFixed(1)}cm²`;
+      }
+      // Área grande (más de 1,000,000 mm² = 1 m²)
+      else {
+        return `${(value / 1000000).toFixed(2)}m²`;
+      }
+    }
+    return `${Math.round(value)}px²`;
   };
 
   const getConfidenceColor = (confidence: number): string => {
@@ -40,7 +67,7 @@ export const MeasurementOverlay: React.FC<MeasurementOverlayProps> = ({
   // Función para evitar superposición de etiquetas
   const calculateLabelPosition = (obj: any, index: number) => {
     const baseTop = (obj.bounds.y * scaleY) - 60;
-    const offset = index * 40; // Separar etiquetas verticalmente
+    const offset = index * 50; // Más separación para acomodar más información
     return Math.max(10, baseTop - offset); // No ir más arriba del borde superior
   };
 
@@ -80,12 +107,12 @@ export const MeasurementOverlay: React.FC<MeasurementOverlayProps> = ({
           <div
             className="absolute z-10 font-mono text-sm px-3 py-2 rounded-lg shadow-lg border"
             style={{
-              left: `${Math.min(obj.bounds.x * scaleX, containerWidth - 200)}px`,
+              left: `${Math.min(obj.bounds.x * scaleX, containerWidth - 220)}px`,
               top: `${calculateLabelPosition(obj, index)}px`,
               backgroundColor: 'rgba(0, 0, 0, 0.9)',
               borderColor: obj.confidence > 0.8 ? 'hsl(var(--measurement-active))' : 'hsl(var(--calibration))',
               color: obj.confidence > 0.8 ? 'hsl(var(--measurement-active))' : 'hsl(var(--calibration))',
-              minWidth: '180px'
+              minWidth: '200px'
             }}
           >
             <div className="space-y-1">
@@ -98,13 +125,13 @@ export const MeasurementOverlay: React.FC<MeasurementOverlayProps> = ({
               
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div>
-                  <span className="opacity-70">W:</span>
+                  <span className="opacity-70">Ancho:</span>
                   <span className="ml-1 font-bold">
                     {formatDimension(obj.dimensions.width, obj.dimensions.unit)}
                   </span>
                 </div>
                 <div>
-                  <span className="opacity-70">H:</span>
+                  <span className="opacity-70">Alto:</span>
                   <span className="ml-1 font-bold">
                     {formatDimension(obj.dimensions.height, obj.dimensions.unit)}
                   </span>
@@ -115,8 +142,22 @@ export const MeasurementOverlay: React.FC<MeasurementOverlayProps> = ({
                 <div className="text-xs opacity-80 border-t border-white/20 pt-1">
                   <span className="opacity-70">Área:</span>
                   <span className="ml-1">
-                    {formatDimension(obj.dimensions.area, obj.dimensions.unit + '²')}
+                    {formatArea(obj.dimensions.area, obj.dimensions.unit + '²')}
                   </span>
+                </div>
+              )}
+
+              {/* Información adicional para objetos calibrados */}
+              {obj.dimensions.unit === 'mm' && (
+                <div className="text-xs opacity-70 border-t border-white/10 pt-1">
+                  <div className="flex justify-between">
+                    <span>Diagonal:</span>
+                    <span>{formatDimension(Math.sqrt(obj.dimensions.width ** 2 + obj.dimensions.height ** 2), 'mm')}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Perímetro:</span>
+                    <span>{formatDimension(2 * (obj.dimensions.width + obj.dimensions.height), 'mm')}</span>
+                  </div>
                 </div>
               )}
             </div>

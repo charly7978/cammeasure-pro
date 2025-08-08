@@ -1,7 +1,9 @@
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useOpenCV } from '@/hooks/useOpenCV';
 import { useMeasurementWorker } from '@/hooks/useMeasurementWorker';
 import { useCalibration } from '@/hooks/useCalibration';
+import { PrecisionAnalysisSystem } from '@/lib/precisionAnalysis';
+import { Advanced3DMeasurementSystem } from '@/lib/advanced3DMeasurement';
 
 export interface DetectedObject {
   id: string;
@@ -9,6 +11,15 @@ export interface DetectedObject {
   dimensions: { width: number; height: number; area: number; unit: string };
   confidence: number;
   center: { x: number; y: number };
+  precision?: {
+    accuracy: number;
+    stability: number;
+    errorEstimate: number;
+    qualityScore: number;
+  };
+  depth?: number;
+  volume?: number;
+  surfaceArea?: number;
 }
 
 interface RealTimeMeasurementProps {
@@ -23,15 +34,25 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
   isActive,
 }) => {
   const { isLoaded } = useOpenCV();
-  const { detect } = useMeasurementWorker();
+  const { detectAdvanced, isReady } = useMeasurementWorker();
   const { calibration } = useCalibration();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef<number>();
   const lastProcessTime = useRef<number>(0);
-  const PROCESS_INTERVAL = 300; // Procesar cada 300ms para reducir carga
+  const PROCESS_INTERVAL = 200; // Procesar cada 200ms para mejor respuesta profesional
+  
+  // Sistemas avanzados de análisis
+  const [precisionSystem] = useState(() => new PrecisionAnalysisSystem());
+  const [measurement3DSystem] = useState(() => new Advanced3DMeasurementSystem({
+    focalLength: calibration?.focalLength || 4.0,
+    sensorWidth: calibration?.sensorSize || 6.17,
+    sensorHeight: calibration?.sensorSize || 6.17,
+    imageWidth: 1920,
+    imageHeight: 1080
+  }));
 
   const processFrame = useCallback(() => {
-    if (!isActive || !videoRef.current || !canvasRef.current) {
+    if (!isActive || !videoRef.current || !canvasRef.current || !isReady()) {
       rafRef.current = requestAnimationFrame(processFrame);
       return;
     }
@@ -63,72 +84,112 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-    detect({
+    // Usar detección avanzada con configuración profesional
+    detectAdvanced({
       imageData,
-      minArea: 2000, // Área mínima más grande para ser más selectivo
+      minArea: 1500, // Área mínima optimizada para objetos profesionales
+      enableMultiScale: true,
+      enableTemporalStabilization: true,
+      maxObjects: 2, // Máximo 2 objetos para análisis detallado
+      confidenceThreshold: 0.5, // Umbral de confianza profesional
       onDetect: (rects) => {
-        // Usar factor de conversión realista
-        const factor = calibration?.isCalibrated ? calibration.pixelsPerMm : 8; // Factor por defecto más realista
-        const unit = 'mm'; // Siempre usar mm como unidad base
+        // Usar factor de conversión del sistema inteligente
+        const factor = calibration?.isCalibrated ? calibration.pixelsPerMm : 10;
+        const unit = 'mm';
 
-        console.log('Calibration data:', calibration);
-        console.log('Conversion factor:', factor);
+        console.log('Professional calibration data:', calibration);
+        console.log('Advanced conversion factor:', factor);
 
-        // Filtrar y ordenar los rectángulos por calidad
-        const filteredRects = rects
+        // Análisis de calidad de imagen
+        const imageQuality = precisionSystem.analyzeImageQuality(imageData, rects);
+
+        // Filtrar con criterios profesionales más estrictos
+        const professionalRects = rects
           .filter(rect => {
             const aspectRatio = rect.width / rect.height;
             const imageArea = canvas.width * canvas.height;
+            const sizeRatio = rect.area / imageArea;
             
-            return rect.area >= 2000 && 
-                   rect.area <= imageArea * 0.25 && // No más del 25% de la imagen
-                   aspectRatio > 0.3 && aspectRatio < 4.0 &&
-                   rect.width > 50 && rect.height > 50;
+            return rect.area >= 1500 && 
+                   sizeRatio >= 0.005 && sizeRatio <= 0.4 && // Rango profesional
+                   aspectRatio > 0.2 && aspectRatio < 8.0 &&
+                   rect.width > 30 && rect.height > 30 &&
+                   (rect.confidence || 0) > 0.4; // Confianza mínima profesional
           })
           .map(rect => ({
             ...rect,
-            // Calcular score de calidad basado en tamaño, posición y forma
-            qualityScore: calculateQualityScore(rect, canvas.width, canvas.height)
+            qualityScore: calculateAdvancedQualityScore(rect, canvas.width, canvas.height, imageQuality)
           }))
           .sort((a, b) => b.qualityScore - a.qualityScore)
-          .slice(0, 1); // Solo el mejor objeto
+          .slice(0, 2); // Top 2 objetos para análisis profesional
 
-        const objects: DetectedObject[] = filteredRects.map((rect, i) => {
-          // Convertir píxeles a milímetros
-          const widthMm = rect.width / factor;
-          const heightMm = rect.height / factor;
-          const areaMm2 = rect.area / (factor * factor);
-          
-          console.log(`Object ${i + 1}:`, {
-            pixelWidth: rect.width,
-            pixelHeight: rect.height,
-            pixelArea: rect.area,
-            mmWidth: widthMm,
-            mmHeight: heightMm,
-            mmArea: areaMm2,
-            factor: factor
-          });
-          
-          return {
-            id: `obj_${i}_${Date.now()}`,
-            bounds: rect,
-            dimensions: {
-              width: widthMm,
-              height: heightMm,
-              area: areaMm2,
-              unit: unit,
-            },
-            confidence: rect.qualityScore,
-            center: { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 },
-          };
-        });
+        const objects: DetectedObject[] = await Promise.all(
+          professionalRects.map(async (rect, i) => {
+            // Convertir píxeles a milímetros con precisión profesional
+            const widthMm = rect.width / factor;
+            const heightMm = rect.height / factor;
+            const areaMm2 = rect.area / (factor * factor);
+            
+            // Análisis de precisión profesional
+            const precisionMetrics = precisionSystem.analyzeMeasurementPrecision(
+              Math.max(widthMm, heightMm), // Valor principal
+              undefined, // Sin valor de referencia
+              rect.confidence || 0.8,
+              {
+                lightingCondition: imageQuality.lighting.score > 0.7 ? 'medium' : 'low',
+                stabilityScore: imageQuality.stability.score,
+                distanceToObject: estimateDistance(rect, canvas.width, canvas.height),
+                cameraAngle: estimateAngle(rect, canvas.width, canvas.height)
+              }
+            );
+
+            // Estimación 3D profesional
+            const depthMap = measurement3DSystem.estimateDepthMonocular(imageData, [rect]);
+            const object3D = measurement3DSystem.reconstruct3DObject(
+              depthMap,
+              { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+              factor
+            );
+
+            console.log(`Professional Object ${i + 1}:`, {
+              pixelDimensions: { width: rect.width, height: rect.height, area: rect.area },
+              mmDimensions: { width: widthMm, height: heightMm, area: areaMm2 },
+              precision: precisionMetrics,
+              volume3D: object3D.volume,
+              confidence: rect.confidence,
+              factor: factor
+            });
+            
+            return {
+              id: `prof_obj_${i}_${Date.now()}`,
+              bounds: rect,
+              dimensions: {
+                width: widthMm,
+                height: heightMm,
+                area: areaMm2,
+                unit: unit,
+              },
+              confidence: rect.confidence || 0.8,
+              center: { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 },
+              precision: {
+                accuracy: precisionMetrics.accuracy,
+                stability: precisionMetrics.stability,
+                errorEstimate: precisionMetrics.errorEstimate,
+                qualityScore: precisionMetrics.qualityScore
+              },
+              depth: object3D.dimensions.depth,
+              volume: object3D.volume,
+              surfaceArea: object3D.surfaceArea
+            };
+          })
+        );
 
         onObjectsDetected(objects);
       },
     });
 
     rafRef.current = requestAnimationFrame(processFrame);
-  }, [isActive, videoRef, detect, calibration, onObjectsDetected]);
+  }, [isActive, videoRef, detectAdvanced, calibration, onObjectsDetected, precisionSystem, measurement3DSystem, isReady]);
 
   // Función para calcular la calidad del objeto detectado
   const calculateQualityScore = (rect: any, imageWidth: number, imageHeight: number): number => {

@@ -1,5 +1,5 @@
 // measurementWorker.js
-/* eslint-disable */
+/* eslint-disable */JJJ
 let OPENCV_LOADED = false;
 let CAMERA_MATRIX = null;
 let DIST_COEFFS = null;
@@ -56,17 +56,15 @@ const multiScaleCanny = (gray, levels) => {
   const tmp = new cv.Mat();
   const gauss = new cv.Mat();
   for (const [t1, t2] of levels) {
-    // Blur adaptativo según tamaño
-    const k = Math.max(3, Math.floor(Math.min(gray.rows, gray.cols) / 200) * 2 + 1);
-    cv.GaussianBlur(gray, gauss, new cv.Size(k,k), 0);
+    const kSize = Math.max(3, Math.floor(Math.min(gray.rows, gray.cols) / 200) * 2 + 1);
+    cv.GaussianBlur(gray, gauss, new cv.Size(kSize,kSize), 0);
     cv.Canny(gauss, tmp, t1, t2);
     cv.bitwise_or(accum, tmp, accum);
   }
-  // Morfología: apertura para quitar ruido y cierre para rellenar huecos
-  const k2 = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3,3));
-  cv.morphologyEx(accum, accum, cv.MORPH_OPEN, k2);
-  cv.morphologyEx(accum, accum, cv.MORPH_CLOSE, k2);
-  tmp.delete(); gauss.delete(); k2.delete?.();
+  const kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3,3));
+  cv.morphologyEx(accum, accum, cv.MORPH_OPEN, kernel);
+  cv.morphologyEx(accum, accum, cv.MORPH_CLOSE, kernel);
+  tmp.delete(); gauss.delete(); kernel.delete();
   return accum;
 };
 
@@ -94,22 +92,25 @@ const processSingleFrame = (imageData, params) => {
       cv.resize(rgb, d, new cv.Size(Math.round(rgb.cols*scale), Math.round(rgb.rows*scale)));
       rgb.delete(); rgb = d;
     }
-    const gray = new cv.Mat(); cv.cvtColor(rgb, gray, cv.COLOR_RGB2GRAY);
-    // CLAHE suave
+    let gray = new cv.Mat();
+    cv.cvtColor(rgb, gray, cv.COLOR_RGB2GRAY);
     try {
-      const clahe = new cv.CLAHE(1.5, new cv.Size(8,8)); const cl = new cv.Mat(); clahe.apply(gray, cl); gray.delete(); clahe.delete();
+      const clahe = new cv.CLAHE(1.5, new cv.Size(8,8));
+      const cl = new cv.Mat();
+      clahe.apply(gray, cl);
+      gray.delete(); clahe.delete();
       gray = cl;
     } catch(_) {}
+
     const edges = multiScaleCanny(gray, CONFIG.cannyLevels);
 
-    // Contornos con aproximación relativa
     const contours = new cv.MatVector(); const hier = new cv.Mat();
     cv.findContours(edges, contours, hier, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_NONE);
     const detected = [];
     const imageArea = edges.rows*edges.cols;
     for (let i=0;i<contours.size();i++) {
       const cnt = contours.get(i); const m = computeMetrics(cnt);
-      if (m.area < Math.max(CONFIG.minAreaPx, imageArea*0.002)) { cnt.delete(); continue; }
+      if (m.area < Math.max(CONFIG.minAreaPx, imageArea*0.001)) { cnt.delete(); continue; }
       const peri = m.perimeter; const approx = new cv.Mat();
       cv.approxPolyDP(cnt, approx, 0.01 * peri, true);
       const hull = new cv.Mat(); cv.convexHull(cnt, hull, false, true);
@@ -124,7 +125,8 @@ const processSingleFrame = (imageData, params) => {
     }
     detected.sort((a,b)=>b.confidence-a.confidence);
     post({ type:'detections', objects: detected.slice(0,3) });
-    contours.delete(); hier.delete(); edges.delete(); rgb.delete(); src.delete();
+
+    contours.delete(); hier.delete(); edges.delete(); gray.delete(); rgb.delete(); src.delete();
   } catch (e) {
     try { src.delete(); } catch(_){ }
     post({ type:'error', message:`Processing error: ${e}` });

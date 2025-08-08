@@ -49,8 +49,8 @@ export const useMeasurementWorker = () => {
             setError(null);
             break;
             
-          case 'DETECTED':
-            handleDetectionResult(data.taskId, data.rects);
+          case 'SUCCESS':
+            handleDetectionResult(data.taskId, data.data.objects);
             break;
             
           case 'ERROR':
@@ -126,14 +126,29 @@ export const useMeasurementWorker = () => {
     });
   }, []);
 
+  // Transformar objetos del worker al formato BoundingRect
+  const transformToBoundingRect = useCallback((objects: any[]): BoundingRect[] => {
+    return objects.map(obj => ({
+      x: obj.x,
+      y: obj.y,
+      width: obj.width,
+      height: obj.height,
+      area: obj.area || (obj.width * obj.height),
+      confidence: obj.confidence || 0.5
+    }));
+  }, []);
+
   // Manejar resultado de detección
-  const handleDetectionResult = useCallback((taskId: string, rects: BoundingRect[]) => {
+  const handleDetectionResult = useCallback((taskId: string, objects: any[]) => {
     const task = currentTaskRef.current;
     if (task && task.id === taskId) {
       // Limpiar timeout
       if (task.timeoutId) {
         clearTimeout(task.timeoutId);
       }
+      
+      // Transformar objetos al formato esperado
+      const rects = transformToBoundingRect(objects);
       
       // Ejecutar callback
       try {
@@ -148,7 +163,7 @@ export const useMeasurementWorker = () => {
       // Procesar siguiente tarea
       processNextTask();
     }
-  }, [processNextTask]);
+  }, [processNextTask, transformToBoundingRect]);
 
   // Manejar error en tarea
   const handleTaskError = useCallback((taskId: string, error: Error) => {
@@ -263,8 +278,8 @@ export const useMeasurementWorker = () => {
             setError(null);
             break;
             
-          case 'DETECTED':
-            handleDetectionResult(data.taskId, data.rects);
+          case 'SUCCESS':
+            handleDetectionResult(data.taskId, data.data.objects);
             break;
             
           case 'ERROR':

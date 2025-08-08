@@ -109,78 +109,44 @@ export const MeasurementOverlay: React.FC<MeasurementOverlayProps> = ({
         >
           <div className="space-y-2">
             <div className="flex justify-between items-center border-b border-white/20 pb-2">
-              <span className="text-sm font-bold">🎯 MEDICIÓN 3D REAL</span>
-              <div className="flex items-center gap-1">
-                <span className="text-xs bg-measurement-active/20 px-2 py-1 rounded">
-                  {(bestObject.confidence * 100).toFixed(0)}%
-                </span>
-                {bestObject.geometricShape && (
-                  <span className="text-xs bg-calibration/20 px-1 py-1 rounded">
-                    {bestObject.geometricShape}
-                  </span>
-                )}
-              </div>
+              <span className="text-sm font-bold">🎯 OBJETO DETECTADO</span>
+              <span className="text-xs bg-measurement-active/20 px-2 py-1 rounded">
+                {(bestObject.confidence * 100).toFixed(0)}% confianza
+              </span>
             </div>
             
-            {/* DATOS 3D REALES */}
             <div className="grid grid-cols-2 gap-3 text-sm">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
                   <span className="text-xs opacity-70">↔️ Ancho:</span>
                   <span className="font-bold text-measurement-active">
-                    {bestObject.realWidth ? 
-                      formatDimension(bestObject.realWidth, 'mm') : 
-                      formatDimension(bestObject.dimensions.width, bestObject.dimensions.unit)
-                    }
+                    {formatDimension(bestObject.dimensions.width, bestObject.dimensions.unit)}
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-xs opacity-70">↕️ Alto:</span>
                   <span className="font-bold text-accent">
-                    {bestObject.realHeight ? 
-                      formatDimension(bestObject.realHeight, 'mm') : 
-                      formatDimension(bestObject.dimensions.height, bestObject.dimensions.unit)
-                    }
+                    {formatDimension(bestObject.dimensions.height, bestObject.dimensions.unit)}
                   </span>
                 </div>
-                {bestObject.realDepth && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs opacity-70">🔍 Profund:</span>
-                    <span className="font-bold text-depth-far">
-                      {formatDimension(bestObject.realDepth, 'mm')}
-                    </span>
-                  </div>
-                )}
               </div>
               
               <div className="space-y-1">
-                {bestObject.volume && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs opacity-70">📦 Volumen:</span>
-                    <span className="font-bold text-primary">
-                      {bestObject.volume < 1000 ? 
-                        `${bestObject.volume.toFixed(0)}mm³` : 
-                        `${(bestObject.volume / 1000).toFixed(1)}cm³`
-                      }
-                    </span>
-                  </div>
-                )}
-                {bestObject.surfaceArea && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs opacity-70">📐 Superf:</span>
-                    <span className="font-bold text-calibration">
-                      {formatArea(bestObject.surfaceArea, 'mm²')}
-                    </span>
-                  </div>
-                )}
-                {bestObject.estimatedMass && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs opacity-70">⚖️ Masa:</span>
-                    <span className="font-bold text-accent">
-                      {bestObject.estimatedMass.toFixed(1)}g
-                    </span>
-                  </div>
-                )}
+                <div className="flex items-center gap-2">
+                  <span className="text-xs opacity-70">📐 Área:</span>
+                  <span className="font-bold text-primary">
+                    {formatArea(bestObject.dimensions.area, bestObject.dimensions.unit + '²')}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs opacity-70">📏 Diagonal:</span>
+                  <span className="font-bold text-calibration">
+                    {formatDimension(
+                      Math.sqrt(bestObject.dimensions.width ** 2 + bestObject.dimensions.height ** 2), 
+                      bestObject.dimensions.unit
+                    )}
+                  </span>
+                </div>
               </div>
             </div>
             

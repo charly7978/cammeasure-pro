@@ -1,9 +1,4 @@
 export interface BoundingRect {
-  [x: string]: any;
-  realDepth: any;
-  volume: any;
-  estimatedMass: any;
-  surfaceArea: any;
   x: number;
   y: number;
   width: number;

@@ -1,4 +1,3 @@
-
 import React, { createContext, useState, ReactNode } from 'react';
 
 export interface CalibrationData {
@@ -20,11 +19,11 @@ export const CalibrationContext = createContext<CalibrationContextValue | undefi
 
 export const CalibrationProvider = ({ children }: { children: ReactNode }) => {
   const [calibration, setCalibration] = useState<CalibrationData | null>({
-    focalLength: 4.25, // Focal length realista de smartphone
-    sensorSize: 6.17, // Sensor diagonal estándar 1/2.55"
-    pixelsPerMm: 8.0, // Factor corregido más realista para 30cm de distancia
-    referenceObjectSize: 25.4, // 1 pulgada en mm (referencia común)
-    isCalibrated: false // Empezar sin calibrar para forzar calibración adecuada
+    focalLength: 4.0,
+    sensorSize: 6.17,
+    pixelsPerMm: 8, // Valor realista para mediciones en mm/cm
+    referenceObjectSize: 25.4,
+    isCalibrated: true // Activado por defecto para mostrar medidas en mm/cm
   });
 
   return (

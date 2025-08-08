@@ -160,12 +160,12 @@ export const CameraView: React.FC<CameraViewProps> = ({
         </div>
       </div>
 
-      {/* Vista cámara + overlay real */}
+      {/* Vista cámara + overlay real (alto fijo, sin movimiento) */}
       <Card className="relative overflow-hidden">
-        <div className="relative aspect-video bg-black">
+        <div className="relative bg-black w-full h-[72vh]">
           <video
             ref={videoRef}
-            className="w-full h-full object-cover"
+            className="w-full h-full object-contain"
             autoPlay
             playsInline
             muted

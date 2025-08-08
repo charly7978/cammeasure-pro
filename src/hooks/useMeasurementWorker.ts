@@ -1,40 +1,75 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { BoundingRect } from '@/lib/imageProcessing';
 
 interface DetectOptions {
   imageData: ImageData;
   minArea?: number;
   onDetect: (rects: BoundingRect[]) => void;
+  onError?: (error: Error) => void;
+  onTimeout?: () => void;
+}
+
+interface Task {
+  id: string;
+  imageData: ImageData;
+  minArea: number;
+  onDetect: (rects: BoundingRect[]) => void;
+  onError?: (error: Error) => void;
+  onTimeout?: () => void;
+  timeoutId?: NodeJS.Timeout;
 }
 
 export const useMeasurementWorker = () => {
   const workerRef = useRef<Worker>();
   const readyRef = useRef(false);
+  const isProcessingRef = useRef(false);
+  const taskQueueRef = useRef<Task[]>([]);
+  const currentTaskRef = useRef<Task | null>(null);
+  const [isReady, setIsReady] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
 
+  // Inicialización del worker con manejo de errores
   useEffect(() => {
-    workerRef.current = new Worker(new URL('../workers/measurementWorker.ts', import.meta.url), {
-      type: 'module'
-    });
-    const w = workerRef.current;
-    w.postMessage({ type: 'INIT' });
-    w.onmessage = (e: MessageEvent<any>) => {
-      if (e.data.type === 'READY') readyRef.current = true;
-    };
-    return () => w.terminate();
-  }, []);
+    try {
+      workerRef.current = new Worker(new URL('../workers/measurementWorker.ts', import.meta.url), {
+        type: 'module'
+      });
+      
+      const w = workerRef.current;
+      
+      // Manejador de mensajes único y persistente
+      w.onmessage = (e: MessageEvent<any>) => {
+        const { type, data } = e.data;
+        
+        switch (type) {
+          case 'READY':
+            readyRef.current = true;
+            setIsReady(true);
+            setError(null);
+            break;
+            
+          case 'DETECTED':
+            handleDetectionResult(data.taskId, data.rects);
+            break;
+            
+          case 'ERROR':
+            handleTaskError(data.taskId, new Error(data.error));
+            break;
+            
+          case 'PROGRESS':
+            // Manejar progreso si es necesario
+            break;
+        }
+      };
 
-  const detect = useCallback((opts: DetectOptions) => {
-    if (!workerRef.current || !readyRef.current) return;
-    const { imageData, minArea = 100, onDetect } = opts;
-    const handler = (e: MessageEvent<any>) => {
-      if (e.data.type === 'DETECTED') {
-        onDetect(e.data.rects);
-        workerRef.current?.removeEventListener('message', handler as any);
-      }
-    };
-    workerRef.current.addEventListener('message', handler as any);
-    workerRef.current.postMessage({ type: 'DETECT', imageData, minArea });
-  }, []);
+      // Manejador de errores del worker
+      w.onerror = (err) => {
+        console.error('Worker error:', err);
+        setError(new Error('Error en el worker de medición'));
+        if (currentTaskRef.current) {
+          handleTaskError(currentTaskRef.current.id, new Error('Error en el worker'));
+        }
+      };
 
-  return { detect };
-};
+      // Inicializar el worker

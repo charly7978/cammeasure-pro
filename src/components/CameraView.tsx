@@ -1,14 +1,22 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Button } from '@/components/ui/button';
+import { useEffect, useRef, useState } from 'react';
 import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { 
   Camera, 
-  CameraOff, 
-  RotateCcw,
-  Download,
-  Target
+  SwitchCamera, 
+  Settings,
+  Zap,
+  Grid3X3,
+  Focus,
+  Target,
+  Pause,
+  Play,
+  Maximize2
 } from 'lucide-react';
+import { useCamera } from '@/hooks/useCamera';
+import { CameraDirection } from '@capacitor/camera';
+import { RealTimeMeasurement, DetectedObject } from './RealTimeMeasurement';
 import { MeasurementOverlay } from './MeasurementOverlay';
 
 interface CameraViewProps {
@@ -18,207 +26,351 @@ interface CameraViewProps {
     pixelsPerMm: number;
     isCalibrated: boolean;
   } | null;
-  objects?: any[];
-  externalVideoRef?: React.RefObject<HTMLVideoElement>;
+  onRealTimeObjects: (objects: DetectedObject[]) => void;
 }
 
 export const CameraView: React.FC<CameraViewProps> = ({
   onImageCapture,
   isActive,
   calibrationData,
-  objects,
-  externalVideoRef
+  onRealTimeObjects
 }) => {
-  const [isCapturing, setIsCapturing] = useState(false);
-  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
-  const [hasPermissions, setHasPermissions] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [videoDims, setVideoDims] = useState({ w: 0, h: 0 });
-  const [containerDims, setContainerDims] = useState({ w: 0, h: 0 });
-  
-  const internalVideoRef = useRef<HTMLVideoElement>(null);
+  const { 
+    videoRef, 
+    cameraStream, 
+    isCapturing,
+    startCamera, 
+    stopCamera, 
+    switchCamera,
+    requestCameraPermissions 
+  } = useCamera();
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const videoRef = externalVideoRef || internalVideoRef;
+  const [currentCamera, setCurrentCamera] = useState<CameraDirection>(CameraDirection.Rear);
+  const [showGrid, setShowGrid] = useState(true);
+  const [flashEnabled, setFlashEnabled] = useState(false);
+  const [focusPoint, setFocusPoint] = useState<{ x: number; y: number } | null>(null);
+  const [hasPermissions, setHasPermissions] = useState(false);
+  const [detectedObjects, setDetectedObjects] = useState<DetectedObject[]>([]);
+  const [isRealTimeMeasurement, setIsRealTimeMeasurement] = useState(true);
+  const [videoContainer, setVideoContainer] = useState({ width: 0, height: 0 });
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    initializeCamera();
+    
+    const updateDimensions = () => {
+      if (containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        setVideoContainer({ width: rect.width, height: rect.height });
+      }
+    };
+    
+    window.addEventListener('resize', updateDimensions);
+    updateDimensions();
+    
+    return () => {
+      stopCamera();
+      window.removeEventListener('resize', updateDimensions);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isActive && hasPermissions && !cameraStream) {
+      startCamera();
+    } else if (!isActive && cameraStream) {
+      stopCamera();
+    }
+  }, [isActive, hasPermissions]);
 
   const initializeCamera = async () => {
     try {
-      setError(null);
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: 'environment',
-          width: { ideal: 1920 },
-          height: { ideal: 1080 }
-        }
-      });
+      const granted = await requestCameraPermissions();
+      setHasPermissions(granted);
       
-      setCameraStream(stream);
-      setHasPermissions(true);
-      
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
+      if (granted) {
+        // Configuración optimizada para medición de precisión
+        await startCamera({
+          video: {
+            facingMode: 'environment',
+            width: { ideal: 3840, min: 1920 }, // 4K preferred, 1080p minimum
+            height: { ideal: 2160, min: 1080 },
+            frameRate: { ideal: 30, min: 15 }
+          }
+        });
       }
-    } catch (err) {
-      setError('No se pudo acceder a la cámara. Verifica los permisos.');
-      setHasPermissions(false);
+    } catch (error) {
+      console.error('Error initializing camera:', error);
     }
   };
 
   const handleCameraSwitch = async () => {
-    if (cameraStream) {
-      cameraStream.getTracks().forEach(track => track.stop());
-      setCameraStream(null);
-    }
-    await initializeCamera();
-  };
-
-  const captureFrame = async () => {
-    if (!videoRef.current || !canvasRef.current) return;
-    setIsCapturing(true);
+    const newDirection = currentCamera === CameraDirection.Rear 
+      ? CameraDirection.Front 
+      : CameraDirection.Rear;
+    
     try {
-      const canvas = canvasRef.current;
-      const video = videoRef.current;
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      onImageCapture?.(imageData);
-    } catch (err) {
-      setError('Error al capturar imagen');
-    } finally {
-      setIsCapturing(false);
+      await switchCamera(newDirection);
+      setCurrentCamera(newDirection);
+    } catch (error) {
+      console.error('Error switching camera:', error);
     }
   };
 
-  useEffect(() => {
-    if (isActive) {
-      initializeCamera();
-    } else {
-      if (cameraStream) {
-        cameraStream.getTracks().forEach(track => track.stop());
-        setCameraStream(null);
-      }
-    }
-    return () => {
-      if (cameraStream) {
-        cameraStream.getTracks().forEach(track => track.stop());
-      }
-    };
-  }, [isActive]);
+  const captureFrame = () => {
+    if (!videoRef.current || !canvasRef.current || !onImageCapture) return;
 
-  // Medir dimensiones reales del video y contenedor
-  useLayoutEffect(() => {
-    const updateDims = () => {
-      if (videoRef.current) {
-        setVideoDims({ w: videoRef.current.videoWidth, h: videoRef.current.videoHeight });
-      }
-      if (containerRef.current) {
-        const rect = containerRef.current.getBoundingClientRect();
-        setContainerDims({ w: rect.width, h: rect.height });
-      }
-    };
-    updateDims();
-    window.addEventListener('resize', updateDims);
-    if (videoRef.current) {
-      videoRef.current.addEventListener('loadedmetadata', updateDims);
-    }
-    return () => {
-      window.removeEventListener('resize', updateDims);
-      videoRef.current?.removeEventListener('loadedmetadata', updateDims);
-    };
-  }, []);
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    
+    if (!ctx) return;
 
-  if (error) {
+    // Set canvas dimensions to match video
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+
+    // Draw current video frame to canvas
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    // Get ImageData from canvas
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    onImageCapture(imageData);
+  };
+
+  const handleObjectsDetected = (objects: DetectedObject[]) => {
+    setDetectedObjects(objects);
+    onRealTimeObjects(objects);
+  };
+
+  const handleVideoClick = (e: React.MouseEvent<HTMLVideoElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    
+    setFocusPoint({ x, y });
+    
+    // Auto-hide focus point after 2 seconds
+    setTimeout(() => setFocusPoint(null), 2000);
+  };
+
+  if (!hasPermissions) {
     return (
-      <Card className="p-6 text-center">
-        <CameraOff className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-        <h3 className="text-lg font-semibold mb-2">Error de Cámara</h3>
-        <p className="text-muted-foreground mb-4">{error}</p>
-        <Button onClick={initializeCamera}>Reintentar</Button>
+      <Card className="p-8 text-center space-y-4">
+        <Camera className="w-12 h-12 text-muted-foreground mx-auto" />
+        <div className="space-y-2">
+          <h3 className="text-lg font-semibold">Permisos de Cámara Requeridos</h3>
+          <p className="text-sm text-muted-foreground">
+            Se necesita acceso a la cámara para realizar mediciones de precisión
+          </p>
+        </div>
+        <Button onClick={initializeCamera} className="bg-gradient-primary">
+          <Camera className="w-4 h-4 mr-2" />
+          Conceder Permisos
+        </Button>
       </Card>
     );
   }
 
   return (
     <div className="space-y-4">
+      {/* Camera Controls - Mejorados */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Camera className="w-5 h-5 text-primary" />
-          <span className="font-medium">Cámara Principal</span>
-          <Badge variant={hasPermissions ? 'default' : 'secondary'}>{hasPermissions ? '🟢 Activa' : '🔴 Inactiva'}</Badge>
+          <Badge variant="outline" className="border-primary text-primary">
+            <Camera className="w-3 h-3 mr-1" />
+            {currentCamera === CameraDirection.Rear ? 'Cámara Principal' : 'Cámara Frontal'}
+          </Badge>
+          
+          {cameraStream && (
+            <Badge variant="secondary" className="animate-measurement-pulse">
+              <div className="w-2 h-2 bg-measurement-active rounded-full mr-1"></div>
+              Medición en Vivo - OpenCV Avanzado
+            </Badge>
+          )}
+
+          {isRealTimeMeasurement && detectedObjects.length > 0 && (
+            <Badge variant="outline" className="border-measurement-active text-measurement-active">
+              <Target className="w-3 h-3 mr-1" />
+              {detectedObjects.length} objeto{detectedObjects.length !== 1 ? 's' : ''} detectado{detectedObjects.length !== 1 ? 's' : ''}
+            </Badge>
+          )}
+
+          {videoRef.current && (
+            <Badge variant="outline" className="border-calibration text-calibration text-xs">
+              {videoRef.current.videoWidth}×{videoRef.current.videoHeight}
+            </Badge>
+          )}
         </div>
+
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={handleCameraSwitch} disabled={!hasPermissions}>
-            <RotateCcw className="w-4 h-4 mr-1" />
-            Cambiar
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsFullscreen(!isFullscreen)}
+            className={isFullscreen ? "bg-primary text-primary-foreground" : ""}
+          >
+            <Maximize2 className="w-4 h-4" />
           </Button>
-          <Button onClick={captureFrame} disabled={!hasPermissions || isCapturing} className="bg-gradient-primary">
-            <Camera className="w-4 h-4 mr-2" />
-            {isCapturing ? 'Capturando...' : 'Capturar'}
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsRealTimeMeasurement(!isRealTimeMeasurement)}
+            className={isRealTimeMeasurement ? "bg-measurement-active text-background" : ""}
+          >
+            {isRealTimeMeasurement ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowGrid(!showGrid)}
+            className={showGrid ? "bg-primary text-primary-foreground" : ""}
+          >
+            <Grid3X3 className="w-4 h-4" />
+          </Button>
+          
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setFlashEnabled(!flashEnabled)}
+            className={flashEnabled ? "bg-calibration text-background" : ""}
+          >
+            <Zap className="w-4 h-4" />
+          </Button>
+          
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleCameraSwitch}
+            disabled={isCapturing}
+          >
+            <SwitchCamera className="w-4 h-4" />
           </Button>
         </div>
       </div>
 
-      <Card className="relative overflow-hidden">
-        <div ref={containerRef} className="relative bg-black w-full h-[72vh]">
-          <video ref={videoRef} className="w-full h-full object-contain" autoPlay playsInline muted />
-          <canvas ref={canvasRef} style={{ display: 'none' }} />
+      {/* Ventana de Previsualización Ampliada y Fija */}
+      <Card className={`relative overflow-hidden bg-black ${isFullscreen ? 'fixed inset-4 z-50' : ''}`}>
+        <div 
+          ref={containerRef}
+          className={`relative bg-black ${isFullscreen ? 'h-full' : 'aspect-[16/9] min-h-[600px]'}`}
+          onLoadedData={() => {
+            if (containerRef.current) {
+              const rect = containerRef.current.getBoundingClientRect();
+              setVideoContainer({ width: rect.width, height: rect.height });
+            }
+          }}
+        >
+          <video
+            ref={videoRef}
+            className="w-full h-full object-cover"
+            autoPlay
+            playsInline
+            muted
+            onClick={handleVideoClick}
+            onLoadedMetadata={() => {
+              if (containerRef.current) {
+                const rect = containerRef.current.getBoundingClientRect();
+                setVideoContainer({ width: rect.width, height: rect.height });
+              }
+            }}
+          />
 
-          {hasPermissions && Array.isArray(objects) && objects.length > 0 && (
+          {/* Overlay de Medición Mejorado y Transparente */}
+          {isRealTimeMeasurement && (
             <MeasurementOverlay
-              objects={objects}
-              isActive={isActive && hasPermissions}
-              calibrationData={calibrationData}
-              videoWidth={videoDims.w}
-              videoHeight={videoDims.h}
-              containerWidth={containerDims.w}
-              containerHeight={containerDims.h}
+              objects={detectedObjects}
+              videoWidth={videoRef.current?.videoWidth || 1}
+              videoHeight={videoRef.current?.videoHeight || 1}
+              containerWidth={videoContainer.width}
+              containerHeight={videoContainer.height}
             />
           )}
-
-          {!hasPermissions && (
-            <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-              <div className="text-center text-white">
-                <CameraOff className="w-12 h-12 mx-auto mb-2" />
-                <p className="text-sm">Cámara no disponible</p>
-              </div>
+          
+          {/* Grid mejorado para medición de precisión */}
+          {showGrid && (
+            <div className="absolute inset-0 pointer-events-none">
+              <svg className="w-full h-full opacity-40" viewBox="0 0 100 100" preserveAspectRatio="none">
+                <defs>
+                  <pattern id="precision-grid" width="10" height="10" patternUnits="userSpaceOnUse">
+                    <path d="M 10 0 L 0 0 0 10" fill="none" stroke="rgba(0,255,255,0.3)" strokeWidth="0.2"/>
+                  </pattern>
+                  <pattern id="major-grid" width="33.33" height="33.33" patternUnits="userSpaceOnUse">
+                    <path d="M 33.33 0 L 0 0 0 33.33" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="0.5"/>
+                  </pattern>
+                </defs>
+                <rect width="100" height="100" fill="url(#precision-grid)" />
+                <rect width="100" height="100" fill="url(#major-grid)" />
+              </svg>
             </div>
           )}
+          
+          {/* Focus Point Indicator */}
+          {focusPoint && (
+            <div 
+              className="absolute w-16 h-16 border-2 border-calibration rounded-full pointer-events-none animate-calibration-glow"
+              style={{
+                left: `${focusPoint.x}%`,
+                top: `${focusPoint.y}%`,
+                transform: 'translate(-50%, -50%)'
+              }}
+            >
+              <Focus className="w-4 h-4 text-calibration absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2" />
+            </div>
+          )}
+          
+          {/* Center Crosshair mejorado para medición de precisión */}
+          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none">
+            <div className="w-12 h-12 border-2 border-measurement-active rounded-full flex items-center justify-center animate-measurement-pulse">
+              <div className="w-3 h-3 bg-measurement-active rounded-full"></div>
+            </div>
+            {/* Líneas de mira */}
+            <div className="absolute top-1/2 left-0 w-full h-0.5 bg-measurement-active opacity-60 transform -translate-y-1/2"></div>
+            <div className="absolute top-0 left-1/2 w-0.5 h-full bg-measurement-active opacity-60 transform -translate-x-1/2"></div>
+          </div>
         </div>
+
+        {/* Botón de captura mejorado */}
+        {onImageCapture && (
+          <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2">
+            <Button
+              onClick={captureFrame}
+              disabled={isCapturing || !cameraStream}
+              size="lg"
+              className="w-20 h-20 rounded-full bg-gradient-primary shadow-measurement border-4 border-background hover:scale-110 transition-transform"
+            >
+              <Camera className="w-8 h-8" />
+            </Button>
+          </div>
+        )}
+
+        {/* Real-time Processing Component con algoritmos avanzados */}
+        {isRealTimeMeasurement && (
+          <RealTimeMeasurement
+            videoRef={videoRef}
+            onObjectsDetected={handleObjectsDetected}
+            isActive={isActive && isRealTimeMeasurement}
+          />
+        )}
+
+        {/* Botón para cerrar fullscreen */}
+        {isFullscreen && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="absolute top-4 right-4 bg-black/50 text-white border-white/30"
+            onClick={() => setIsFullscreen(false)}
+          >
+            Cerrar
+          </Button>
+        )}
       </Card>
 
-      {hasPermissions && (
-        <Card className="p-4">
-          <h4 className="font-medium mb-3 flex items-center gap-2">
-            <Target className="w-4 h-4" />
-            Información de Cámara
-          </h4>
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div>
-              <p className="text-muted-foreground">Estado</p>
-              <p className="font-medium text-green-600">Activa</p>
-            </div>
-            <div>
-              <p className="text-muted-foreground">Objetos Detectados</p>
-              <p className="font-medium">{Array.isArray(objects) ? objects.length : 0}</p>
-            </div>
-            {calibrationData && (
-              <>
-                <div>
-                  <p className="text-muted-foreground">Factor de Calibración</p>
-                  <p className="font-medium">{calibrationData.pixelsPerMm.toFixed(1)} px/mm</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Estado de Calibración</p>
-                  <p className="font-medium">{calibrationData.isCalibrated ? '✅ Calibrado' : '⚠️ Sin Calibrar'}</p>
-                </div>
-              </>
-            )}
-          </div>
-        </Card>
-      )}
+      {/* Canvas oculto para captura */}
+      <canvas ref={canvasRef} className="hidden" />
     </div>
   );
 };

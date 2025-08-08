@@ -12,7 +12,8 @@ import {
   Target,
   Pause,
   Play,
-  Maximize2
+  Maximize2,
+  CameraOff
 } from 'lucide-react';
 import { useCamera } from '@/hooks/useCamera';
 import { CameraDirection } from '@capacitor/camera';
@@ -199,7 +200,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
 
           {videoRef.current && (
             <Badge variant="outline" className="border-calibration text-calibration text-xs">
-              {videoRef.current.videoWidth}Ã—{videoRef.current.videoHeight}
+              {videoRef.current.videoWidth}Ãÿ{videoRef.current.videoHeight}
             </Badge>
           )}
         </div>
@@ -287,6 +288,8 @@ export const CameraView: React.FC<CameraViewProps> = ({
               videoHeight={videoRef.current?.videoHeight || 1}
               containerWidth={videoContainer.width}
               containerHeight={videoContainer.height}
+              isActive={isActive}
+              calibrationData={calibrationData}
             />
           )}
           

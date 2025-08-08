@@ -1,507 +1,349 @@
-import { BoundingRect, detectContours } from '../lib/imageProcessing';
+interface DetectMessage {
+  type: 'DETECT';
+  imageData: ImageData;
+  minArea: number;
+}
 
-// Enhanced measurement worker with real computer vision algorithms
-let cv: any = null;
-let isInitialized = false;
+interface InitMessage {
+  type: 'INIT';
+}
 
-// Enhanced filtering parameters for improved object detection
-const DETECTION_CONFIG = {
-  // Multi-scale edge detection thresholds - optimized for better edge detection
-  cannyLower: [40, 60, 90],
-  cannyUpper: [120, 180, 270],
-  
-  // Morphological operations - smaller kernels for better detail preservation
-  morphKernelSizes: [2, 3, 5],
-  
-  // Contour filtering - adjusted for better object detection
-  minContourArea: 800,
-  maxContourArea: 80000,
-  minAspectRatio: 0.1,
-  maxAspectRatio: 10.0,
-  
-  // Shape analysis - more permissive for varied object shapes
-  minCircularity: 0.05,
-  minSolidity: 0.2,
-  
-  // Approximation accuracy - more precise contour approximation
-  epsilonFactor: 0.015
-};
+type Incoming = DetectMessage | InitMessage;
 
-self.onmessage = function(e: MessageEvent) {
-  const { type, imageData, minArea } = e.data;
+type Outgoing =
+  | { type: 'READY' }
+  | { type: 'DETECTED'; rects: any[] };
 
-  switch (type) {
-    case 'INIT':
-      initializeWorker();
-      break;
-    case 'DETECT':
-      performAdvancedDetection(imageData, minArea || DETECTION_CONFIG.minContourArea);
-      break;
-  }
-};
+// OpenCV worker para detección de objetos profesional
+declare var cv: any;
 
-function initializeWorker() {
-  // Check if OpenCV is available
-  if (typeof importScripts !== 'undefined') {
+let isOpenCVReady = false;
+
+// Cargar OpenCV en el worker
+function loadOpenCV(): Promise<void> {
+  return new Promise((resolve) => {
+    // Verificar si OpenCV ya está cargado
+    if (typeof self !== 'undefined' && (self as any).cv && (self as any).cv.Mat) {
+      isOpenCVReady = true;
+      resolve();
+      return;
+    }
+
+    // En el worker, intentar cargar OpenCV
     try {
-      // Try to load OpenCV in worker context
-      importScripts('https://docs.opencv.org/4.8.0/opencv.js');
+      // Usar importScripts del contexto global del worker
+      (self as any).importScripts('https://docs.opencv.org/4.8.0/opencv.js');
       
-      const checkOpenCV = () => {
-        if (typeof cv !== 'undefined' && cv.Mat) {
-          isInitialized = true;
-          console.log('OpenCV initialized in worker');
-          self.postMessage({ type: 'READY' });
+      const checkCV = () => {
+        if (typeof self !== 'undefined' && (self as any).cv && (self as any).cv.Mat) {
+          isOpenCVReady = true;
+          console.log('OpenCV loaded in professional worker');
+          resolve();
         } else {
-          // Fallback to native algorithms
-          console.log('OpenCV not available, using native algorithms');
-          isInitialized = true;
-          self.postMessage({ type: 'READY' });
+          setTimeout(checkCV, 100);
         }
       };
       
-      setTimeout(checkOpenCV, 1000);
-    } catch (error) {
-      console.log('OpenCV loading failed, using native algorithms');
-      isInitialized = true;
-      self.postMessage({ type: 'READY' });
-    }
-  } else {
-    // Native algorithms only
-    isInitialized = true;
-    self.postMessage({ type: 'READY' });
-  }
-}
-
-function performAdvancedDetection(imageData: ImageData, minArea: number) {
-  try {
-    let detectedRects: BoundingRect[];
-    
-    if (cv && cv.Mat) {
-      // Use OpenCV for advanced detection
-      detectedRects = detectWithOpenCV(imageData, minArea);
-    } else {
-      // Use enhanced native algorithms
-      detectedRects = detectWithNativeAlgorithms(imageData, minArea);
-    }
-    
-    // Apply advanced filtering and quality assessment
-    const filteredRects = applyAdvancedFiltering(detectedRects);
-    
-    self.postMessage({ type: 'DETECTED', rects: filteredRects });
-  } catch (error) {
-    console.error('Detection failed:', error);
-    self.postMessage({ type: 'DETECTED', rects: [] });
-  }
-}
-
-function detectWithOpenCV(imageData: ImageData, minArea: number): BoundingRect[] {
-  const src = cv.matFromImageData(imageData);
-  const gray = new cv.Mat();
-  const rects: BoundingRect[] = [];
-  
-  try {
-    // Convert to grayscale
-    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-    
-    // Multi-scale edge detection for better results
-    for (let i = 0; i < DETECTION_CONFIG.cannyLower.length; i++) {
-      const edges = new cv.Mat();
-      const contours = new cv.MatVector();
-      const hierarchy = new cv.Mat();
+      setTimeout(checkCV, 100);
       
-      try {
-        // Apply Gaussian blur to reduce noise
-        const blurred = new cv.Mat();
-        cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 1.4, 1.4, cv.BORDER_DEFAULT);
+    } catch (error) {
+      console.error('Failed to load OpenCV in worker:', error);
+      // Continuar sin OpenCV
+      resolve();
+    }
+  });
+}
+
+// Función para filtrar rectángulos superpuestos
+function filterOverlappingRects(rects: any[]) {
+  const filtered = [];
+  
+  for (let i = 0; i < rects.length; i++) {
+    let isOverlapping = false;
+    
+    for (let j = 0; j < filtered.length; j++) {
+      const overlap = calculateOverlap(rects[i], filtered[j]);
+      
+      if (overlap > 0.5) {
+        isOverlapping = true;
         
-        // Canny edge detection with current thresholds
-        cv.Canny(blurred, edges, DETECTION_CONFIG.cannyLower[i], DETECTION_CONFIG.cannyUpper[i]);
-        
-        // Morphological operations to close gaps
-        const kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(DETECTION_CONFIG.morphKernelSizes[i], DETECTION_CONFIG.morphKernelSizes[i]));
-        cv.morphologyEx(edges, edges, cv.MORPH_CLOSE, kernel);
-        cv.morphologyEx(edges, edges, cv.MORPH_OPEN, kernel);
-        
-        // Find contours
-        cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-        
-        // Process each contour
-        for (let j = 0; j < contours.size(); j++) {
-          const contour = contours.get(j);
-          const area = cv.contourArea(contour);
-          
-          if (area >= minArea && area <= DETECTION_CONFIG.maxContourArea) {
-            const rect = cv.boundingRect(contour);
-            const aspectRatio = rect.width / rect.height;
-            
-            // Calculate advanced geometric properties
-            const perimeter = cv.arcLength(contour, true);
-            const hull = new cv.Mat();
-            cv.convexHull(contour, hull);
-            const hullArea = cv.contourArea(hull);
-            
-            // Calculate shape descriptors
-            const circularity = (4 * Math.PI * area) / (perimeter * perimeter);
-            const solidity = area / hullArea;
-            const extent = area / (rect.width * rect.height);
-            
-            // Apply geometric filters
-            if (aspectRatio >= DETECTION_CONFIG.minAspectRatio && 
-                aspectRatio <= DETECTION_CONFIG.maxAspectRatio &&
-                circularity >= DETECTION_CONFIG.minCircularity &&
-                solidity >= DETECTION_CONFIG.minSolidity) {
-              
-              // Approximate contour for shape analysis
-              const epsilon = DETECTION_CONFIG.epsilonFactor * perimeter;
-              const approxContour = new cv.Mat();
-              cv.approxPolyDP(contour, approxContour, epsilon, true);
-              
-              const boundingRect: BoundingRect = {
-                x: rect.x,
-                y: rect.y,
-                width: rect.width,
-                height: rect.height,
-                area: area,
-                confidence: calculateConfidence(circularity, solidity, extent, area, minArea)
-              };
-              
-              rects.push(boundingRect);
-              
-              hull.delete();
-              approxContour.delete();
-            } else {
-              hull.delete();
-            }
-          }
-          
-          contour.delete();
+        if (rects[i].confidence && filtered[j].confidence && rects[i].confidence > filtered[j].confidence) {
+          filtered[j] = rects[i];
         }
-        
-        blurred.delete();
-        kernel.delete();
-        contours.delete();
-        hierarchy.delete();
-      } finally {
-        edges.delete();
+        break;
       }
     }
     
-  } finally {
+    if (!isOverlapping) {
+      filtered.push(rects[i]);
+    }
+  }
+  
+  return filtered;
+}
+
+// Calcular superposición entre dos rectángulos
+function calculateOverlap(rect1: any, rect2: any) {
+  const x1 = Math.max(rect1.x, rect2.x);
+  const y1 = Math.max(rect1.y, rect2.y);
+  const x2 = Math.min(rect1.x + rect1.width, rect2.x + rect2.width);
+  const y2 = Math.min(rect1.y + rect1.height, rect2.y + rect2.height);
+  
+  if (x2 <= x1 || y2 <= y1) {
+    return 0;
+  }
+  
+  const overlapArea = (x2 - x1) * (y2 - y1);
+  const rect1Area = rect1.width * rect1.height;
+  const rect2Area = rect2.width * rect2.height;
+  const unionArea = rect1Area + rect2Area - overlapArea;
+  
+  return overlapArea / unionArea;
+}
+
+// Detección profesional usando OpenCV
+function detectContoursOpenCV(imageData: ImageData, minArea: number) {
+  if (!isOpenCVReady || !cv) {
+    return detectContoursNative(imageData, minArea);
+  }
+
+  try {
+    const src = cv.matFromImageData(imageData);
+    const gray = new cv.Mat();
+    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+
+    // Preprocesamiento profesional
+    const blurred = new cv.Mat();
+    cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);
+
+    // Detección de bordes Canny optimizada
+    const edges = new cv.Mat();
+    cv.Canny(blurred, edges, 50, 150);
+
+    // Operaciones morfológicas
+    const kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3, 3));
+    const morphed = new cv.Mat();
+    cv.morphologyEx(edges, morphed, cv.MORPH_CLOSE, kernel);
+
+    // Encontrar contornos
+    const contours = new cv.MatVector();
+    const hierarchy = new cv.Mat();
+    cv.findContours(morphed, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+    
+    const rects = [];
+    const imageArea = imageData.width * imageData.height;
+
+    for (let i = 0; i < contours.size(); i++) {
+      const contour = contours.get(i);
+      const area = cv.contourArea(contour);
+
+      if (area < minArea) {
+        contour.delete();
+        continue;
+      }
+
+      const rect = cv.boundingRect(contour);
+      const aspectRatio = rect.width / rect.height;
+
+      // Análisis de forma profesional
+      const hull = new cv.Mat();
+      cv.convexHull(contour, hull);
+      const hullArea = cv.contourArea(hull);
+      const solidity = hullArea > 0 ? area / hullArea : 0;
+
+      // Filtros de calidad profesional
+      if (
+        area > imageArea * 0.001 &&
+        area < imageArea * 0.8 &&
+        aspectRatio > 0.1 && aspectRatio < 10.0 &&
+        solidity > 0.5 &&
+        rect.width > 10 && rect.height > 10
+      ) {
+        // Calcular confianza profesional
+        let confidence = solidity * 0.4;
+        confidence += Math.min(area / (minArea * 10), 1.0) * 0.3;
+        confidence += (aspectRatio > 0.5 && aspectRatio < 2.0 ? 1.0 : 0.5) * 0.3;
+
+        rects.push({
+          x: rect.x,
+          y: rect.y,
+          width: rect.width,
+          height: rect.height,
+          area: area,
+          confidence: Math.min(confidence, 1.0),
+          solidity: solidity,
+          aspectRatio: aspectRatio
+        });
+      }
+      
+      contour.delete();
+      hull.delete();
+    }
+
+    // Liberar memoria
     src.delete();
     gray.delete();
+    blurred.delete();
+    edges.delete();
+    morphed.delete();
+    kernel.delete();
+    contours.delete();
+    hierarchy.delete();
+
+    // Filtrar y ordenar
+    const filteredRects = filterOverlappingRects(rects);
+    filteredRects.sort((a, b) => b.confidence - a.confidence);
+
+    return filteredRects.slice(0, 3);
+
+  } catch (error) {
+    console.error('OpenCV detection error:', error);
+    return detectContoursNative(imageData, minArea);
   }
-  
-  return rects;
 }
 
-function detectWithNativeAlgorithms(imageData: ImageData, minArea: number): BoundingRect[] {
-  const width = imageData.width;
-  const height = imageData.height;
-  const data = imageData.data;
+// Detección nativa profesional (fallback)
+function detectContoursNative(imageData: ImageData, minArea: number) {
+  const { width, height, data } = imageData;
+  const rects = [];
   
-  // Convert to grayscale
-  const grayData = new Uint8Array(width * height);
-  for (let i = 0; i < data.length; i += 4) {
-    const gray = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
-    grayData[i / 4] = gray;
-  }
-  
-  // Apply Gaussian blur
-  const blurred = applyGaussianBlur(grayData, width, height, 1.4);
-  
-  // Multi-threshold edge detection
-  const rects: BoundingRect[] = [];
-  
-  for (const threshold of [30, 60, 90]) {
-    // Simple edge detection using Sobel operator
-    const edges = applySobelEdgeDetection(blurred, width, height, threshold);
-    
-    // Morphological operations
-    const processed = applyMorphology(edges, width, height);
-    
-    // Connected component analysis
-    const components = findConnectedComponents(processed, width, height, minArea);
-    
-    for (const component of components) {
-      if (component.area >= minArea && component.area <= DETECTION_CONFIG.maxContourArea) {
-        const aspectRatio = component.width / component.height;
-        
-        if (aspectRatio >= DETECTION_CONFIG.minAspectRatio && 
-            aspectRatio <= DETECTION_CONFIG.maxAspectRatio) {
-          
-          const rect: BoundingRect = {
-            x: component.x,
-            y: component.y,
-            width: component.width,
-            height: component.height,
-            area: component.area,
-            confidence: calculateNativeConfidence(component, minArea)
-          };
-          
-          rects.push(rect);
-        }
-      }
-    }
-  }
-  
-  return rects;
-}
-
-function calculateConfidence(circularity: number, solidity: number, extent: number, area: number, minArea: number): number {
-  // Weighted confidence calculation based on shape quality
-  const circularityScore = Math.min(circularity * 2, 1.0); // Prefer circular objects
-  const solidityScore = solidity; // Higher solidity is better
-  const extentScore = extent; // Higher extent means better fit
-  const sizeScore = Math.min(area / (minArea * 4), 1.0); // Prefer reasonably sized objects
-  
-  return (circularityScore * 0.3 + solidityScore * 0.3 + extentScore * 0.2 + sizeScore * 0.2);
-}
-
-function calculateNativeConfidence(component: any, minArea: number): number {
-  const aspectRatio = component.width / component.height;
-  const sizeScore = Math.min(component.area / (minArea * 2), 1.0);
-  const aspectScore = 1.0 - Math.abs(aspectRatio - 1.0) / 2.0; // Prefer square-ish objects
-  
-  return (sizeScore * 0.6 + aspectScore * 0.4);
-}
-
-// Native image processing functions
-function applyGaussianBlur(data: Uint8Array, width: number, height: number, sigma: number): Uint8Array {
-  const kernel = generateGaussianKernel(sigma);
-  const kernelSize = kernel.length;
-  const offset = Math.floor(kernelSize / 2);
-  const result = new Uint8Array(width * height);
-  
-  for (let y = offset; y < height - offset; y++) {
-    for (let x = offset; x < width - offset; x++) {
-      let sum = 0;
-      let weightSum = 0;
-      
-      for (let ky = 0; ky < kernelSize; ky++) {
-        for (let kx = 0; kx < kernelSize; kx++) {
-          const px = x + kx - offset;
-          const py = y + ky - offset;
-          const weight = kernel[ky] * kernel[kx];
-          sum += data[py * width + px] * weight;
-          weightSum += weight;
-        }
-      }
-      
-      result[y * width + x] = Math.round(sum / weightSum);
-    }
-  }
-  
-  return result;
-}
-
-function generateGaussianKernel(sigma: number): number[] {
-  const size = Math.ceil(sigma * 3) * 2 + 1;
-  const kernel = new Array(size);
-  const center = Math.floor(size / 2);
-  let sum = 0;
-  
-  for (let i = 0; i < size; i++) {
-    const x = i - center;
-    kernel[i] = Math.exp(-(x * x) / (2 * sigma * sigma));
-    sum += kernel[i];
-  }
-  
-  // Normalize
-  for (let i = 0; i < size; i++) {
-    kernel[i] /= sum;
-  }
-  
-  return kernel;
-}
-
-function applySobelEdgeDetection(data: Uint8Array, width: number, height: number, threshold: number): Uint8Array {
-  const result = new Uint8Array(width * height);
-  
-  // Sobel kernels
-  const sobelX = [-1, 0, 1, -2, 0, 2, -1, 0, 1];
-  const sobelY = [-1, -2, -1, 0, 0, 0, 1, 2, 1];
+  // Algoritmo de detección de bordes Sobel
+  const edges = new Uint8Array(width * height);
   
   for (let y = 1; y < height - 1; y++) {
     for (let x = 1; x < width - 1; x++) {
-      let gx = 0, gy = 0;
+      const sobelX = 
+        -1 * getGrayValue(data, x - 1, y - 1, width) +
+        -2 * getGrayValue(data, x - 1, y, width) +
+        -1 * getGrayValue(data, x - 1, y + 1, width) +
+         1 * getGrayValue(data, x + 1, y - 1, width) +
+         2 * getGrayValue(data, x + 1, y, width) +
+         1 * getGrayValue(data, x + 1, y + 1, width);
       
-      for (let ky = 0; ky < 3; ky++) {
-        for (let kx = 0; kx < 3; kx++) {
-          const px = x + kx - 1;
-          const py = y + ky - 1;
-          const pixel = data[py * width + px];
-          const ki = ky * 3 + kx;
-          
-          gx += pixel * sobelX[ki];
-          gy += pixel * sobelY[ki];
-        }
-      }
+      const sobelY = 
+        -1 * getGrayValue(data, x - 1, y - 1, width) +
+        -2 * getGrayValue(data, x, y - 1, width) +
+        -1 * getGrayValue(data, x + 1, y - 1, width) +
+         1 * getGrayValue(data, x - 1, y + 1, width) +
+         2 * getGrayValue(data, x, y + 1, width) +
+         1 * getGrayValue(data, x + 1, y + 1, width);
       
-      const magnitude = Math.sqrt(gx * gx + gy * gy);
-      result[y * width + x] = magnitude > threshold ? 255 : 0;
+      const magnitude = Math.sqrt(sobelX * sobelX + sobelY * sobelY);
+      edges[y * width + x] = magnitude > 60 ? 255 : 0;
     }
   }
   
-  return result;
-}
-
-function applyMorphology(data: Uint8Array, width: number, height: number): Uint8Array {
-  // Simple closing operation (dilation followed by erosion)
-  let result = dilate(data, width, height, 2);
-  result = erode(result, width, height, 2);
-  return result;
-}
-
-function dilate(data: Uint8Array, width: number, height: number, size: number): Uint8Array {
-  const result = new Uint8Array(width * height);
-  
-  for (let y = size; y < height - size; y++) {
-    for (let x = size; x < width - size; x++) {
-      let maxVal = 0;
-      
-      for (let ky = -size; ky <= size; ky++) {
-        for (let kx = -size; kx <= size; kx++) {
-          const px = x + kx;
-          const py = y + ky;
-          maxVal = Math.max(maxVal, data[py * width + px]);
-        }
-      }
-      
-      result[y * width + x] = maxVal;
-    }
-  }
-  
-  return result;
-}
-
-function erode(data: Uint8Array, width: number, height: number, size: number): Uint8Array {
-  const result = new Uint8Array(width * height);
-  
-  for (let y = size; y < height - size; y++) {
-    for (let x = size; x < width - size; x++) {
-      let minVal = 255;
-      
-      for (let ky = -size; ky <= size; ky++) {
-        for (let kx = -size; kx <= size; kx++) {
-          const px = x + kx;
-          const py = y + ky;
-          minVal = Math.min(minVal, data[py * width + px]);
-        }
-      }
-      
-      result[y * width + x] = minVal;
-    }
-  }
-  
-  return result;
-}
-
-function findConnectedComponents(data: Uint8Array, width: number, height: number, minArea: number): any[] {
+  // Encontrar componentes conectados
   const visited = new Array(width * height).fill(false);
-  const components: any[] = [];
+  const imageArea = width * height;
   
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const idx = y * width + x;
-      
-      if (data[idx] > 0 && !visited[idx]) {
-        const component = floodFill(data, visited, width, height, x, y);
+      if (edges[idx] > 0 && !visited[idx]) {
+        const rect = floodFill(edges, visited, x, y, width, height);
+        const area = rect.width * rect.height;
         
-        if (component.area >= minArea) {
-          components.push(component);
+        if (area >= minArea && 
+            area <= imageArea * 0.5 &&
+            rect.width > 15 && rect.height > 15 &&
+            rect.width / rect.height > 0.2 && rect.width / rect.height < 5.0) {
+          
+          const sizeScore = Math.min(area / (minArea * 5), 1.0);
+          const shapeScore = Math.min(rect.width / rect.height, rect.height / rect.width);
+          const confidence = (sizeScore * 0.6) + (shapeScore * 0.4);
+          
+          rects.push({
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height,
+            area: area,
+            confidence: Math.min(confidence, 0.9)
+          });
         }
       }
     }
   }
   
-  return components;
+  const filteredRects = filterOverlappingRects(rects);
+  filteredRects.sort((a, b) => (b.confidence * b.area) - (a.confidence * a.area));
+  
+  return filteredRects.slice(0, 2);
 }
 
-function floodFill(data: Uint8Array, visited: boolean[], width: number, height: number, startX: number, startY: number): any {
-  const stack = [{ x: startX, y: startY }];
-  visited[startY * width + startX] = true;
-  
-  let minX = startX, maxX = startX;
-  let minY = startY, maxY = startY;
-  let area = 0;
+function getGrayValue(data: Uint8ClampedArray, x: number, y: number, width: number) {
+  const idx = (y * width + x) * 4;
+  return (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
+}
+
+function floodFill(edges: Uint8Array, visited: boolean[], startX: number, startY: number, width: number, height: number) {
+  const stack = [[startX, startY]];
+  let minX = startX, maxX = startX, minY = startY, maxY = startY;
   
   while (stack.length > 0) {
-    const { x, y } = stack.pop()!;
-    area++;
+    const [x, y] = stack.pop()!;
+    const idx = y * width + x;
+    
+    if (x < 0 || x >= width || y < 0 || y >= height || visited[idx] || edges[idx] === 0) {
+      continue;
+    }
+    
+    visited[idx] = true;
     
     minX = Math.min(minX, x);
     maxX = Math.max(maxX, x);
     minY = Math.min(minY, y);
     maxY = Math.max(maxY, y);
     
-    // Check 8-connected neighbors
-    for (let dy = -1; dy <= 1; dy++) {
-      for (let dx = -1; dx <= 1; dx++) {
-        const nx = x + dx;
-        const ny = y + dy;
-        const nIdx = ny * width + nx;
-        
-        if (nx >= 0 && nx < width && ny >= 0 && ny < height && 
-            !visited[nIdx] && data[nIdx] > 0) {
-          visited[nIdx] = true;
-          stack.push({ x: nx, y: ny });
-        }
-      }
-    }
+    stack.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
   }
   
   return {
     x: minX,
     y: minY,
     width: maxX - minX + 1,
-    height: maxY - minY + 1,
-    area: area
+    height: maxY - minY + 1
   };
 }
 
-function applyAdvancedFiltering(rects: BoundingRect[]): BoundingRect[] {
-  // Remove overlapping rectangles, keeping the one with highest confidence
-  const filtered: BoundingRect[] = [];
-  
-  for (const rect of rects) {
-    let shouldAdd = true;
-    
-    for (let i = filtered.length - 1; i >= 0; i--) {
-      const existing = filtered[i];
-      const overlap = calculateOverlap(rect, existing);
-      
-      if (overlap > 0.3) { // 30% overlap threshold
-        if (rect.confidence > existing.confidence) {
-          filtered.splice(i, 1); // Remove existing, add new
-        } else {
-          shouldAdd = false; // Skip this rect
-          break;
-        }
+// Inicializar worker
+let isInitialized = false;
+
+self.onmessage = async (event: MessageEvent<Incoming>) => {
+  const msg = event.data;
+
+  if (msg.type === 'INIT') {
+    if (!isInitialized) {
+      try {
+        await loadOpenCV();
+        isInitialized = true;
+        console.log('Professional measurement worker initialized');
+      } catch (error) {
+        console.error('Failed to initialize OpenCV:', error);
+        isInitialized = true;
       }
     }
-    
-    if (shouldAdd) {
-      filtered.push(rect);
+    postMessage({ type: 'READY' } as Outgoing);
+    return;
+  }
+
+  if (msg.type === 'DETECT') {
+    try {
+      const rects = isOpenCVReady 
+        ? detectContoursOpenCV(msg.imageData, msg.minArea)
+        : detectContoursNative(msg.imageData, msg.minArea);
+      
+      postMessage({ type: 'DETECTED', rects } as Outgoing);
+    } catch (e) {
+      console.error('Worker error:', e);
+      try {
+        const rects = detectContoursNative(msg.imageData, msg.minArea);
+        postMessage({ type: 'DETECTED', rects } as Outgoing);
+      } catch (nativeError) {
+        console.error('Native detection also failed:', nativeError);
+        postMessage({ type: 'DETECTED', rects: [] } as Outgoing);
+      }
     }
   }
-  
-  // Sort by confidence and return top candidates
-  return filtered
-    .sort((a, b) => b.confidence - a.confidence)
-    .slice(0, 3); // Maximum 3 objects
-}
-
-function calculateOverlap(rect1: BoundingRect, rect2: BoundingRect): number {
-  const x1 = Math.max(rect1.x, rect2.x);
-  const y1 = Math.max(rect1.y, rect2.y);
-  const x2 = Math.min(rect1.x + rect1.width, rect2.x + rect2.width);
-  const y2 = Math.min(rect1.y + rect1.height, rect2.y + rect2.height);
-  
-  if (x2 <= x1 || y2 <= y1) return 0;
-  
-  const intersectionArea = (x2 - x1) * (y2 - y1);
-  const unionArea = rect1.area + rect2.area - intersectionArea;
-  
-  return intersectionArea / unionArea;
-}
+};

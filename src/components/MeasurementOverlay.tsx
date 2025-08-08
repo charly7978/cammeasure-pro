@@ -94,16 +94,17 @@ export const MeasurementOverlay: React.FC<MeasurementOverlayProps> = ({
           </div>
         </div>
 
-        {/* Measurement Labels - Posicionadas para evitar superposición */}
+        {/* Measurement Labels - Reposicionadas en esquina superior derecha */}
         <div
-          className="absolute z-20 font-mono text-base px-4 py-3 rounded-xl shadow-2xl border-2"
+          className="absolute z-20 font-mono text-sm px-3 py-2 rounded-lg shadow-xl border"
           style={{
-            left: `${Math.min(bestObject.bounds.x * scaleX, containerWidth - 250)}px`,
-            top: `${calculateLabelPosition(bestObject, 0)}px`,
-            backgroundColor: 'rgba(0, 0, 0, 0.95)',
+            right: '10px',
+            top: '10px',
+            backgroundColor: 'rgba(0, 0, 0, 0.9)',
             borderColor: 'hsl(var(--measurement-active))',
             color: 'hsl(var(--measurement-active))',
-            minWidth: '240px'
+            minWidth: '200px',
+            maxWidth: '250px'
           }}
         >
           <div className="space-y-2">

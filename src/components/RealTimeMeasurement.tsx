@@ -29,7 +29,7 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef<number>();
   const lastProcessTime = useRef<number>(0);
-  const PROCESS_INTERVAL = 200; // Faster processing for better real-time response
+  const PROCESS_INTERVAL = 150; // Optimized processing interval for better responsiveness
 
   const processFrame = useCallback(() => {
     if (!isActive || !videoRef.current || !canvasRef.current) {
@@ -68,7 +68,7 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
 
     detect({
       imageData,
-      minArea: 1000, // Reduced minimum area for better sensitivity
+      minArea: 800, // Optimized minimum area for better object detection
       onDetect: (rects) => {
         // Enhanced conversion factor calculation
         const factor = calculateConversionFactor(calibration, canvas.width, canvas.height);
@@ -164,23 +164,29 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
     return Math.max(2, Math.min(20, autoFactor)); // Clamp between 2-20 pixels/mm for safety
   };
 
-  // Validate object for measurement
+  // Enhanced object validation for better measurement accuracy
   const validateObjectForMeasurement = (rect: any, imageWidth: number, imageHeight: number): boolean => {
     const imageArea = imageWidth * imageHeight;
     const objectAreaRatio = rect.area / imageArea;
     const aspectRatio = rect.width / rect.height;
     
-    // Filtering criteria for valid measurement objects
-    const isValidSize = rect.area >= 800 && rect.area <= imageArea * 0.4;
-    const isValidAspectRatio = aspectRatio >= 0.1 && aspectRatio <= 10.0;
-    const isValidPosition = rect.x > 10 && rect.y > 10 && 
-                           rect.x + rect.width < imageWidth - 10 && 
-                           rect.y + rect.height < imageHeight - 10;
-    const isValidAreaRatio = objectAreaRatio >= 0.001 && objectAreaRatio <= 0.4;
-    const hasMinimumDimensions = rect.width >= 20 && rect.height >= 20;
+    // Enhanced filtering criteria for valid measurement objects
+    const isValidSize = rect.area >= 600 && rect.area <= imageArea * 0.5; // More permissive size range
+    const isValidAspectRatio = aspectRatio >= 0.05 && aspectRatio <= 20.0; // More permissive aspect ratio
+    const isValidPosition = rect.x > 5 && rect.y > 5 && 
+                           rect.x + rect.width < imageWidth - 5 && 
+                           rect.y + rect.height < imageHeight - 5; // Smaller border margin
+    const isValidAreaRatio = objectAreaRatio >= 0.0005 && objectAreaRatio <= 0.5; // More permissive area ratio
+    const hasMinimumDimensions = rect.width >= 15 && rect.height >= 15; // Smaller minimum dimensions
+    
+    // Additional quality checks
+    const hasReasonableShape = rect.width > 0 && rect.height > 0;
+    const isNotTooThin = Math.min(rect.width, rect.height) >= 10; // Avoid very thin objects
+    const hasGoodConfidence = (rect.confidence || 0) >= 0.1; // Very low confidence threshold
     
     const isValid = isValidSize && isValidAspectRatio && isValidPosition && 
-                   isValidAreaRatio && hasMinimumDimensions;
+                   isValidAreaRatio && hasMinimumDimensions && hasReasonableShape && 
+                   isNotTooThin && hasGoodConfidence;
     
     if (!isValid) {
       console.log('Object rejected:', {
@@ -189,12 +195,16 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
         areaRatio: objectAreaRatio.toFixed(4),
         position: { x: rect.x, y: rect.y },
         dimensions: { width: rect.width, height: rect.height },
+        confidence: rect.confidence || 0,
         reasons: {
           size: !isValidSize,
           aspectRatio: !isValidAspectRatio,
           position: !isValidPosition,
           areaRatio: !isValidAreaRatio,
-          minDimensions: !hasMinimumDimensions
+          minDimensions: !hasMinimumDimensions,
+          shape: !hasReasonableShape,
+          thinness: !isNotTooThin,
+          confidence: !hasGoodConfidence
         }
       });
     }

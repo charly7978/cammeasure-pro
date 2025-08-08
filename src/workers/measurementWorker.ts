@@ -4,27 +4,27 @@ import { BoundingRect, detectContours } from '../lib/imageProcessing';
 let cv: any = null;
 let isInitialized = false;
 
-// Advanced filtering parameters for real object detection
+// Enhanced filtering parameters for improved object detection
 const DETECTION_CONFIG = {
-  // Multi-scale edge detection thresholds
-  cannyLower: [30, 50, 80],
-  cannyUpper: [90, 150, 240],
+  // Multi-scale edge detection thresholds - optimized for better edge detection
+  cannyLower: [40, 60, 90],
+  cannyUpper: [120, 180, 270],
   
-  // Morphological operations
-  morphKernelSizes: [3, 5, 7],
+  // Morphological operations - smaller kernels for better detail preservation
+  morphKernelSizes: [2, 3, 5],
   
-  // Contour filtering
-  minContourArea: 500,
-  maxContourArea: 50000,
-  minAspectRatio: 0.2,
-  maxAspectRatio: 5.0,
+  // Contour filtering - adjusted for better object detection
+  minContourArea: 800,
+  maxContourArea: 80000,
+  minAspectRatio: 0.1,
+  maxAspectRatio: 10.0,
   
-  // Shape analysis
-  minCircularity: 0.1,
-  minSolidity: 0.3,
+  // Shape analysis - more permissive for varied object shapes
+  minCircularity: 0.05,
+  minSolidity: 0.2,
   
-  // Approximation accuracy
-  epsilonFactor: 0.02
+  // Approximation accuracy - more precise contour approximation
+  epsilonFactor: 0.015
 };
 
 self.onmessage = function(e: MessageEvent) {

@@ -228,11 +228,11 @@ export const CameraView: React.FC<CameraViewProps> = ({
         </div>
       </div>
 
-      {/* Camera View with Real-time Overlay */}
+      {/* Camera View with Real-time Overlay - ENLARGED */}
       <Card className="relative overflow-hidden bg-black">
         <div 
           ref={containerRef}
-          className="relative aspect-[4/3] bg-black"
+          className="relative aspect-[16/10] bg-black min-h-[70vh]"
           onLoadedData={() => {
             if (containerRef.current) {
               const rect = containerRef.current.getBoundingClientRect();

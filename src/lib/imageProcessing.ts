@@ -5,19 +5,6 @@ export interface BoundingRect {
   height: number;
   area: number;
   confidence?: number; // Opcional para compatibilidad con el worker
-  // Advanced geometric properties for real measurements
-  circularity?: number;
-  solidity?: number;
-  extent?: number;
-  aspectRatio?: number;
-  compactness?: number;
-  perimeter?: number;
-  contourPoints?: number;
-  centerX?: number;
-  centerY?: number;
-  huMoments?: number[];
-  isConvex?: boolean;
-  boundingCircleRadius?: number;
 }
 
 /**

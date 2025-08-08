@@ -123,8 +123,7 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
           .sort((a, b) => b.qualityScore - a.qualityScore)
           .slice(0, 2); // Top 2 objetos para análisis profesional
 
-        const objects: DetectedObject[] = await Promise.all(
-          professionalRects.map(async (rect, i) => {
+        const objects: DetectedObject[] = professionalRects.map((rect, i) => {
             // Convertir píxeles a milímetros con precisión profesional
             const widthMm = rect.width / factor;
             const heightMm = rect.height / factor;
@@ -181,8 +180,7 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
               volume: object3D.volume,
               surfaceArea: object3D.surfaceArea
             };
-          })
-        );
+        });
 
         onObjectsDetected(objects);
       },

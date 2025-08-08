@@ -448,7 +448,7 @@ const Index = () => {
                 </div>
               )}
             </div>
-      
+          </Card>
 
           {/* Sensor Data */}
           {sensorData && (

@@ -118,8 +118,8 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
             dimensiones: `${r.width}x${r.height}px`,
             area: `${r.area}px²`,
             confidence: `${((r.confidence || 0) * 100).toFixed(1)}%`,
-            circularity: r.circularity?.toFixed(3) || 'N/A',
-            solidity: r.solidity?.toFixed(3) || 'N/A',
+            circularity: (r as any).circularity?.toFixed(3) || 'N/A',
+            solidity: (r as any).solidity?.toFixed(3) || 'N/A',
             aspectRatio: (r.width / r.height).toFixed(2)
           })));
         }

@@ -1,3 +1,4 @@
+
 import React, { useCallback, useEffect, useRef } from 'react';
 import { useOpenCV } from '@/hooks/useOpenCV';
 import { useMeasurementWorker } from '@/hooks/useMeasurementWorker';
@@ -28,11 +29,13 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef<number>();
   const lastProcessTime = useRef<number>(0);
-  const PROCESS_INTERVAL = 300; // Procesar cada 300ms para reducir carga
+  const PROCESS_INTERVAL = 200; // Faster processing for better real-time response
 
   const processFrame = useCallback(() => {
     if (!isActive || !videoRef.current || !canvasRef.current) {
-      rafRef.current = requestAnimationFrame(processFrame);
+      if (isActive) {
+        rafRef.current = requestAnimationFrame(processFrame);
+      }
       return;
     }
 
@@ -65,60 +68,58 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
 
     detect({
       imageData,
-      minArea: 2000, // Área mínima más grande para ser más selectivo
+      minArea: 1000, // Reduced minimum area for better sensitivity
       onDetect: (rects) => {
-        // Usar factor de conversión realista
-        const factor = calibration?.isCalibrated ? calibration.pixelsPerMm : 8; // Factor por defecto más realista
-        const unit = 'mm'; // Siempre usar mm como unidad base
+        // Enhanced conversion factor calculation
+        const factor = calculateConversionFactor(calibration, canvas.width, canvas.height);
+        const unit = 'mm'; // Always use millimeters as base unit
 
-        console.log('Calibration data:', calibration);
-        console.log('Conversion factor:', factor);
+        console.log('Real-time detection:', {
+          rectsFound: rects.length,
+          canvasSize: { width: canvas.width, height: canvas.height },
+          conversionFactor: factor,
+          calibrationData: calibration
+        });
 
-        // Filtrar y ordenar los rectángulos por calidad
-        const filteredRects = rects
-          .filter(rect => {
-            const aspectRatio = rect.width / rect.height;
-            const imageArea = canvas.width * canvas.height;
-            
-            return rect.area >= 2000 && 
-                   rect.area <= imageArea * 0.25 && // No más del 25% de la imagen
-                   aspectRatio > 0.3 && aspectRatio < 4.0 &&
-                   rect.width > 50 && rect.height > 50;
+        // Apply intelligent filtering for real-time measurement
+        const validRects = rects.filter(rect => {
+          return validateObjectForMeasurement(rect, canvas.width, canvas.height);
+        });
+
+        console.log('Valid objects after filtering:', validRects.length);
+
+        // Sort by confidence and area, prioritize larger, well-formed objects
+        const sortedRects = validRects
+          .sort((a, b) => {
+            const scoreA = (a.confidence || 0.5) * 0.7 + (a.area / 10000) * 0.3;
+            const scoreB = (b.confidence || 0.5) * 0.7 + (b.area / 10000) * 0.3;
+            return scoreB - scoreA;
           })
-          .map(rect => ({
-            ...rect,
-            // Calcular score de calidad basado en tamaño, posición y forma
-            qualityScore: calculateQualityScore(rect, canvas.width, canvas.height)
-          }))
-          .sort((a, b) => b.qualityScore - a.qualityScore)
-          .slice(0, 1); // Solo el mejor objeto
+          .slice(0, 1); // Focus on the best object for stable measurement
 
-        const objects: DetectedObject[] = filteredRects.map((rect, i) => {
-          // Convertir píxeles a milímetros
-          const widthMm = rect.width / factor;
-          const heightMm = rect.height / factor;
-          const areaMm2 = rect.area / (factor * factor);
+        const objects: DetectedObject[] = sortedRects.map((rect, i) => {
+          // Real measurement calculations
+          const realWidth = calculateRealDimension(rect.width, factor);
+          const realHeight = calculateRealDimension(rect.height, factor);
+          const realArea = calculateRealArea(rect.area, factor);
           
-          console.log(`Object ${i + 1}:`, {
-            pixelWidth: rect.width,
-            pixelHeight: rect.height,
-            pixelArea: rect.area,
-            mmWidth: widthMm,
-            mmHeight: heightMm,
-            mmArea: areaMm2,
-            factor: factor
+          console.log(`Object ${i + 1} measurements:`, {
+            pixelDimensions: { width: rect.width, height: rect.height, area: rect.area },
+            realDimensions: { width: realWidth, height: realHeight, area: realArea },
+            conversionFactor: factor,
+            confidence: rect.confidence
           });
           
           return {
-            id: `obj_${i}_${Date.now()}`,
+            id: `realtime_obj_${i}_${Date.now()}`,
             bounds: rect,
             dimensions: {
-              width: widthMm,
-              height: heightMm,
-              area: areaMm2,
+              width: realWidth,
+              height: realHeight,
+              area: realArea,
               unit: unit,
             },
-            confidence: rect.qualityScore,
+            confidence: rect.confidence || 0.8,
             center: { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 },
           };
         });
@@ -130,38 +131,99 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
     rafRef.current = requestAnimationFrame(processFrame);
   }, [isActive, videoRef, detect, calibration, onObjectsDetected]);
 
-  // Función para calcular la calidad del objeto detectado
-  const calculateQualityScore = (rect: any, imageWidth: number, imageHeight: number): number => {
-    // Factores de calidad:
+  // Calculate realistic conversion factor
+  const calculateConversionFactor = (calibration: any, imageWidth: number, imageHeight: number): number => {
+    if (calibration?.isCalibrated && calibration?.pixelsPerMm > 0) {
+      console.log('Using calibrated conversion factor:', calibration.pixelsPerMm);
+      return calibration.pixelsPerMm;
+    }
     
-    // 1. Tamaño relativo (objetos ni muy pequeños ni muy grandes)
+    // Enhanced auto-calibration based on typical smartphone camera specifications
+    // Average smartphone camera: 12MP (4000x3000), 4mm focal length, 6mm sensor diagonal
+    const avgFocalLength = 4.0; // mm
+    const avgSensorDiagonal = 6.17; // mm (1/2.55" sensor)
+    const typicalViewingDistance = 300; // mm (30cm typical measurement distance)
+    
+    // Calculate field of view
+    const fovDiagonal = 2 * Math.atan(avgSensorDiagonal / (2 * avgFocalLength));
+    const realWorldDiagonal = 2 * typicalViewingDistance * Math.tan(fovDiagonal / 2);
+    const imageDiagonal = Math.sqrt(imageWidth * imageWidth + imageHeight * imageHeight);
+    
+    const autoFactor = imageDiagonal / realWorldDiagonal;
+    
+    console.log('Auto-calibration calculation:', {
+      focalLength: avgFocalLength,
+      sensorDiagonal: avgSensorDiagonal,
+      viewingDistance: typicalViewingDistance,
+      fovDiagonal: fovDiagonal * 180 / Math.PI, // in degrees
+      realWorldDiagonal: realWorldDiagonal,
+      imageDiagonal: imageDiagonal,
+      calculatedFactor: autoFactor
+    });
+    
+    return Math.max(2, Math.min(20, autoFactor)); // Clamp between 2-20 pixels/mm for safety
+  };
+
+  // Validate object for measurement
+  const validateObjectForMeasurement = (rect: any, imageWidth: number, imageHeight: number): boolean => {
     const imageArea = imageWidth * imageHeight;
-    const sizeRatio = rect.area / imageArea;
-    const sizeScore = sizeRatio > 0.01 && sizeRatio < 0.2 ? 1 : 0.5;
-    
-    // 2. Posición central (objetos en el centro son mejores)
-    const centerX = rect.x + rect.width / 2;
-    const centerY = rect.y + rect.height / 2;
-    const distanceFromCenter = Math.sqrt(
-      Math.pow(centerX - imageWidth / 2, 2) + 
-      Math.pow(centerY - imageHeight / 2, 2)
-    );
-    const maxDistance = Math.sqrt(Math.pow(imageWidth / 2, 2) + Math.pow(imageHeight / 2, 2));
-    const positionScore = 1 - (distanceFromCenter / maxDistance);
-    
-    // 3. Forma regular (relación de aspecto cercana a 1 es mejor)
+    const objectAreaRatio = rect.area / imageArea;
     const aspectRatio = rect.width / rect.height;
-    const shapeScore = 1 - Math.abs(aspectRatio - 1) / 2;
     
-    // 4. Confianza del detector
-    const confidenceScore = rect.confidence || 0.7;
+    // Filtering criteria for valid measurement objects
+    const isValidSize = rect.area >= 800 && rect.area <= imageArea * 0.4;
+    const isValidAspectRatio = aspectRatio >= 0.1 && aspectRatio <= 10.0;
+    const isValidPosition = rect.x > 10 && rect.y > 10 && 
+                           rect.x + rect.width < imageWidth - 10 && 
+                           rect.y + rect.height < imageHeight - 10;
+    const isValidAreaRatio = objectAreaRatio >= 0.001 && objectAreaRatio <= 0.4;
+    const hasMinimumDimensions = rect.width >= 20 && rect.height >= 20;
     
-    // Combinar todos los factores
-    return (sizeScore * 0.3 + positionScore * 0.3 + shapeScore * 0.2 + confidenceScore * 0.2);
+    const isValid = isValidSize && isValidAspectRatio && isValidPosition && 
+                   isValidAreaRatio && hasMinimumDimensions;
+    
+    if (!isValid) {
+      console.log('Object rejected:', {
+        area: rect.area,
+        aspectRatio: aspectRatio.toFixed(2),
+        areaRatio: objectAreaRatio.toFixed(4),
+        position: { x: rect.x, y: rect.y },
+        dimensions: { width: rect.width, height: rect.height },
+        reasons: {
+          size: !isValidSize,
+          aspectRatio: !isValidAspectRatio,
+          position: !isValidPosition,
+          areaRatio: !isValidAreaRatio,
+          minDimensions: !hasMinimumDimensions
+        }
+      });
+    }
+    
+    return isValid;
+  };
+
+  // Calculate real-world dimensions with proper scaling
+  const calculateRealDimension = (pixelDimension: number, factor: number): number => {
+    const realDimension = pixelDimension / factor;
+    
+    // Apply slight correction for perspective distortion (objects at edges appear slightly smaller)
+    const correctionFactor = 1.05; // 5% correction
+    
+    return realDimension * correctionFactor;
+  };
+
+  const calculateRealArea = (pixelArea: number, factor: number): number => {
+    const realArea = pixelArea / (factor * factor);
+    
+    // Apply correction for perspective and lighting variations
+    const correctionFactor = 1.1; // 10% correction for area
+    
+    return realArea * correctionFactor;
   };
 
   useEffect(() => {
     if (isActive) {
+      console.log('Starting real-time measurement with OpenCV available:', isLoaded);
       rafRef.current = requestAnimationFrame(processFrame);
     } else {
       if (rafRef.current) {

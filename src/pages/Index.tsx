@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
@@ -16,7 +16,7 @@ import { CameraView } from '@/components/CameraView';
 import { CalibrationPanel, type CalibrationData } from '@/components/CalibrationPanel';
 import { MeasurementControls, type MeasurementMode } from '@/components/MeasurementControls';
 import { MeasurementEngine, type MeasurementResult, type MeasurementPoint } from '@/components/MeasurementEngine';
-import { type DetectedObject } from '@/components/RealTimeMeasurement';
+import RealTimeMeasurement from '@/components/RealTimeMeasurement';
 import { useDeviceSensors } from '@/hooks/useDeviceSensors';
 import { useOpenCV } from '@/hooks/useOpenCV';
 import { useCalibration } from '@/hooks/useCalibration';
@@ -28,8 +28,10 @@ const Index = () => {
   const [measurementResult, setMeasurementResult] = useState<MeasurementResult | null>(null);
   const [capturedImage, setCapturedImage] = useState<ImageData | null>(null);
   const [detectedEdges, setDetectedEdges] = useState<MeasurementPoint[]>([]);
-  const [realTimeObjects, setRealTimeObjects] = useState<DetectedObject[]>([]);
+  const [realTimeObjects, setRealTimeObjects] = useState<any[]>([]);
   const [objectCount, setObjectCount] = useState(0);
+  
+  const videoRef = useRef<HTMLVideoElement>(null);
   
   const { sensorData, isListening, startListening, stopListening } = useDeviceSensors();
   const { isLoaded: isOpenCVLoaded, error: openCVError } = useOpenCV();
@@ -85,7 +87,7 @@ const Index = () => {
     setDetectedEdges(edges);
   };
 
-  const handleRealTimeObjects = (objects: DetectedObject[]) => {
+  const handleRealTimeObjects = (objects: any[]) => {
     setRealTimeObjects(objects);
     setObjectCount(objects.length);
     
@@ -94,10 +96,10 @@ const Index = () => {
       const bestObject = objects[0]; // Ya viene ordenado por calidad
       
       const result: MeasurementResult = {
-        distance2D: Math.max(bestObject.dimensions.width, bestObject.dimensions.height),
-        area: bestObject.dimensions.area,
-        unit: bestObject.dimensions.unit,
-        confidence: bestObject.confidence,
+        distance2D: Math.max(bestObject.widthMm || 0, bestObject.heightMm || 0),
+        area: bestObject.areaMm2 || 0,
+        unit: 'mm',
+        confidence: bestObject.confidence || 0,
         mode: measurementMode
       };
       
@@ -195,10 +197,10 @@ const Index = () => {
           </div>
           <div>
             <h1 className="text-3xl font-bold bg-gradient-primary bg-clip-text text-transparent">
-              CamMeasure Pro
+              CamMeasure Pro - SISTEMA AVANZADO
             </h1>
             <p className="text-muted-foreground">
-              Medición en tiempo real con visión computacional
+              Medición en tiempo real con OpenCV y Worker Avanzado
             </p>
           </div>
         </div>
@@ -235,7 +237,7 @@ const Index = () => {
               className="border-measurement-active text-measurement-active animate-measurement-pulse"
             >
               <Target className="w-3 h-3 mr-1" />
-              🎯 Objeto detectado
+              🎯 {objectCount} objeto{objectCount !== 1 ? 's' : ''} detectado{objectCount !== 1 ? 's' : ''}
             </Badge>
           )}
 
@@ -265,25 +267,25 @@ const Index = () => {
                   <div className="space-y-1">
                     <p className="text-xs text-muted-foreground">↔️ Ancho</p>
                     <p className="font-mono text-measurement-active font-bold">
-                      {formatDimension(obj.dimensions.width)}
+                      {formatDimension(obj.widthMm || 0)}
                     </p>
                   </div>
                   <div className="space-y-1">
                     <p className="text-xs text-muted-foreground">↕️ Alto</p>
                     <p className="font-mono text-accent font-bold">
-                      {formatDimension(obj.dimensions.height)}
+                      {formatDimension(obj.heightMm || 0)}
                     </p>
                   </div>
                   <div className="space-y-1">
                     <p className="text-xs text-muted-foreground">📐 Área</p>
                     <p className="font-mono text-primary font-bold">
-                      {formatArea(obj.dimensions.area)}
+                      {formatArea(obj.areaMm2 || 0)}
                     </p>
                   </div>
                 </div>
                 <div className="flex justify-between items-center pt-2 border-t border-white/20">
                   <span className="text-xs text-muted-foreground">
-                    Confianza: {(obj.confidence * 100).toFixed(0)}%
+                    Confianza: {((obj.confidence || 0) * 100).toFixed(0)}%
                   </span>
                   <span className="text-xs text-muted-foreground">
                     Factor: {calibration?.pixelsPerMm.toFixed(1)} px/mm
@@ -328,6 +330,14 @@ const Index = () => {
               isActive={activeTab === 'camera'}
               calibrationData={calibration}
               onRealTimeObjects={handleRealTimeObjects}
+              videoRef={videoRef}
+            />
+            
+            {/* Real-time Measurement Component */}
+            <RealTimeMeasurement
+              videoRef={videoRef}
+              isActive={activeTab === 'camera'}
+              onObjectsDetected={handleRealTimeObjects}
             />
             
             {/* Quick Instructions */}
@@ -335,10 +345,10 @@ const Index = () => {
               <h4 className="font-medium mb-2 text-primary">🎯 Instrucciones de Uso</h4>
               <ul className="text-sm text-muted-foreground space-y-1">
                 <li>• Apunta la cámara hacia el objeto que quieres medir</li>
-                <li>• La aplicación detectará automáticamente el mejor objeto</li>
+                <li>• La aplicación detectará automáticamente objetos con OpenCV</li>
                 <li>• Las dimensiones aparecerán en tiempo real en mm/cm/m</li>
                 <li>• Mantén el objeto centrado para mejor precisión</li>
-                <li>• El sistema está pre-calibrado para mediciones básicas</li>
+                <li>• El sistema usa Worker avanzado para mejor performance</li>
                 <li>• Para mayor precisión, calibra en la pestaña "Calibración"</li>
               </ul>
             </Card>
@@ -421,7 +431,7 @@ const Index = () => {
                           <div className="flex justify-between items-start mb-3">
                             <h5 className="text-lg font-bold text-measurement-active">🎯 Mejor Objeto</h5>
                             <Badge variant="outline" className="text-sm border-measurement-active text-measurement-active">
-                              {(obj.confidence * 100).toFixed(0)}% confianza
+                              {((obj.confidence || 0) * 100).toFixed(0)}% confianza
                             </Badge>
                           </div>
                           <div className="grid grid-cols-2 gap-4 text-sm">
@@ -429,13 +439,13 @@ const Index = () => {
                               <div>
                                 <p className="text-muted-foreground">↔️ Ancho</p>
                                 <p className="font-mono text-measurement-active font-bold text-lg">
-                                  {formatDimension(obj.dimensions.width)}
+                                  {formatDimension(obj.widthMm || 0)}
                                 </p>
                               </div>
                               <div>
                                 <p className="text-muted-foreground">📐 Área</p>
                                 <p className="font-mono text-primary font-bold">
-                                  {formatArea(obj.dimensions.area)}
+                                  {formatArea(obj.areaMm2 || 0)}
                                 </p>
                               </div>
                             </div>
@@ -443,13 +453,13 @@ const Index = () => {
                               <div>
                                 <p className="text-muted-foreground">↕️ Alto</p>
                                 <p className="font-mono text-accent font-bold text-lg">
-                                  {formatDimension(obj.dimensions.height)}
+                                  {formatDimension(obj.heightMm || 0)}
                                 </p>
                               </div>
                               <div>
                                 <p className="text-muted-foreground">📏 Diagonal</p>
                                 <p className="font-mono text-calibration font-bold">
-                                  {formatDimension(Math.sqrt(obj.dimensions.width ** 2 + obj.dimensions.height ** 2))}
+                                  {formatDimension(Math.sqrt((obj.widthMm || 0) ** 2 + (obj.heightMm || 0) ** 2))}
                                 </p>
                               </div>
                             </div>

@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { useCamera } from '@/hooks/useCamera';
 import { CameraDirection } from '@capacitor/camera';
-import { RealTimeMeasurement, DetectedObject } from './RealTimeMeasurement';
+import { AdvancedMeasurementSystem, AdvancedDetectedObject } from './AdvancedMeasurementSystem';
 import { MeasurementOverlay } from './MeasurementOverlay';
 
 interface CameraViewProps {
@@ -24,8 +24,10 @@ interface CameraViewProps {
   calibrationData: {
     pixelsPerMm: number;
     isCalibrated: boolean;
+    focalLength?: number;
+    sensorSize?: number;
   } | null;
-  onRealTimeObjects: (objects: DetectedObject[]) => void;
+  onRealTimeObjects: (objects: AdvancedDetectedObject[]) => void;
 }
 
 export const CameraView: React.FC<CameraViewProps> = ({
@@ -51,7 +53,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
   const [flashEnabled, setFlashEnabled] = useState(false);
   const [focusPoint, setFocusPoint] = useState<{ x: number; y: number } | null>(null);
   const [hasPermissions, setHasPermissions] = useState(false);
-  const [detectedObjects, setDetectedObjects] = useState<DetectedObject[]>([]);
+  const [detectedObjects, setDetectedObjects] = useState<AdvancedDetectedObject[]>([]);
   const [isRealTimeMeasurement, setIsRealTimeMeasurement] = useState(true);
   const [videoContainer, setVideoContainer] = useState({ width: 0, height: 0 });
 
@@ -130,7 +132,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
     onImageCapture(imageData);
   };
 
-  const handleObjectsDetected = (objects: DetectedObject[]) => {
+  const handleObjectsDetected = (objects: AdvancedDetectedObject[]) => {
     setDetectedObjects(objects);
     onRealTimeObjects(objects);
   };
@@ -184,7 +186,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
           {isRealTimeMeasurement && detectedObjects.length > 0 && (
             <Badge variant="outline" className="border-measurement-active text-measurement-active">
               <Target className="w-3 h-3 mr-1" />
-              {detectedObjects.length} objeto{detectedObjects.length !== 1 ? 's' : ''}
+              {detectedObjects.length} objeto{detectedObjects.length !== 1 ? 's' : ''} - 3D AVANZADO
             </Badge>
           )}
         </div>
@@ -316,12 +318,13 @@ export const CameraView: React.FC<CameraViewProps> = ({
           </div>
         )}
 
-          {/* Real-time Processing Component */}
+          {/* SISTEMA DE MEDICIÓN AVANZADO */}
           {isRealTimeMeasurement && (
-            <RealTimeMeasurement
+            <AdvancedMeasurementSystem
               videoRef={videoRef}
               onObjectsDetected={handleObjectsDetected}
               isActive={isActive && isRealTimeMeasurement}
+              calibrationData={calibrationData}
             />
           )}
       </Card>

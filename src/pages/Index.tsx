@@ -9,14 +9,16 @@ import {
   Settings,
   Ruler,
   Smartphone,
-  Cpu
+  Cpu,
+  Layers,
+  Move3D
 } from 'lucide-react';
 
 import { CameraView } from '@/components/CameraView';
 import { CalibrationPanel, type CalibrationData } from '@/components/CalibrationPanel';
 import { MeasurementControls, type MeasurementMode } from '@/components/MeasurementControls';
 import { MeasurementEngine, type MeasurementResult, type MeasurementPoint } from '@/components/MeasurementEngine';
-import { type DetectedObject } from '@/components/RealTimeMeasurement';
+import { type AdvancedDetectedObject } from '@/components/AdvancedMeasurementSystem';
 import { useDeviceSensors } from '@/hooks/useDeviceSensors';
 import { useOpenCV } from '@/hooks/useOpenCV';
 import { useCalibration } from '@/hooks/useCalibration';
@@ -28,7 +30,7 @@ const Index = () => {
   const [measurementResult, setMeasurementResult] = useState<MeasurementResult | null>(null);
   const [capturedImage, setCapturedImage] = useState<ImageData | null>(null);
   const [detectedEdges, setDetectedEdges] = useState<MeasurementPoint[]>([]);
-  const [realTimeObjects, setRealTimeObjects] = useState<DetectedObject[]>([]);
+  const [realTimeObjects, setRealTimeObjects] = useState<AdvancedDetectedObject[]>([]);
   const [objectCount, setObjectCount] = useState(0);
   
   const { sensorData, isListening, startListening, stopListening } = useDeviceSensors();
@@ -56,7 +58,7 @@ const Index = () => {
     
     toast({
       title: "Imagen capturada",
-      description: "Imagen lista para análisis y medición"
+      description: "Imagen lista para análisis y medición avanzada"
     });
   };
 
@@ -66,7 +68,7 @@ const Index = () => {
     if (data.isCalibrated) {
       toast({
         title: "Sistema calibrado",
-        description: "Las mediciones ahora serán más precisas"
+        description: "Las mediciones 3D ahora serán más precisas"
       });
     }
   };
@@ -85,7 +87,7 @@ const Index = () => {
     setDetectedEdges(edges);
   };
 
-  const handleRealTimeObjects = (objects: DetectedObject[]) => {
+  const handleRealTimeObjects = (objects: AdvancedDetectedObject[]) => {
     setRealTimeObjects(objects);
     setObjectCount(objects.length);
     
@@ -130,7 +132,7 @@ const Index = () => {
       
       toast({
         title: "Medición guardada",
-        description: "Los datos han sido guardados localmente"
+        description: "Los datos 3D han sido guardados localmente"
       });
     }
   };
@@ -150,12 +152,12 @@ const Index = () => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `measurement-${measurementMode}-${Date.now()}.json`;
+      a.download = `measurement-3d-${measurementMode}-${Date.now()}.json`;
       a.click();
       
       toast({
         title: "Datos exportados",
-        description: "Archivo de medición descargado"
+        description: "Archivo de medición 3D descargado"
       });
     }
   };
@@ -185,20 +187,31 @@ const Index = () => {
     }
   };
 
+  const formatVolume = (value: number): string => {
+    // Volumen en mm³
+    if (value < 1000) {
+      return `${Math.round(value)}mm³`;
+    } else if (value < 1000000) {
+      return `${(value / 1000).toFixed(1)}cm³`;
+    } else {
+      return `${(value / 1000000000).toFixed(3)}m³`;
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background p-4 space-y-6">
       {/* Header */}
       <div className="text-center space-y-4">
         <div className="flex items-center justify-center gap-3">
           <div className="p-3 bg-gradient-primary rounded-lg shadow-measurement">
-            <Ruler className="w-8 h-8 text-primary-foreground" />
+            <Move3D className="w-8 h-8 text-primary-foreground" />
           </div>
           <div>
             <h1 className="text-3xl font-bold bg-gradient-primary bg-clip-text text-transparent">
-              CamMeasure Pro
+              CamMeasure Pro 3D
             </h1>
             <p className="text-muted-foreground">
-              Medición en tiempo real con visión computacional
+              Medición 3D avanzada con algoritmos matemáticos complejos
             </p>
           </div>
         </div>
@@ -210,7 +223,7 @@ const Index = () => {
             className={isOpenCVLoaded ? "bg-measurement-active text-background" : ""}
           >
             <Cpu className="w-3 h-3 mr-1" />
-            OpenCV {isOpenCVLoaded ? 'Activo' : 'Básico'}
+            Motor Matemático {isOpenCVLoaded ? 'Activo' : 'Nativo'}
           </Badge>
           
           <Badge 
@@ -226,7 +239,7 @@ const Index = () => {
             className={calibration?.isCalibrated ? "bg-calibration text-background" : ""}
           >
             <Target className="w-3 h-3 mr-1" />
-            {calibration?.isCalibrated ? 'Calibrado' : 'Sin Calibrar'}
+            {calibration?.isCalibrated ? 'Calibrado 3D' : 'Sin Calibrar'}
           </Badge>
 
           {objectCount > 0 && (
@@ -234,8 +247,8 @@ const Index = () => {
               variant="outline"
               className="border-measurement-active text-measurement-active animate-measurement-pulse"
             >
-              <Target className="w-3 h-3 mr-1" />
-              🎯 Objeto detectado
+              <Layers className="w-3 h-3 mr-1" />
+              🎯 Objeto 3D detectado
             </Badge>
           )}
 
@@ -244,24 +257,24 @@ const Index = () => {
             variant="outline"
             className="border-accent text-accent"
           >
-            <Ruler className="w-3 h-3 mr-1" />
-            Modo: {measurementMode.toUpperCase()}
+            <Move3D className="w-3 h-3 mr-1" />
+            Modo: {measurementMode.toUpperCase()} 3D
           </Badge>
         </div>
       </div>
 
-      {/* Real-time Measurement Info */}
+      {/* Real-time 3D Measurement Info */}
       {realTimeObjects.length > 0 && (
         <Card className="p-4 bg-gradient-measurement border-measurement-active/30 shadow-active">
           <h3 className="font-semibold text-measurement-active mb-3 flex items-center gap-2">
-            <Target className="w-4 h-4" />
-            🎯 Medición en Tiempo Real ({measurementMode.toUpperCase()})
+            <Move3D className="w-4 h-4" />
+            🎯 Medición 3D en Tiempo Real ({measurementMode.toUpperCase()})
           </h3>
           <div className="grid grid-cols-1 gap-4">
             {realTimeObjects.slice(0, 1).map((obj, index) => (
               <div key={obj.id} className="space-y-2">
-                <p className="text-sm font-bold text-measurement-active">🎯 Mejor Objeto Detectado</p>
-                <div className="grid grid-cols-3 gap-4 text-sm">
+                <p className="text-sm font-bold text-measurement-active">🎯 Mejor Objeto 3D Detectado</p>
+                <div className="grid grid-cols-4 gap-4 text-sm">
                   <div className="space-y-1">
                     <p className="text-xs text-muted-foreground">↔️ Ancho</p>
                     <p className="font-mono text-measurement-active font-bold">
@@ -275,18 +288,44 @@ const Index = () => {
                     </p>
                   </div>
                   <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">🔄 Profundidad</p>
+                    <p className="font-mono text-calibration font-bold">
+                      {formatDimension(obj.dimensions.depth)}
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">📦 Volumen</p>
+                    <p className="font-mono text-primary font-bold">
+                      {formatVolume(obj.dimensions.volume)}
+                    </p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-4 text-sm pt-2 border-t border-white/20">
+                  <div className="space-y-1">
                     <p className="text-xs text-muted-foreground">📐 Área</p>
                     <p className="font-mono text-primary font-bold">
                       {formatArea(obj.dimensions.area)}
                     </p>
                   </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">📏 Distancia</p>
+                    <p className="font-mono text-depth-far font-bold">
+                      {formatDimension(obj.position3D.distanceFromCamera)}
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">�� Método</p>
+                    <p className="font-mono text-accent font-bold uppercase">
+                      {obj.method}
+                    </p>
+                  </div>
                 </div>
                 <div className="flex justify-between items-center pt-2 border-t border-white/20">
                   <span className="text-xs text-muted-foreground">
-                    Confianza: {(obj.confidence * 100).toFixed(0)}%
+                    Confianza: {(obj.confidence * 100).toFixed(0)}% | Error: {obj.accuracy.reprojectionError.toFixed(1)}px
                   </span>
                   <span className="text-xs text-muted-foreground">
-                    Factor: {calibration?.pixelsPerMm.toFixed(1)} px/mm
+                    Incertidumbre: ±{obj.accuracy.measurementUncertainty.toFixed(1)}mm
                   </span>
                 </div>
               </div>
@@ -303,7 +342,7 @@ const Index = () => {
             className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
           >
             <Camera className="w-4 h-4 mr-2" />
-            Cámara
+            Cámara 3D
           </TabsTrigger>
           <TabsTrigger 
             value="calibration"
@@ -316,8 +355,8 @@ const Index = () => {
             value="measurements"
             className="data-[state=active]:bg-accent data-[state=active]:text-accent-foreground"
           >
-            <Ruler className="w-4 h-4 mr-2" />
-            Mediciones
+            <Move3D className="w-4 h-4 mr-2" />
+            Mediciones 3D
           </TabsTrigger>
         </TabsList>
 
@@ -332,14 +371,18 @@ const Index = () => {
             
             {/* Quick Instructions */}
             <Card className="p-4 bg-primary/5 border-primary/20">
-              <h4 className="font-medium mb-2 text-primary">🎯 Instrucciones de Uso</h4>
+              <h4 className="font-medium mb-2 text-primary flex items-center gap-2">
+                <Move3D className="w-4 h-4" />
+                🎯 Instrucciones de Medición 3D Avanzada
+              </h4>
               <ul className="text-sm text-muted-foreground space-y-1">
-                <li>• Apunta la cámara hacia el objeto que quieres medir</li>
-                <li>• La aplicación detectará automáticamente el mejor objeto</li>
-                <li>• Las dimensiones aparecerán en tiempo real en mm/cm/m</li>
-                <li>• Mantén el objeto centrado para mejor precisión</li>
-                <li>• El sistema está pre-calibrado para mediciones básicas</li>
-                <li>• Para mayor precisión, calibra en la pestaña "Calibración"</li>
+                <li>• El sistema usa algoritmos matemáticos complejos para medición 3D real</li>
+                <li>• Apunta la cámara hacia el objeto manteniendo 20-40cm de distancia</li>
+                <li>• Las dimensiones 3D (ancho, alto, profundidad, volumen) aparecen en tiempo real</li>
+                <li>• El sistema calcula automáticamente la distancia al objeto</li>
+                <li>• Usa geometría proyectiva y triangulación para mediciones precisas</li>
+                <li>• Para máxima precisión, calibra el sistema en la pestaña "Calibración"</li>
+                <li>• Los algoritmos incluyen corrección de perspectiva y análisis de incertidumbre</li>
               </ul>
             </Card>
           </TabsContent>
@@ -354,7 +397,7 @@ const Index = () => {
               <Card className="p-4 bg-secondary/30">
                 <h4 className="font-medium mb-3 flex items-center gap-2">
                   <Smartphone className="w-4 h-4" />
-                  Datos del Sensor
+                  Datos del Sensor para Calibración 3D
                 </h4>
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
@@ -391,7 +434,10 @@ const Index = () => {
               <div className="space-y-4">
                 {capturedImage && (
                   <Card className="p-4">
-                    <h4 className="font-medium mb-3">Análisis Detallado - Modo {measurementMode.toUpperCase()}</h4>
+                    <h4 className="font-medium mb-3 flex items-center gap-2">
+                      <Move3D className="w-4 h-4" />
+                      Análisis 3D Detallado - Modo {measurementMode.toUpperCase()}
+                    </h4>
                     <MeasurementEngine
                       imageData={capturedImage}
                       calibrationData={calibration}
@@ -404,25 +450,36 @@ const Index = () => {
                 
                 {!capturedImage && realTimeObjects.length === 0 && (
                   <Card className="p-8 text-center">
-                    <Camera className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                    <h3 className="text-lg font-semibold mb-2">Sin datos de medición</h3>
+                    <Move3D className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                    <h3 className="text-lg font-semibold mb-2">Sin datos de medición 3D</h3>
                     <p className="text-muted-foreground">
-                      Vaya a la pestaña de cámara para ver mediciones en tiempo real
+                      Vaya a la pestaña de cámara para ver mediciones 3D en tiempo real
                     </p>
                   </Card>
                 )}
 
                 {realTimeObjects.length > 0 && (
                   <Card className="p-4">
-                    <h4 className="font-medium mb-3">🎯 Objeto Detectado en Tiempo Real</h4>
+                    <h4 className="font-medium mb-3 flex items-center gap-2">
+                      <Move3D className="w-4 h-4" />
+                      🎯 Objeto 3D Detectado en Tiempo Real
+                    </h4>
                     <div className="space-y-3">
                       {realTimeObjects.slice(0, 1).map((obj, index) => (
                         <div key={obj.id} className="p-4 bg-measurement-active/10 border border-measurement-active/30 rounded-lg">
                           <div className="flex justify-between items-start mb-3">
-                            <h5 className="text-lg font-bold text-measurement-active">🎯 Mejor Objeto</h5>
-                            <Badge variant="outline" className="text-sm border-measurement-active text-measurement-active">
-                              {(obj.confidence * 100).toFixed(0)}% confianza
-                            </Badge>
+                            <h5 className="text-lg font-bold text-measurement-active flex items-center gap-2">
+                              <Move3D className="w-5 h-5" />
+                              🎯 Mejor Objeto 3D
+                            </h5>
+                            <div className="flex gap-2">
+                              <Badge variant="outline" className="text-sm border-measurement-active text-measurement-active">
+                                {(obj.confidence * 100).toFixed(0)}% confianza
+                              </Badge>
+                              <Badge variant="outline" className="text-sm border-accent text-accent uppercase">
+                                {obj.method}
+                              </Badge>
+                            </div>
                           </div>
                           <div className="grid grid-cols-2 gap-4 text-sm">
                             <div className="space-y-2">
@@ -430,6 +487,12 @@ const Index = () => {
                                 <p className="text-muted-foreground">↔️ Ancho</p>
                                 <p className="font-mono text-measurement-active font-bold text-lg">
                                   {formatDimension(obj.dimensions.width)}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-muted-foreground">🔄 Profundidad</p>
+                                <p className="font-mono text-calibration font-bold text-lg">
+                                  {formatDimension(obj.dimensions.depth)}
                                 </p>
                               </div>
                               <div>
@@ -447,9 +510,33 @@ const Index = () => {
                                 </p>
                               </div>
                               <div>
-                                <p className="text-muted-foreground">📏 Diagonal</p>
-                                <p className="font-mono text-calibration font-bold">
-                                  {formatDimension(Math.sqrt(obj.dimensions.width ** 2 + obj.dimensions.height ** 2))}
+                                <p className="text-muted-foreground">📦 Volumen</p>
+                                <p className="font-mono text-primary font-bold text-lg">
+                                  {formatVolume(obj.dimensions.volume)}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-muted-foreground">📏 Distancia</p>
+                                <p className="font-mono text-depth-far font-bold">
+                                  {formatDimension(obj.position3D.distanceFromCamera)}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="mt-3 pt-3 border-t border-white/20">
+                            <div className="grid grid-cols-3 gap-4 text-xs">
+                              <div>
+                                <p className="text-muted-foreground">Error Reproyección</p>
+                                <p className="font-mono text-yellow-500">{obj.accuracy.reprojectionError.toFixed(2)}px</p>
+                              </div>
+                              <div>
+                                <p className="text-muted-foreground">Incertidumbre</p>
+                                <p className="font-mono text-orange-500">±{obj.accuracy.measurementUncertainty.toFixed(1)}mm</p>
+                              </div>
+                              <div>
+                                <p className="text-muted-foreground">Coordenadas 3D</p>
+                                <p className="font-mono text-blue-500">
+                                  ({obj.position3D.worldCoordinates.x.toFixed(0)}, {obj.position3D.worldCoordinates.y.toFixed(0)}, {obj.position3D.worldCoordinates.z.toFixed(0)})
                                 </p>
                               </div>
                             </div>

@@ -39,7 +39,12 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
     pixelsPerMm: 3.78, // Valor inicial más realista
     referenceObjectSize: 25.4, // 1 pulgada en mm
     isCalibrated: false, // Empezar sin calibrar para forzar calibración real
-    calibrationMethod: 'manual'
+    calibrationMethod: 'manual',
+    // Valores iniciales para los nuevos parámetros
+    cameraMatrix: [[1000, 0, 320], [0, 1000, 240], [0, 0, 1]], // Matriz de cámara inicial
+    distortionCoefficients: [0, 0, 0, 0, 0], // Sin distorsión inicial
+    imageSize: { width: 640, height: 480 }, // Tamaño de imagen estándar
+    realWorldScale: 1.0 // Escala 1:1 inicial
   });
 
   const [referencePixelLength, setReferencePixelLength] = useState<number>(0);

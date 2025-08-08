@@ -1,4 +1,4 @@
-import type { CapacitorConfig } from '@capacitor/core';
+import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'app.lovable.f976e3b6c56e481485f8240003ca6ffe',
@@ -10,17 +10,6 @@ const config: CapacitorConfig = {
   },
   android: {
     allowMixedContent: true,
-    theme: {
-      fullscreen: true,
-      immersive: true,
-      statusBar: {
-        visible: false,
-        style: 'LIGHT'
-      },
-      navigationBar: {
-        visible: false
-      }
-    }
   },
   plugins: {
     Camera: {

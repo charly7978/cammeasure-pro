@@ -1,23 +1,17 @@
 import { useContext } from 'react';
 import { CalibrationContext } from '@/lib/calibrationContext';
 
-export interface CalibrationData {
-  focalLength: number;
-  sensorSize: number;
-  pixelsPerMm: number;
-  referenceObjectSize: number;
-  isCalibrated: boolean;
-}
-
-export const useCalibration = (): {
-  calibration: CalibrationData | null;
-  setCalibration: (data: Partial<CalibrationData>) => void;
-} => {
+/**
+ * Custom hook to access the calibration context.
+ * Provides an easy way to get calibration data and state across the app.
+ *
+ * @returns The calibration context value.
+ * @throws An error if used outside of a CalibrationProvider.
+ */
+export const useCalibration = () => {
   const context = useContext(CalibrationContext);
-  
-  if (!context) {
+  if (context === undefined) {
     throw new Error('useCalibration must be used within a CalibrationProvider');
   }
-  
   return context;
 };

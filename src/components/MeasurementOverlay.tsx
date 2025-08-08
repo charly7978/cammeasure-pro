@@ -1,29 +1,24 @@
 import React from 'react';
-import { DetectedObject } from './RealTimeMeasurement';
+import { Badge } from '@/components/ui/badge';
+import { Ruler, Target, Zap } from 'lucide-react';
 
 interface MeasurementOverlayProps {
-  objects: DetectedObject[];
-  videoWidth: number;
-  videoHeight: number;
-  containerWidth: number;
-  containerHeight: number;
+  objects: any[];
+  isActive: boolean;
+  calibrationData: {
+    pixelsPerMm: number;
+    isCalibrated: boolean;
+  } | null;
 }
 
 export const MeasurementOverlay: React.FC<MeasurementOverlayProps> = ({
   objects,
-  videoWidth,
-  videoHeight,
-  containerWidth,
-  containerHeight
+  isActive,
+  calibrationData
 }) => {
-  if (!objects.length || !videoWidth || !videoHeight) return null;
+  if (!isActive || objects.length === 0) return null;
 
-  // Calculate scaling factors
-  const scaleX = containerWidth / videoWidth;
-  const scaleY = containerHeight / videoHeight;
-
-  const formatDimension = (value: number, unit: string): string => {
-    // Siempre asumir que el valor viene en mm
+  const formatDimension = (value: number): string => {
     if (value < 10) {
       return `${value.toFixed(1)}mm`;
     } else if (value < 100) {
@@ -35,8 +30,7 @@ export const MeasurementOverlay: React.FC<MeasurementOverlayProps> = ({
     }
   };
 
-  const formatArea = (value: number, unit: string): string => {
-    // ��rea en mm²
+  const formatArea = (value: number): string => {
     if (value < 1000) {
       return `${Math.round(value)}mm²`;
     } else if (value < 100000) {
@@ -46,160 +40,120 @@ export const MeasurementOverlay: React.FC<MeasurementOverlayProps> = ({
     }
   };
 
-  const getConfidenceColor = (confidence: number): string => {
-    if (confidence > 0.8) return 'border-measurement-active bg-measurement-active/20 text-measurement-active';
-    if (confidence > 0.6) return 'border-calibration bg-calibration/20 text-calibration';
-    return 'border-measurement-inactive bg-measurement-inactive/20 text-measurement-inactive';
+  const formatVolume = (value: number): string => {
+    if (value < 1000) {
+      return `${Math.round(value)}mm³`;
+    } else if (value < 1000000) {
+      return `${(value / 1000).toFixed(1)}cm³`;
+    } else {
+      return `${(value / 1000000).toFixed(3)}m³`;
+    }
   };
-
-  // Función para evitar superposición de etiquetas
-  const calculateLabelPosition = (obj: any, index: number) => {
-    const baseTop = (obj.bounds.y * scaleY) - 80;
-    const offset = index * 60; // Más separación para acomodar más información
-    return Math.max(10, baseTop - offset);
-  };
-
-  // Solo mostrar el mejor objeto (el primero)
-  const bestObject = objects[0];
-  if (!bestObject) return null;
 
   return (
-    <div className="absolute inset-0 pointer-events-none">
-      <div key={bestObject.id}>
-        {/* Bounding Box */}
-        <div
-          className={`absolute border-3 rounded-lg ${getConfidenceColor(bestObject.confidence)} transition-all duration-200 shadow-lg`}
-          style={{
-            left: `${bestObject.bounds.x * scaleX}px`,
-            top: `${bestObject.bounds.y * scaleY}px`,
-            width: `${bestObject.bounds.width * scaleX}px`,
-            height: `${bestObject.bounds.height * scaleY}px`,
-          }}
-        >
-          {/* Center Point */}
-          <div 
-            className="absolute w-4 h-4 bg-measurement-active rounded-full animate-measurement-pulse border-2 border-white shadow-lg"
-            style={{
-              left: '50%',
-              top: '50%',
-              transform: 'translate(-50%, -50%)'
-            }}
-          />
-          
-          {/* Target Icon */}
-          <div 
-            className="absolute -top-8 -left-3 w-8 h-8 bg-measurement-active text-black rounded-full flex items-center justify-center text-sm font-bold shadow-lg"
-          >
-            🎯
-          </div>
-        </div>
-
-        {/* Measurement Labels - Posicionadas para evitar superposición */}
-        <div
-          className="absolute z-20 font-mono text-base px-4 py-3 rounded-xl shadow-2xl border-2"
-          style={{
-            left: `${Math.min(bestObject.bounds.x * scaleX, containerWidth - 250)}px`,
-            top: `${calculateLabelPosition(bestObject, 0)}px`,
-            backgroundColor: 'rgba(0, 0, 0, 0.95)',
-            borderColor: 'hsl(var(--measurement-active))',
-            color: 'hsl(var(--measurement-active))',
-            minWidth: '240px'
-          }}
-        >
-          <div className="space-y-2">
-            <div className="flex justify-between items-center border-b border-white/20 pb-2">
-              <span className="text-sm font-bold">🎯 OBJETO DETECTADO</span>
-              <span className="text-xs bg-measurement-active/20 px-2 py-1 rounded">
-                {(bestObject.confidence * 100).toFixed(0)}% confianza
+    <div className="absolute inset-0 pointer-events-none z-10">
+      {/* Overlay de mediciones en tiempo real */}
+      <div className="absolute top-4 left-4 right-4">
+        <div className="bg-black/80 backdrop-blur-sm rounded-lg p-3 border border-white/20">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <Target className="w-4 h-4 text-green-400" />
+              <span className="text-white font-medium text-sm">
+                📐 Medición en Tiempo Real
               </span>
             </div>
-            
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs opacity-70">↔️ Ancho:</span>
-                  <span className="font-bold text-measurement-active">
-                    {formatDimension(bestObject.dimensions.width, bestObject.dimensions.unit)}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs opacity-70">↕️ Alto:</span>
-                  <span className="font-bold text-accent">
-                    {formatDimension(bestObject.dimensions.height, bestObject.dimensions.unit)}
-                  </span>
-                </div>
+            <Badge 
+              variant="outline" 
+              className="bg-green-500/20 border-green-400 text-green-400 text-xs"
+            >
+              {objects.length} objeto{objects.length !== 1 ? 's' : ''}
+            </Badge>
+          </div>
+          
+          {objects.slice(0, 2).map((obj, index) => (
+            <div key={obj.id} className="mb-3 last:mb-0">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-white/90 text-xs font-medium">
+                  Objeto {index + 1}
+                </span>
+                <span className="text-green-400 text-xs">
+                  {((obj.confidence || 0) * 100).toFixed(0)}%
+                </span>
               </div>
               
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs opacity-70">📐 Área:</span>
-                  <span className="font-bold text-primary">
-                    {formatArea(bestObject.dimensions.area, bestObject.dimensions.unit + '²')}
-                  </span>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="bg-white/10 rounded p-2">
+                  <div className="text-white/70">↔️ Ancho</div>
+                  <div className="text-green-400 font-bold">
+                    {formatDimension(obj.dimensions?.width || obj.widthMm || 0)}
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs opacity-70">📏 Diagonal:</span>
-                  <span className="font-bold text-calibration">
-                    {formatDimension(
-                      Math.sqrt(bestObject.dimensions.width ** 2 + bestObject.dimensions.height ** 2), 
-                      bestObject.dimensions.unit
-                    )}
-                  </span>
+                
+                <div className="bg-white/10 rounded p-2">
+                  <div className="text-white/70">↕️ Alto</div>
+                  <div className="text-blue-400 font-bold">
+                    {formatDimension(obj.dimensions?.height || obj.heightMm || 0)}
+                  </div>
+                </div>
+                
+                <div className="bg-white/10 rounded p-2">
+                  <div className="text-white/70">
+                    {obj.dimensions?.depth ? '📏 Profundidad' : '📐 Área'}
+                  </div>
+                  <div className="text-yellow-400 font-bold">
+                    {obj.dimensions?.depth 
+                      ? formatDimension(obj.dimensions.depth)
+                      : formatArea(obj.areaMm2 || 0)
+                    }
+                  </div>
+                </div>
+                
+                <div className="bg-white/10 rounded p-2">
+                  <div className="text-white/70">
+                    {obj.dimensions?.volume ? '📦 Volumen' : '📏 Diagonal'}
+                  </div>
+                  <div className="text-purple-400 font-bold">
+                    {obj.dimensions?.volume 
+                      ? formatVolume(obj.dimensions.volume)
+                      : formatDimension(Math.sqrt((obj.widthMm || 0) ** 2 + (obj.heightMm || 0) ** 2))
+                    }
+                  </div>
                 </div>
               </div>
             </div>
-            
-            {/* Información adicional */}
-            <div className="text-xs opacity-80 border-t border-white/10 pt-2 space-y-1">
-              <div className="flex justify-between">
-                <span>Perímetro:</span>
-                <span>{formatDimension(2 * (bestObject.dimensions.width + bestObject.dimensions.height), bestObject.dimensions.unit)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Relación aspecto:</span>
-                <span>{(bestObject.dimensions.width / bestObject.dimensions.height).toFixed(2)}:1</span>
-              </div>
+          ))}
+          
+          {calibrationData && (
+            <div className="flex items-center justify-between pt-2 border-t border-white/20">
+              <span className="text-white/60 text-xs">
+                Factor: {calibrationData.pixelsPerMm.toFixed(1)} px/mm
+              </span>
+              <span className="text-white/60 text-xs">
+                {calibrationData.isCalibrated ? '✅ Calibrado' : '⚠️ Sin Calibrar'}
+              </span>
             </div>
-          </div>
+          )}
         </div>
+      </div>
 
-        {/* Líneas de dimensión mejoradas */}
-        <>
-          {/* Width line */}
-          <div
-            className="absolute border-t-3 border-measurement-active opacity-90 shadow-lg"
-            style={{
-              left: `${bestObject.bounds.x * scaleX}px`,
-              top: `${(bestObject.bounds.y + bestObject.bounds.height + 20) * scaleY}px`,
-              width: `${bestObject.bounds.width * scaleX}px`,
-            }}
-          >
-            <div className="absolute left-0 top-0 w-1 h-6 bg-measurement-active -translate-y-3 shadow-lg"></div>
-            <div className="absolute right-0 top-0 w-1 h-6 bg-measurement-active -translate-y-3 shadow-lg"></div>
-            <div className="absolute left-1/2 top-2 transform -translate-x-1/2 text-sm text-measurement-active font-bold bg-black/90 px-2 py-1 rounded shadow-lg">
-              {formatDimension(bestObject.dimensions.width, bestObject.dimensions.unit)}
-            </div>
-          </div>
+      {/* Indicador de enfoque en el centro */}
+      <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
+        <div className="w-16 h-16 border-2 border-green-400 rounded-full flex items-center justify-center">
+          <div className="w-8 h-8 border border-green-400 rounded-full"></div>
+        </div>
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
+          <Target className="w-4 h-4 text-green-400" />
+        </div>
+      </div>
 
-          {/* Height line */}
-          <div
-            className="absolute border-l-3 border-accent opacity-90 shadow-lg"
-            style={{
-              left: `${(bestObject.bounds.x + bestObject.bounds.width + 20) * scaleX}px`,
-              top: `${bestObject.bounds.y * scaleY}px`,
-              height: `${bestObject.bounds.height * scaleY}px`,
-            }}
-          >
-            <div className="absolute top-0 left-0 h-1 w-6 bg-accent -translate-x-3 shadow-lg"></div>
-            <div className="absolute bottom-0 left-0 h-1 w-6 bg-accent -translate-x-3 shadow-lg"></div>
-            <div 
-              className="absolute left-3 top-1/2 transform -translate-y-1/2 text-sm text-accent font-bold bg-black/90 px-2 py-1 rounded shadow-lg"
-              style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}
-            >
-              {formatDimension(bestObject.dimensions.height, bestObject.dimensions.unit)}
-            </div>
-          </div>
-        </>
+      {/* Grid de medición */}
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute top-1/4 left-0 right-0 h-px bg-white/20"></div>
+        <div className="absolute top-1/2 left-0 right-0 h-px bg-white/20"></div>
+        <div className="absolute top-3/4 left-0 right-0 h-px bg-white/20"></div>
+        <div className="absolute top-0 bottom-0 left-1/4 w-px bg-white/20"></div>
+        <div className="absolute top-0 bottom-0 left-1/2 w-px bg-white/20"></div>
+        <div className="absolute top-0 bottom-0 left-3/4 w-px bg-white/20"></div>
       </div>
     </div>
   );

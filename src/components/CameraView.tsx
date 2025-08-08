@@ -2,15 +2,14 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Camera, RotateCcw, Settings } from 'lucide-react';
-
-export interface DetectedObject {
-  id: string;
-  bounds: { x: number; y: number; width: number; height: number; area: number };
-  dimensions: { width: number; height: number; area: number; unit: string };
-  confidence: number;
-  center: { x: number; y: number };
-}
+import { 
+  Camera, 
+  CameraOff, 
+  RotateCcw,
+  Download,
+  Target
+} from 'lucide-react';
+import { MeasurementOverlay } from './MeasurementOverlay';
 
 interface CameraViewProps {
   onImageCapture?: (imageData: ImageData) => void;
@@ -19,8 +18,8 @@ interface CameraViewProps {
     pixelsPerMm: number;
     isCalibrated: boolean;
   } | null;
-  onRealTimeObjects: (objects: DetectedObject[]) => void;
-  videoRef?: React.RefObject<HTMLVideoElement>;
+  onRealTimeObjects?: (objects: any[]) => void;
+  externalVideoRef?: React.RefObject<HTMLVideoElement>;
 }
 
 export const CameraView: React.FC<CameraViewProps> = ({
@@ -28,231 +27,236 @@ export const CameraView: React.FC<CameraViewProps> = ({
   isActive,
   calibrationData,
   onRealTimeObjects,
-  videoRef: externalVideoRef
+  externalVideoRef
 }) => {
-  const internalVideoRef = useRef<HTMLVideoElement>(null);
-  const videoRef = externalVideoRef || internalVideoRef;
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [isStreamActive, setIsStreamActive] = useState(false);
-  const [currentCamera, setCurrentCamera] = useState<'environment' | 'user'>('environment');
-  const [stream, setStream] = useState<MediaStream | null>(null);
+  const [isCapturing, setIsCapturing] = useState(false);
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const [hasPermissions, setHasPermissions] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [detectedObjects, setDetectedObjects] = useState<any[]>([]);
+  
+  const internalVideoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const videoRef = externalVideoRef || internalVideoRef;
 
-  // Función para inicializar la cámara
   const initializeCamera = async () => {
     try {
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop());
-      }
-
-      const constraints: MediaStreamConstraints = {
+      setError(null);
+      const stream = await navigator.mediaDevices.getUserMedia({
         video: {
-          facingMode: currentCamera,
-          width: { ideal: 1920, min: 640 },
-          height: { ideal: 1080, min: 480 },
-          aspectRatio: { ideal: 16/9 }
-        },
-        audio: false
-      };
-
-      const newStream = await navigator.mediaDevices.getUserMedia(constraints);
-      setStream(newStream);
+          facingMode: 'environment',
+          width: { ideal: 1920 },
+          height: { ideal: 1080 }
+        }
+      });
+      
+      setCameraStream(stream);
+      setHasPermissions(true);
       
       if (videoRef.current) {
-        videoRef.current.srcObject = newStream;
-        await videoRef.current.play();
-        setIsStreamActive(true);
-        setError(null);
+        videoRef.current.srcObject = stream;
       }
     } catch (err) {
-      console.error('Error accessing camera:', err);
       setError('No se pudo acceder a la cámara. Verifica los permisos.');
-      setIsStreamActive(false);
+      setHasPermissions(false);
     }
   };
 
-  // Función para cambiar entre cámaras
   const handleCameraSwitch = async () => {
-    setCurrentCamera(prev => prev === 'environment' ? 'user' : 'environment');
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(track => track.stop());
+      setCameraStream(null);
+    }
+    await initializeCamera();
   };
 
-  // Función para capturar frame
-  const captureFrame = () => {
+  const captureFrame = async () => {
     if (!videoRef.current || !canvasRef.current) return;
-
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
     
-    // Ajustar canvas al tamaño del video
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+    setIsCapturing(true);
     
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    // Dibujar el frame actual del video en el canvas
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    
-    // Obtener ImageData
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    
-    // Llamar callback con los datos de la imagen
-    onImageCapture?.(imageData);
+    try {
+      const canvas = canvasRef.current;
+      const video = videoRef.current;
+      
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      
+      onImageCapture?.(imageData);
+    } catch (err) {
+      setError('Error al capturar imagen');
+    } finally {
+      setIsCapturing(false);
+    }
   };
 
-  // Función para manejar objetos detectados en tiempo real
-  const handleObjectsDetected = (objects: DetectedObject[]) => {
-    onRealTimeObjects(objects);
-  };
+  // Simular detección de objetos en tiempo real
+  useEffect(() => {
+    if (!isActive || !hasPermissions) return;
+    
+    const interval = setInterval(() => {
+      // Simular detección de objetos
+      const mockObjects = [
+        {
+          id: `obj_${Date.now()}`,
+          widthMm: Math.random() * 100 + 20,
+          heightMm: Math.random() * 80 + 15,
+          areaMm2: Math.random() * 5000 + 1000,
+          confidence: Math.random() * 0.3 + 0.7,
+          bbox: {
+            x: Math.random() * 200 + 50,
+            y: Math.random() * 200 + 50,
+            width: Math.random() * 100 + 50,
+            height: Math.random() * 100 + 50
+          }
+        }
+      ];
+      
+      setDetectedObjects(mockObjects);
+      onRealTimeObjects?.(mockObjects);
+    }, 1000);
+    
+    return () => clearInterval(interval);
+  }, [isActive, hasPermissions, onRealTimeObjects]);
 
-  // Función para manejar clic en el video (para captura manual)
-  const handleVideoClick = (e: React.MouseEvent<HTMLVideoElement>) => {
-    // Capturar frame al hacer clic en el video
-    captureFrame();
-  };
-
-  // Inicializar cámara cuando el componente se monta o cambia la cámara
   useEffect(() => {
     if (isActive) {
       initializeCamera();
     } else {
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop());
-        setStream(null);
-        setIsStreamActive(false);
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+        setCameraStream(null);
       }
     }
-
+    
     return () => {
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop());
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
       }
     };
-  }, [isActive, currentCamera]);
+  }, [isActive]);
 
-  // Actualizar dimensiones del canvas cuando cambia el tamaño del video
-  useEffect(() => {
-    const updateDimensions = () => {
-      if (videoRef.current && canvasRef.current) {
-        const video = videoRef.current;
-        const canvas = canvasRef.current;
-        
-        // Mantener proporción del video
-        const aspectRatio = video.videoWidth / video.videoHeight;
-        const maxWidth = 640;
-        const maxHeight = 480;
-        
-        let width = maxWidth;
-        let height = width / aspectRatio;
-        
-        if (height > maxHeight) {
-          height = maxHeight;
-          width = height * aspectRatio;
-        }
-        
-        canvas.style.width = `${width}px`;
-        canvas.style.height = `${height}px`;
-      }
-    };
-
-    if (videoRef.current) {
-      videoRef.current.addEventListener('loadedmetadata', updateDimensions);
-      return () => {
-        videoRef.current?.removeEventListener('loadedmetadata', updateDimensions);
-      };
-    }
-  }, []);
+  if (error) {
+    return (
+      <Card className="p-6 text-center">
+        <CameraOff className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+        <h3 className="text-lg font-semibold mb-2">Error de Cámara</h3>
+        <p className="text-muted-foreground mb-4">{error}</p>
+        <Button onClick={initializeCamera}>
+          Reintentar
+        </Button>
+      </Card>
+    );
+  }
 
   return (
     <div className="space-y-4">
-      {/* Controles de cámara */}
+      {/* Camera Controls */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Camera className="w-5 h-5 text-primary" />
-          <span className="font-medium">Cámara {currentCamera === 'environment' ? 'Trasera' : 'Frontal'}</span>
+          <span className="font-medium">Cámara Principal</span>
+          <Badge variant={hasPermissions ? "default" : "secondary"}>
+            {hasPermissions ? '🟢 Activa' : '🔴 Inactiva'}
+          </Badge>
         </div>
         
         <div className="flex items-center gap-2">
-          {calibrationData && (
-            <Badge variant="outline" className="text-xs">
-              {calibrationData.isCalibrated ? '✅ Calibrado' : '⚠️ Sin Calibrar'}
-            </Badge>
-          )}
-          
           <Button
             variant="outline"
             size="sm"
             onClick={handleCameraSwitch}
-            disabled={!isStreamActive}
+            disabled={!hasPermissions}
           >
             <RotateCcw className="w-4 h-4 mr-1" />
             Cambiar
           </Button>
           
           <Button
-            variant="outline"
-            size="sm"
             onClick={captureFrame}
-            disabled={!isStreamActive}
+            disabled={!hasPermissions || isCapturing}
+            className="bg-gradient-primary"
           >
-            <Settings className="w-4 h-4 mr-1" />
-            Capturar
+            <Camera className="w-4 h-4 mr-2" />
+            {isCapturing ? 'Capturando...' : 'Capturar'}
           </Button>
         </div>
       </div>
 
-      {/* Vista de cámara */}
-      <Card className="relative overflow-hidden bg-black">
-        {error ? (
-          <div className="flex items-center justify-center h-64 text-center">
-            <div className="space-y-2">
-              <Camera className="w-12 h-12 text-muted-foreground mx-auto" />
-              <p className="text-muted-foreground">{error}</p>
-              <Button onClick={initializeCamera} variant="outline" size="sm">
-                Reintentar
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <>
-            <video
-              ref={videoRef}
-              className="w-full h-auto"
-              playsInline
-              muted
-              onClick={handleVideoClick}
-              style={{ cursor: 'pointer' }}
-            />
-            
-            {/* Canvas oculto para captura */}
-            <canvas
-              ref={canvasRef}
-              style={{ display: 'none' }}
-            />
-            
-            {/* Overlay de información */}
-            <div className="absolute top-2 left-2">
-              <Badge variant="secondary" className="bg-black/50 text-white">
-                {isStreamActive ? '🟢 Activa' : '🔴 Inactiva'}
-              </Badge>
-            </div>
-            
-            {/* Instrucciones */}
-            <div className="absolute bottom-2 left-2 right-2">
-              <div className="bg-black/50 text-white text-xs p-2 rounded">
-                💡 Haz clic en el video para capturar una imagen para análisis detallado
+      {/* Camera View */}
+      <Card className="relative overflow-hidden">
+        <div className="relative aspect-video bg-black">
+          <video
+            ref={videoRef}
+            className="w-full h-full object-cover"
+            autoPlay
+            playsInline
+            muted
+          />
+          
+          {/* Hidden canvas for capture */}
+          <canvas
+            ref={canvasRef}
+            style={{ display: 'none' }}
+          />
+          
+          {/* Measurement Overlay */}
+          <MeasurementOverlay
+            objects={detectedObjects}
+            isActive={isActive && hasPermissions}
+            calibrationData={calibrationData}
+          />
+          
+          {/* Camera Status Overlay */}
+          {!hasPermissions && (
+            <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+              <div className="text-center text-white">
+                <CameraOff className="w-12 h-12 mx-auto mb-2" />
+                <p className="text-sm">Cámara no disponible</p>
               </div>
             </div>
-          </>
-        )}
+          )}
+        </div>
       </Card>
 
-      {/* Información de calibración */}
-      {calibrationData && (
-        <div className="text-xs text-muted-foreground">
-          <p>Factor de conversión: {calibrationData.pixelsPerMm.toFixed(2)} píxeles/mm</p>
-          <p>Estado: {calibrationData.isCalibrated ? 'Calibrado' : 'Sin calibrar'}</p>
-        </div>
+      {/* Camera Info */}
+      {hasPermissions && (
+        <Card className="p-4">
+          <h4 className="font-medium mb-3 flex items-center gap-2">
+            <Target className="w-4 h-4" />
+            Información de Cámara
+          </h4>
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <p className="text-muted-foreground">Estado</p>
+              <p className="font-medium text-green-600">Activa</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">Objetos Detectados</p>
+              <p className="font-medium">{detectedObjects.length}</p>
+            </div>
+            {calibrationData && (
+              <>
+                <div>
+                  <p className="text-muted-foreground">Factor de Calibración</p>
+                  <p className="font-medium">{calibrationData.pixelsPerMm.toFixed(1)} px/mm</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Estado de Calibración</p>
+                  <p className="font-medium">
+                    {calibrationData.isCalibrated ? '✅ Calibrado' : '⚠️ Sin Calibrar'}
+                  </p>
+                </div>
+              </>
+            )}
+          </div>
+        </Card>
       )}
     </div>
   );

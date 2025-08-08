@@ -64,6 +64,23 @@ export const MultiCameraView: React.FC<MultiCameraViewProps> = ({
     };
   }, []);
 
+  // Conectar streams de video cuando se activa un par estéreo
+  useEffect(() => {
+    if (activeStereoPair && activeStereoPair.left.stream && activeStereoPair.right.stream) {
+      const leftVideo = videoRefs.current[0];
+      const rightVideo = videoRefs.current[1];
+      
+      if (leftVideo && rightVideo) {
+        leftVideo.srcObject = activeStereoPair.left.stream;
+        rightVideo.srcObject = activeStereoPair.right.stream;
+        
+        // Asegurar que los videos se reproduzcan
+        leftVideo.play().catch(console.error);
+        rightVideo.play().catch(console.error);
+      }
+    }
+  }, [activeStereoPair]);
+
   // Capturar desde una cámara individual
   const captureFromCamera = (cameraIndex: number) => {
     const video = videoRefs.current[cameraIndex];

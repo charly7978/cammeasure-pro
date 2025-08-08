@@ -25,7 +25,7 @@ import { useOpenCV } from '@/hooks/useOpenCV';
 import { useCalibration } from '@/hooks/useCalibration';
 
 const Index = () => {
-  const [activeTab, setActiveTab] = useState<'camera' | 'multicamera' | 'calibration' | 'measurements'>('camera');BBB
+  const [activeTab, setActiveTab] = useState<'camera' | 'multicamera' | 'calibration' | 'measurements'>('camera');
   const { calibration, setCalibration } = useCalibration();
   const [measurementMode, setMeasurementMode] = useState<MeasurementMode>('3d');
   const [measurementResult, setMeasurementResult] = useState<MeasurementResult | null>(null);

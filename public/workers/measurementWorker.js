@@ -1,5 +1,5 @@
 // measurementWorker.js
-/* eslint-disable */JJJ
+/* eslint-disable */
 let OPENCV_LOADED = false;
 let CAMERA_MATRIX = null;
 let DIST_COEFFS = null;

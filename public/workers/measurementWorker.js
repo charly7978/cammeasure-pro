@@ -56,13 +56,17 @@ const multiScaleCanny = (gray, levels) => {
   const tmp = new cv.Mat();
   const gauss = new cv.Mat();
   for (const [t1, t2] of levels) {
-    cv.GaussianBlur(gray, gauss, new cv.Size(5,5), 0);
+    // Blur adaptativo según tamaño
+    const k = Math.max(3, Math.floor(Math.min(gray.rows, gray.cols) / 200) * 2 + 1);
+    cv.GaussianBlur(gray, gauss, new cv.Size(k,k), 0);
     cv.Canny(gauss, tmp, t1, t2);
     cv.bitwise_or(accum, tmp, accum);
   }
-  const kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(3,3));
-  cv.morphologyEx(accum, accum, cv.MORPH_CLOSE, kernel);
-  tmp.delete(); gauss.delete();
+  // Morfología: apertura para quitar ruido y cierre para rellenar huecos
+  const k2 = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3,3));
+  cv.morphologyEx(accum, accum, cv.MORPH_OPEN, k2);
+  cv.morphologyEx(accum, accum, cv.MORPH_CLOSE, k2);
+  tmp.delete(); gauss.delete(); k2.delete?.();
   return accum;
 };
 
@@ -91,25 +95,35 @@ const processSingleFrame = (imageData, params) => {
       rgb.delete(); rgb = d;
     }
     const gray = new cv.Mat(); cv.cvtColor(rgb, gray, cv.COLOR_RGB2GRAY);
-    const clahe = new cv.CLAHE(2.0, new cv.Size(8,8)); const cl = new cv.Mat(); clahe.apply(gray, cl); gray.delete(); clahe.delete();
-    const edges = multiScaleCanny(cl, CONFIG.cannyLevels); cl.delete();
+    // CLAHE suave
+    try {
+      const clahe = new cv.CLAHE(1.5, new cv.Size(8,8)); const cl = new cv.Mat(); clahe.apply(gray, cl); gray.delete(); clahe.delete();
+      gray = cl;
+    } catch(_) {}
+    const edges = multiScaleCanny(gray, CONFIG.cannyLevels);
+
+    // Contornos con aproximación relativa
     const contours = new cv.MatVector(); const hier = new cv.Mat();
-    cv.findContours(edges, contours, hier, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+    cv.findContours(edges, contours, hier, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_NONE);
     const detected = [];
+    const imageArea = edges.rows*edges.cols;
     for (let i=0;i<contours.size();i++) {
       const cnt = contours.get(i); const m = computeMetrics(cnt);
-      if (m.area < CONFIG.minAreaPx) { cnt.delete(); continue; }
+      if (m.area < Math.max(CONFIG.minAreaPx, imageArea*0.002)) { cnt.delete(); continue; }
+      const peri = m.perimeter; const approx = new cv.Mat();
+      cv.approxPolyDP(cnt, approx, 0.01 * peri, true);
       const hull = new cv.Mat(); cv.convexHull(cnt, hull, false, true);
-      const solidity = cv.contourArea(hull,false) > 0 ? m.area/cv.contourArea(hull,false) : 0; hull.delete();
-      const imageArea = edges.rows*edges.cols; const sizeRatio = Math.min(1, m.area/imageArea);
+      const hullArea = cv.contourArea(hull,false);
+      const solidity = hullArea > 0 ? m.area/hullArea : 0; hull.delete();
+      const sizeRatio = Math.min(1, m.area/imageArea);
       const confidence = Math.min(1.0, 0.4*solidity + 0.3*m.circularity + 0.3*sizeRatio);
-      const factor = pxPerMm; // aprox
+      const factor = pxPerMm;
       const widthMm = m.bbox.width / factor; const heightMm = m.bbox.height / factor; const areaMm2 = m.area / (factor*factor);
       detected.push({ id:`c_${Date.now()}_${i}`, bbox:m.bbox, widthMm, heightMm, areaMm2, confidence });
-      cnt.delete();
+      approx.delete(); cnt.delete();
     }
     detected.sort((a,b)=>b.confidence-a.confidence);
-    post({ type:'detections', objects: detected.slice(0,5) });
+    post({ type:'detections', objects: detected.slice(0,3) });
     contours.delete(); hier.delete(); edges.delete(); rgb.delete(); src.delete();
   } catch (e) {
     try { src.delete(); } catch(_){ }

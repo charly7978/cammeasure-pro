@@ -1,6 +1,6 @@
 import React from 'react';
 import { Badge } from '@/components/ui/badge';
-import { Ruler, Target, Zap } from 'lucide-react';
+import { Target } from 'lucide-react';
 
 interface MeasurementOverlayProps {
   objects: any[];
@@ -9,151 +9,99 @@ interface MeasurementOverlayProps {
     pixelsPerMm: number;
     isCalibrated: boolean;
   } | null;
+  videoWidth: number; // tamaño natural del frame en px
+  videoHeight: number;
+  containerWidth: number; // tamaño visual actual del video en pantalla
+  containerHeight: number;
 }
 
 export const MeasurementOverlay: React.FC<MeasurementOverlayProps> = ({
   objects,
   isActive,
-  calibrationData
+  calibrationData,
+  videoWidth,
+  videoHeight,
+  containerWidth,
+  containerHeight
 }) => {
-  if (!isActive || objects.length === 0) return null;
+  if (!isActive || objects.length === 0 || !videoWidth || !videoHeight || !containerWidth || !containerHeight) return null;
 
   const formatDimension = (value: number): string => {
-    if (value < 10) {
-      return `${value.toFixed(1)}mm`;
-    } else if (value < 100) {
-      return `${value.toFixed(0)}mm`;
-    } else if (value < 1000) {
-      return `${(value / 10).toFixed(1)}cm`;
-    } else {
-      return `${(value / 1000).toFixed(2)}m`;
-    }
+    if (value < 10) return `${value.toFixed(1)}mm`;
+    if (value < 100) return `${value.toFixed(0)}mm`;
+    if (value < 1000) return `${(value / 10).toFixed(1)}cm`;
+    return `${(value / 1000).toFixed(2)}m`;
   };
 
-  const formatArea = (value: number): string => {
-    if (value < 1000) {
-      return `${Math.round(value)}mm²`;
-    } else if (value < 100000) {
-      return `${(value / 100).toFixed(1)}cm²`;
-    } else {
-      return `${(value / 1000000).toFixed(3)}m²`;
-    }
-  };
+  const scaleX = containerWidth / videoWidth;
+  const scaleY = containerHeight / videoHeight;
 
-  const formatVolume = (value: number): string => {
-    if (value < 1000) {
-      return `${Math.round(value)}mm³`;
-    } else if (value < 1000000) {
-      return `${(value / 1000).toFixed(1)}cm³`;
-    } else {
-      return `${(value / 1000000).toFixed(3)}m³`;
-    }
-  };
+  const best = objects[0];
+  const bbox = best?.bbox || { x: 0, y: 0, width: 0, height: 0 };
+  const left = bbox.x * scaleX;
+  const top = bbox.y * scaleY;
+  const width = bbox.width * scaleX;
+  const height = bbox.height * scaleY;
 
   return (
     <div className="absolute inset-0 pointer-events-none z-10">
-      {/* Overlay de mediciones en tiempo real */}
+      {/* Panel superior compacto */}
       <div className="absolute top-4 left-4 right-4">
         <div className="bg-black/80 backdrop-blur-sm rounded-lg p-3 border border-white/20">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
               <Target className="w-4 h-4 text-green-400" />
-              <span className="text-white font-medium text-sm">
-                📐 Medición en Tiempo Real
-              </span>
+              <span className="text-white font-medium text-sm">Medición en Tiempo Real</span>
             </div>
-            <Badge 
-              variant="outline" 
-              className="bg-green-500/20 border-green-400 text-green-400 text-xs"
-            >
+            <Badge variant="outline" className="bg-green-500/20 border-green-400 text-green-400 text-xs">
               {objects.length} objeto{objects.length !== 1 ? 's' : ''}
             </Badge>
           </div>
-          
-          {objects.slice(0, 2).map((obj, index) => (
-            <div key={obj.id} className="mb-3 last:mb-0">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-white/90 text-xs font-medium">
-                  Objeto {index + 1}
-                </span>
-                <span className="text-green-400 text-xs">
-                  {((obj.confidence || 0) * 100).toFixed(0)}%
-                </span>
-              </div>
-              
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div className="bg-white/10 rounded p-2">
-                  <div className="text-white/70">↔️ Ancho</div>
-                  <div className="text-green-400 font-bold">
-                    {formatDimension(obj.dimensions?.width || obj.widthMm || 0)}
-                  </div>
-                </div>
-                
-                <div className="bg-white/10 rounded p-2">
-                  <div className="text-white/70">↕️ Alto</div>
-                  <div className="text-blue-400 font-bold">
-                    {formatDimension(obj.dimensions?.height || obj.heightMm || 0)}
-                  </div>
-                </div>
-                
-                <div className="bg-white/10 rounded p-2">
-                  <div className="text-white/70">
-                    {obj.dimensions?.depth ? '📏 Profundidad' : '📐 Área'}
-                  </div>
-                  <div className="text-yellow-400 font-bold">
-                    {obj.dimensions?.depth 
-                      ? formatDimension(obj.dimensions.depth)
-                      : formatArea(obj.areaMm2 || 0)
-                    }
-                  </div>
-                </div>
-                
-                <div className="bg-white/10 rounded p-2">
-                  <div className="text-white/70">
-                    {obj.dimensions?.volume ? '📦 Volumen' : '📏 Diagonal'}
-                  </div>
-                  <div className="text-purple-400 font-bold">
-                    {obj.dimensions?.volume 
-                      ? formatVolume(obj.dimensions.volume)
-                      : formatDimension(Math.sqrt((obj.widthMm || 0) ** 2 + (obj.heightMm || 0) ** 2))
-                    }
-                  </div>
-                </div>
-              </div>
+          <div className="grid grid-cols-3 gap-4 text-xs">
+            <div>
+              <p className="text-white/70">↔️ Ancho</p>
+              <p className="text-green-400 font-bold">{formatDimension(best?.dimensions?.width || best?.widthMm || 0)}</p>
             </div>
-          ))}
-          
-          {calibrationData && (
-            <div className="flex items-center justify-between pt-2 border-t border-white/20">
-              <span className="text-white/60 text-xs">
-                Factor: {calibrationData.pixelsPerMm.toFixed(1)} px/mm
-              </span>
-              <span className="text-white/60 text-xs">
-                {calibrationData.isCalibrated ? '✅ Calibrado' : '⚠️ Sin Calibrar'}
-              </span>
+            <div>
+              <p className="text-white/70">↕️ Alto</p>
+              <p className="text-blue-400 font-bold">{formatDimension(best?.dimensions?.height || best?.heightMm || 0)}</p>
             </div>
-          )}
+            <div>
+              <p className="text-white/70">{best?.dimensions?.depth ? '📏 Profundidad' : '📐 Área'}</p>
+              <p className="text-yellow-400 font-bold">
+                {best?.dimensions?.depth ? formatDimension(best.dimensions.depth) : `${Math.round(best?.areaMm2 || 0)}mm²`}
+              </p>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Indicador de enfoque en el centro */}
-      <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
-        <div className="w-16 h-16 border-2 border-green-400 rounded-full flex items-center justify-center">
-          <div className="w-8 h-8 border border-green-400 rounded-full"></div>
-        </div>
-        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
-          <Target className="w-4 h-4 text-green-400" />
+      {/* Bounding box y líneas de dimensión */}
+      <div
+        className="absolute border-2 border-green-400 rounded-md"
+        style={{ left, top, width, height }}
+      />
+      {/* Línea de ancho */}
+      <div
+        className="absolute h-0.5 bg-green-400"
+        style={{ left, top: top + height + 12, width }}
+      >
+        <div className="absolute -left-1 -top-1 w-2 h-2 bg-green-400" />
+        <div className="absolute -right-1 -top-1 w-2 h-2 bg-green-400" />
+        <div className="absolute left-1/2 -translate-x-1/2 -top-5 text-xs text-white bg-black/80 px-1.5 py-0.5 rounded">
+          {formatDimension(best?.widthMm || 0)}
         </div>
       </div>
-
-      {/* Grid de medición */}
-      <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-1/4 left-0 right-0 h-px bg-white/20"></div>
-        <div className="absolute top-1/2 left-0 right-0 h-px bg-white/20"></div>
-        <div className="absolute top-3/4 left-0 right-0 h-px bg-white/20"></div>
-        <div className="absolute top-0 bottom-0 left-1/4 w-px bg-white/20"></div>
-        <div className="absolute top-0 bottom-0 left-1/2 w-px bg-white/20"></div>
-        <div className="absolute top-0 bottom-0 left-3/4 w-px bg-white/20"></div>
+      {/* Línea de alto */}
+      <div
+        className="absolute w-0.5 bg-blue-400"
+        style={{ left: left + width + 12, top, height }}
+      >
+        <div className="absolute -top-1 -left-1 w-2 h-2 bg-blue-400" />
+        <div className="absolute -bottom-1 -left-1 w-2 h-2 bg-blue-400" />
+        <div className="absolute -left-10 top-1/2 -translate-y-1/2 text-xs text-white bg-black/80 px-1.5 py-0.5 rounded">
+          {formatDimension(best?.heightMm || 0)}
+        </div>
       </div>
     </div>
   );

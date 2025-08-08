@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -18,7 +18,6 @@ interface CameraViewProps {
     pixelsPerMm: number;
     isCalibrated: boolean;
   } | null;
-  // Objetos reales detectados (provenientes del worker)
   objects?: any[];
   externalVideoRef?: React.RefObject<HTMLVideoElement>;
 }
@@ -34,9 +33,12 @@ export const CameraView: React.FC<CameraViewProps> = ({
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [hasPermissions, setHasPermissions] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [videoDims, setVideoDims] = useState({ w: 0, h: 0 });
+  const [containerDims, setContainerDims] = useState({ w: 0, h: 0 });
   
   const internalVideoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = externalVideoRef || internalVideoRef;
 
   const initializeCamera = async () => {
@@ -72,22 +74,16 @@ export const CameraView: React.FC<CameraViewProps> = ({
 
   const captureFrame = async () => {
     if (!videoRef.current || !canvasRef.current) return;
-    
     setIsCapturing(true);
-    
     try {
       const canvas = canvasRef.current;
       const video = videoRef.current;
-      
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
-      
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
-      
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      
       onImageCapture?.(imageData);
     } catch (err) {
       setError('Error al capturar imagen');
@@ -105,7 +101,6 @@ export const CameraView: React.FC<CameraViewProps> = ({
         setCameraStream(null);
       }
     }
-    
     return () => {
       if (cameraStream) {
         cameraStream.getTracks().forEach(track => track.stop());
@@ -113,79 +108,76 @@ export const CameraView: React.FC<CameraViewProps> = ({
     };
   }, [isActive]);
 
+  // Medir dimensiones reales del video y contenedor
+  useLayoutEffect(() => {
+    const updateDims = () => {
+      if (videoRef.current) {
+        setVideoDims({ w: videoRef.current.videoWidth, h: videoRef.current.videoHeight });
+      }
+      if (containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        setContainerDims({ w: rect.width, h: rect.height });
+      }
+    };
+    updateDims();
+    window.addEventListener('resize', updateDims);
+    if (videoRef.current) {
+      videoRef.current.addEventListener('loadedmetadata', updateDims);
+    }
+    return () => {
+      window.removeEventListener('resize', updateDims);
+      videoRef.current?.removeEventListener('loadedmetadata', updateDims);
+    };
+  }, []);
+
   if (error) {
     return (
       <Card className="p-6 text-center">
         <CameraOff className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
         <h3 className="text-lg font-semibold mb-2">Error de Cámara</h3>
         <p className="text-muted-foreground mb-4">{error}</p>
-        <Button onClick={initializeCamera}>
-          Reintentar
-        </Button>
+        <Button onClick={initializeCamera}>Reintentar</Button>
       </Card>
     );
   }
 
   return (
     <div className="space-y-4">
-      {/* Controles */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Camera className="w-5 h-5 text-primary" />
           <span className="font-medium">Cámara Principal</span>
-          <Badge variant={hasPermissions ? "default" : "secondary"}>
-            {hasPermissions ? '🟢 Activa' : '🔴 Inactiva'}
-          </Badge>
+          <Badge variant={hasPermissions ? 'default' : 'secondary'}>{hasPermissions ? '🟢 Activa' : '🔴 Inactiva'}</Badge>
         </div>
-        
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleCameraSwitch}
-            disabled={!hasPermissions}
-          >
+          <Button variant="outline" size="sm" onClick={handleCameraSwitch} disabled={!hasPermissions}>
             <RotateCcw className="w-4 h-4 mr-1" />
             Cambiar
           </Button>
-          
-          <Button
-            onClick={captureFrame}
-            disabled={!hasPermissions || isCapturing}
-            className="bg-gradient-primary"
-          >
+          <Button onClick={captureFrame} disabled={!hasPermissions || isCapturing} className="bg-gradient-primary">
             <Camera className="w-4 h-4 mr-2" />
             {isCapturing ? 'Capturando...' : 'Capturar'}
           </Button>
         </div>
       </div>
 
-      {/* Vista cámara + overlay real (alto fijo, sin movimiento) */}
       <Card className="relative overflow-hidden">
-        <div className="relative bg-black w-full h-[72vh]">
-          <video
-            ref={videoRef}
-            className="w-full h-full object-contain"
-            autoPlay
-            playsInline
-            muted
-          />
-          
-          {/* Canvas oculto para captura */}
-          <canvas
-            ref={canvasRef}
-            style={{ display: 'none' }}
-          />
-          
-          {/* Overlay: SOLO objetos reales del worker */}
+        <div ref={containerRef} className="relative bg-black w-full h-[72vh]">
+          <video ref={videoRef} className="w-full h-full object-contain" autoPlay playsInline muted />
+          <canvas ref={canvasRef} style={{ display: 'none' }} />
+
           {hasPermissions && Array.isArray(objects) && objects.length > 0 && (
             <MeasurementOverlay
               objects={objects}
               isActive={isActive && hasPermissions}
               calibrationData={calibrationData}
+              videoWidth={videoDims.w}
+              videoHeight={videoDims.h}
+              containerWidth={containerDims.w}
+              containerHeight={containerDims.h}
             />
           )}
-          
+
           {!hasPermissions && (
             <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
               <div className="text-center text-white">
@@ -220,9 +212,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
                 </div>
                 <div>
                   <p className="text-muted-foreground">Estado de Calibración</p>
-                  <p className="font-medium">
-                    {calibrationData.isCalibrated ? '✅ Calibrado' : '⚠️ Sin Calibrar'}
-                  </p>
+                  <p className="font-medium">{calibrationData.isCalibrated ? '✅ Calibrado' : '⚠️ Sin Calibrar'}</p>
                 </div>
               </>
             )}

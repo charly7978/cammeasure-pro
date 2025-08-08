@@ -31,6 +31,7 @@ const Index = () => {
   const [detectedEdges, setDetectedEdges] = useState<MeasurementPoint[]>([]);
   const [realTimeObjects, setRealTimeObjects] = useState<any[]>([]);
   const [lastObjectsTs, setLastObjectsTs] = useState<number>(0);
+  const [lastNonEmptyObjects, setLastNonEmptyObjects] = useState<any[]>([]);
   const [objectCount, setObjectCount] = useState(0);
   const [stereoObjects, setStereoObjects] = useState<any[]>([]);
   
@@ -82,10 +83,14 @@ const Index = () => {
   const handleRealTimeObjects = (objects: any[]) => {
     setRealTimeObjects(objects);
     setLastObjectsTs(Date.now());
-    setObjectCount(objects.length);
-
     if (objects.length > 0) {
-      const bestObject = objects[0];
+      setLastNonEmptyObjects(objects);
+    }
+    setObjectCount(objects.length > 0 ? objects.length : lastNonEmptyObjects.length);
+
+    if ((objects.length > 0 ? objects : lastNonEmptyObjects).length > 0) {
+      const src = objects.length > 0 ? objects : lastNonEmptyObjects;
+      const bestObject = src[0];
       const result: MeasurementResult = {
         distance2D: Math.max(bestObject.widthMm || 0, bestObject.heightMm || 0),
         area: bestObject.areaMm2 || 0,
@@ -101,7 +106,7 @@ const Index = () => {
   const stableObjects = (() => {
     const AGE_MS = 1500;
     if (realTimeObjects.length > 0) return realTimeObjects;
-    if (Date.now() - lastObjectsTs < AGE_MS) return realTimeObjects; // mantenerse vacío si justo se vació
+    if (lastNonEmptyObjects.length > 0 && Date.now() - lastObjectsTs < AGE_MS) return lastNonEmptyObjects;
     return [];
   })();
 

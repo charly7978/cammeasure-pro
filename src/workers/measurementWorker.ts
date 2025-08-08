@@ -2,12 +2,6 @@ interface DetectMessage {
   type: 'DETECT';
   imageData: ImageData;
   minArea: number;
-  options?: {
-    enableMultiScale?: boolean;
-    enableTemporalStabilization?: boolean;
-    maxObjects?: number;
-    confidenceThreshold?: number;
-  };
 }
 
 interface InitMessage {
@@ -20,20 +14,26 @@ type Outgoing =
   | { type: 'READY' }
   | { type: 'DETECTED'; rects: any[] };
 
-// OpenCV worker avanzado para detección de objetos
+// OpenCV worker para detección de objetos
 declare var importScripts: (urls: string) => void;
 declare var cv: any;
 
 let isOpenCVReady = false;
 
-// Variables para tracking temporal
-let previousDetections: any[] = [];
-let detectionHistory: any[][] = [];
-const HISTORY_SIZE = 5;
-
 // Cargar OpenCV en el worker
 function loadOpenCV(): Promise<void> {
   return new Promise((resolve, reject) => {
+    // Verificar si OpenCV ya está cargado
+    if (typeof self !== 'undefined' && (self as any).cv && (self as any).cv.Mat) {
+      isOpenCVReady = true;
+      resolve();
+      return;
+    }
+
+    // En el worker, intentar cargar OpenCV mediante importScripts
+    try {
+      // Intentar cargar OpenCV desde una URL CDN
+      importScripts('https://docs.opencv.org/4.8.0/opencv.js');
     if (typeof self !== 'undefined' && (self as any).cv && (self as any).cv.Mat) {
       isOpenCVReady = true;
       resolve();

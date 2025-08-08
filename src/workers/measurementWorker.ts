@@ -106,102 +106,93 @@ function calculateOverlap(rect1: any, rect2: any) {
   return overlapArea / unionArea;
 }
 
-// Detección de contornos usando OpenCV
+// Detección de contornos usando OpenCV - Algoritmo v3
 function detectContoursOpenCV(imageData: ImageData, minArea: number) {
   if (!isOpenCVReady || !cv) {
-    // Fallback a detección nativa si OpenCV no está disponible
     return detectContoursNative(imageData, minArea);
   }
 
   try {
-    // Crear matriz OpenCV desde ImageData
     const src = cv.matFromImageData(imageData);
-    
-    // Convertir a escala de grises
     const gray = new cv.Mat();
     cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-    
-    // Aplicar desenfoque gaussiano más fuerte para reducir ruido
+
+    // 1. Desenfoque Gaussiano para reducir ruido inicial
     const blurred = new cv.Mat();
-    cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);
-    
-    // Detección de bordes Canny con umbrales más altos para ser más selectivo
-    const edges = new cv.Mat();
-    cv.Canny(blurred, edges, 100, 220); // Umbrales ajustados
-    
-    // Operación morfológica para cerrar pequeños huecos
-    const kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3, 3)); // Kernel reducido
-    cv.morphologyEx(edges, edges, cv.MORPH_CLOSE, kernel);
-    kernel.delete();
-    
-    // Encontrar contornos
+    cv.GaussianBlur(gray, blurred, new cv.Size(7, 7), 0);
+
+    // 2. Umbral adaptativo para manejar condiciones de luz variables
+    const thresh = new cv.Mat();
+    cv.adaptiveThreshold(blurred, thresh, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 11, 2);
+
+    // 3. Operaciones morfológicas para limpiar la imagen binarizada
+    const kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(5, 5));
+    const cleaned = new cv.Mat();
+    cv.morphologyEx(thresh, cleaned, cv.MORPH_OPEN, kernel); // Eliminar ruido
+    cv.morphologyEx(cleaned, cleaned, cv.MORPH_CLOSE, kernel); // Rellenar huecos
+
+    // 4. Encontrar contornos en la imagen limpia
     const contours = new cv.MatVector();
     const hierarchy = new cv.Mat();
-    cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+    cv.findContours(cleaned, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
     
     const rects = [];
     const imageArea = imageData.width * imageData.height;
-    
-    // Procesar cada contorno con filtros más estrictos
+
     for (let i = 0; i < contours.size(); i++) {
       const contour = contours.get(i);
-      
-      // Obtener rectángulo delimitador
-      const rect = cv.boundingRect(contour);
-      
-      // Calcular propiedades del contorno para mejor detección
       const area = cv.contourArea(contour);
-      const perimeter = cv.arcLength(contour, true);
-      
-      // Calcular circularidad para filtrar formas no deseadas
-      const circularity = (4 * Math.PI * area) / (perimeter * perimeter);
-      
-      // Calcular relación de aspecto
+
+      if (area < minArea * 1.5) {
+        contour.delete();
+        continue;
+      }
+
+      const rect = cv.boundingRect(contour);
       const aspectRatio = rect.width / rect.height;
-      
-      // Calcular densidad del área (área del contorno vs área del rectángulo)
-      const rectArea = rect.width * rect.height;
-      const density = area / rectArea;
-      
-      // Filtros más estrictos:
-      if (area >= minArea * 2 && 
-          area <= imageArea * 0.4 && // Aumentado a 40%
-          circularity > 0.3 && // Más estricto
-          aspectRatio > 0.2 && aspectRatio < 5.0 && // Más flexible
-          density > 0.5 && // Más estricto
-          rect.width > 25 && rect.height > 25) { // Reducido ligeramente
-        
+
+      // Filtro de solidez para formas más coherentes
+      const hull = new cv.Mat();
+      cv.convexHull(contour, hull);
+      const hullArea = cv.contourArea(hull);
+      const solidity = hullArea > 0 ? area / hullArea : 0;
+
+      if (
+        area > imageArea * 0.005 && // Reducido para detectar objetos más pequeños
+        area < imageArea * 0.9 &&
+        aspectRatio > 0.1 && aspectRatio < 10.0 && // Rango más amplio
+        solidity > 0.9 // Exigir formas muy sólidas
+      ) {
         rects.push({
           x: rect.x,
           y: rect.y,
           width: rect.width,
           height: rect.height,
           area: area,
-          confidence: Math.min(circularity * density * 1.5, 1.0) // Confianza ajustada
+          confidence: solidity // La solidez es un buen indicador de confianza
         });
       }
+      
+      contour.delete();
+      hull.delete();
     }
-    
+
     // Liberar memoria
     src.delete();
     gray.delete();
     blurred.delete();
-    edges.delete();
+    thresh.delete();
+    cleaned.delete();
     contours.delete();
     hierarchy.delete();
-    
-    // Filtrar objetos superpuestos
+
     const filteredRects = filterOverlappingRects(rects);
-    
-    // Ordenar por confianza y área
-    filteredRects.sort((a, b) => (b.confidence * b.area) - (a.confidence * a.area));
-    
-    // Retornar solo los 2 mejores objetos
-    return filteredRects.slice(0, 2);
-    
+    filteredRects.sort((a, b) => b.area - a.area); // Ordenar por área descendente
+
+    return filteredRects.slice(0, 1); // Devolver solo el mejor objeto detectado
+
   } catch (error) {
     console.error('OpenCV detection error:', error);
-    // Fallback a detección nativa
     return detectContoursNative(imageData, minArea);
   }
 }

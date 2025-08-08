@@ -187,10 +187,10 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-background p-4 lg:p-6">
-      <div className="grid lg:grid-cols-3 gap-6 xl:gap-8 h-full">
+      <div className="grid lg:grid-cols-5 gap-6 xl:gap-8 h-full">
         
         {/* Columna Principal (Izquierda) */}
-        <div className="lg:col-span-2 space-y-6">
+        <div className="lg:col-span-4 space-y-6">
           {/* Header */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -227,8 +227,58 @@ const Index = () => {
             </div>
           </div>
 
+          {/* Real-time Measurement Info */}
+          {realTimeObjects.length > 0 && (
+            <Card className="p-4 bg-gradient-measurement border-measurement-active/30 shadow-active">
+              <h3 className="font-semibold text-measurement-active mb-3 flex items-center gap-2">
+                <Target className="w-4 h-4" />
+                Medición en Tiempo Real
+              </h3>
+              <div className="grid grid-cols-1 gap-4">
+                {realTimeObjects.slice(0, 1).map((obj) => (
+                  <div key={obj.id} className="space-y-2">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground">↔️ Ancho</p>
+                        <p className="font-mono text-measurement-active font-bold text-lg">
+                          {formatDimension(obj.dimensions.width)}
+                        </p>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground">↕️ Alto</p>
+                        <p className="font-mono text-accent font-bold text-lg">
+                          {formatDimension(obj.dimensions.height)}
+                        </p>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground">📐 Área</p>
+                        <p className="font-mono text-primary font-bold">
+                          {formatArea(obj.dimensions.area)}
+                        </p>
+                      </div>
+                       <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground">📏 Diagonal</p>
+                        <p className="font-mono text-calibration font-bold">
+                          {formatDimension(Math.sqrt(obj.dimensions.width ** 2 + obj.dimensions.height ** 2))}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex justify-between items-center pt-2 border-t border-white/20">
+                      <span className="text-xs text-muted-foreground">
+                        Confianza: {(obj.confidence * 100).toFixed(0)}%
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        Factor: {calibration?.pixelsPerMm.toFixed(1)} px/mm
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+
           {/* Vista de Cámara y Medición */}
-          <Card className="p-4 h-[60vh] flex flex-col">
+          <Card className="p-4 h-[80vh] flex flex-col">
             <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as any)} className="flex-grow flex flex-col">
               <TabsList className="grid w-full grid-cols-3 bg-card border border-border">
                 <TabsTrigger value="camera" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
@@ -280,67 +330,7 @@ const Index = () => {
         </div>
 
         {/* Columna Lateral (Derecha) */}
-        <div className="space-y-6">
-          {/* Real-time Measurement Info */}
-          {realTimeObjects.length > 0 ? (
-            <Card className="p-4 bg-gradient-measurement border-measurement-active/30 shadow-active">
-              <h3 className="font-semibold text-measurement-active mb-3 flex items-center gap-2">
-                <Target className="w-4 h-4" />
-                Medición en Tiempo Real
-              </h3>
-              <div className="grid grid-cols-1 gap-4">
-                {realTimeObjects.slice(0, 1).map((obj) => (
-                  <div key={obj.id} className="space-y-2">
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div className="space-y-1">
-                        <p className="text-xs text-muted-foreground">↔️ Ancho</p>
-                        <p className="font-mono text-measurement-active font-bold text-lg">
-                          {formatDimension(obj.dimensions.width)}
-                        </p>
-                      </div>
-                      <div className="space-y-1">
-                        <p className="text-xs text-muted-foreground">↕️ Alto</p>
-                        <p className="font-mono text-accent font-bold text-lg">
-                          {formatDimension(obj.dimensions.height)}
-                        </p>
-                      </div>
-                      <div className="space-y-1">
-                        <p className="text-xs text-muted-foreground">📐 Área</p>
-                        <p className="font-mono text-primary font-bold">
-                          {formatArea(obj.dimensions.area)}
-                        </p>
-                      </div>
-                       <div className="space-y-1">
-                        <p className="text-xs text-muted-foreground">📏 Diagonal</p>
-                        <p className="font-mono text-calibration font-bold">
-                          {formatDimension(Math.sqrt(obj.dimensions.width ** 2 + obj.dimensions.height ** 2))}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex justify-between items-center pt-2 border-t border-white/20">
-                      <span className="text-xs text-muted-foreground">
-                        Confianza: {(obj.confidence * 100).toFixed(0)}%
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        Factor: {calibration?.pixelsPerMm.toFixed(1)} px/mm
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          ) : (
-             <Card className="p-4">
-                <h4 className="font-medium mb-2 text-primary">🎯 Instrucciones</h4>
-                <ul className="text-sm text-muted-foreground space-y-1">
-                  <li>• Apunta la cámara al objeto a medir.</li>
-                  <li>• La app detectará el objeto principal.</li>
-                  <li>• Las medidas aparecerán en tiempo real.</li>
-                  <li>• Para mayor precisión, usa la pestaña "Calibración".</li>
-                </ul>
-            </Card>
-          )}
-
+        <div className="lg:col-span-1 space-y-6">
           {/* Controles de Medición */}
           <MeasurementControls
             measurementMode={measurementMode}
@@ -374,6 +364,19 @@ const Index = () => {
                   <p className="font-mono">γ: {sensorData.rotation.gamma?.toFixed(1)}</p>
                 </div>
               </div>
+            </Card>
+          )}
+
+          {/* Instrucciones */}
+          {realTimeObjects.length === 0 && (
+             <Card className="p-4">
+                <h4 className="font-medium mb-2 text-primary">🎯 Instrucciones</h4>
+                <ul className="text-sm text-muted-foreground space-y-1">
+                  <li>• Apunta la cámara al objeto a medir.</li>
+                  <li>• La app detectará el objeto principal.</li>
+                  <li>• Las medidas aparecerán en tiempo real.</li>
+                  <li>• Para mayor precisión, usa la pestaña "Calibración".</li>
+                </ul>
             </Card>
           )}
         </div>

@@ -12,9 +12,12 @@ import {
   RotateCcw,
   Save,
   Download,
-  Target
+  Target,
+  FileText,
+  Settings
 } from 'lucide-react';
 import type { MeasurementResult } from './MeasurementEngine';
+import { AdvancedExportSystem } from '@/lib/advancedExport';
 
 export type MeasurementMode = '2d' | '3d' | 'depth' | 'area' | 'volume';
 
@@ -40,6 +43,8 @@ export const MeasurementControls: React.FC<MeasurementControlsProps> = ({
   onExport
 }) => {
   const [isCapturing, setIsCapturing] = useState(false);
+  const [exportSystem] = useState(() => new AdvancedExportSystem());
+  const [showExportOptions, setShowExportOptions] = useState(false);
 
   const handleCapture = async () => {
     setIsCapturing(true);

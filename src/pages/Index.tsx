@@ -33,6 +33,8 @@ const Index = () => {
   const [realTimeObjects, setRealTimeObjects] = useState<DetectedObject[]>([]);
   const [objectCount, setObjectCount] = useState(0);
   const [showPrecisionAnalysis, setShowPrecisionAnalysis] = useState(false);
+  const [currentImageData, setCurrentImageData] = useState<ImageData | null>(null);
+  const [showPrecisionAnalysis, setShowPrecisionAnalysis] = useState(false);
   const [exportSystem] = useState(() => new AdvancedExportSystem());
   
   const { sensorData, isListening, startListening, stopListening } = useDeviceSensors();
@@ -56,11 +58,12 @@ const Index = () => {
 
   const handleImageCapture = (imageData: ImageData) => {
     setCapturedImage(imageData);
+    setCurrentImageData(imageData);
     setActiveTab('measurements');
     
     toast({
       title: "Imagen capturada",
-      description: "Imagen lista para análisis y medición"
+      description: "Imagen lista para análisis y medición profesional"
     });
   };
 
@@ -409,6 +412,38 @@ const Index = () => {
             onSave={handleSave}
             onExport={handleExport}
           />
+
+          {/* Panel de Análisis de Precisión */}
+          {(measurementResult || realTimeObjects.length > 0) && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-medium">Análisis de Precisión</h4>
+                <button
+                  onClick={() => setShowPrecisionAnalysis(!showPrecisionAnalysis)}
+                  className="text-xs text-primary hover:text-primary/80"
+                >
+                  {showPrecisionAnalysis ? 'Ocultar' : 'Mostrar'}
+                </button>
+              </div>
+              
+              <PrecisionAnalysisPanel
+                isVisible={showPrecisionAnalysis}
+                currentMeasurement={measurementResult ? {
+                  value: measurementResult.distance2D,
+                  confidence: measurementResult.confidence
+                } : undefined}
+                imageData={currentImageData || undefined}
+                detectedObjects={realTimeObjects}
+                calibrationData={calibration}
+                onRecommendationClick={(rec) => {
+                  toast({
+                    title: "Recomendación",
+                    description: rec
+                  });
+                }}
+              />
+            </div>
+          )}
 
           {/* Auto-Calibración Profesional */}
           <Card className="p-4">

@@ -123,14 +123,14 @@ function detectContoursOpenCV(imageData: ImageData, minArea: number) {
     
     // Aplicar desenfoque gaussiano más fuerte para reducir ruido
     const blurred = new cv.Mat();
-    cv.GaussianBlur(gray, blurred, new cv.Size(9, 9), 0);
+    cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);
     
     // Detección de bordes Canny con umbrales más altos para ser más selectivo
     const edges = new cv.Mat();
-    cv.Canny(blurred, edges, 80, 200);
+    cv.Canny(blurred, edges, 100, 220); // Umbrales ajustados
     
     // Operación morfológica para cerrar pequeños huecos
-    const kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(5, 5));
+    const kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3, 3)); // Kernel reducido
     cv.morphologyEx(edges, edges, cv.MORPH_CLOSE, kernel);
     kernel.delete();
     
@@ -164,18 +164,12 @@ function detectContoursOpenCV(imageData: ImageData, minArea: number) {
       const density = area / rectArea;
       
       // Filtros más estrictos:
-      // 1. Área mínima más grande
-      // 2. Área máxima (no más del 30% de la imagen)
-      // 3. Circularidad mínima
-      // 4. Relación de aspecto razonable
-      // 5. Densidad mínima
-      // 6. Dimensiones mínimas
-      if (area >= minArea * 3 && 
-          area <= imageArea * 0.3 &&
-          circularity > 0.2 && 
-          aspectRatio > 0.3 && aspectRatio < 3.0 &&
-          density > 0.4 &&
-          rect.width > 30 && rect.height > 30) {
+      if (area >= minArea * 2 && 
+          area <= imageArea * 0.4 && // Aumentado a 40%
+          circularity > 0.3 && // Más estricto
+          aspectRatio > 0.2 && aspectRatio < 5.0 && // Más flexible
+          density > 0.5 && // Más estricto
+          rect.width > 25 && rect.height > 25) { // Reducido ligeramente
         
         rects.push({
           x: rect.x,
@@ -183,7 +177,7 @@ function detectContoursOpenCV(imageData: ImageData, minArea: number) {
           width: rect.width,
           height: rect.height,
           area: area,
-          confidence: Math.min(circularity * density * 2, 1.0) // Calcular confianza basada en forma
+          confidence: Math.min(circularity * density * 1.5, 1.0) // Confianza ajustada
         });
       }
     }

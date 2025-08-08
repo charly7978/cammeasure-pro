@@ -1,8 +1,8 @@
 
 import React, { useCallback, useEffect, useRef } from 'react';
 import { useOpenCV } from '@/hooks/useOpenCV';
-import { useMeasurementWorker } from '@/hooks/useMeasurementWorker';
 import { useCalibration } from '@/hooks/useCalibration';
+import { DetectedObject as OpenCVDetectedObject, DetectionResult } from '@/lib/opencvManager';
 
 export interface DetectedObject {
   id: string;
@@ -44,15 +44,14 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
   onObjectsDetected,
   isActive,
 }) => {
-  const { isLoaded } = useOpenCV();
-  const { detect } = useMeasurementWorker();
+  const { isLoaded, detectObjects, capabilities } = useOpenCV();
   const { calibration } = useCalibration();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef<number>();
   const lastProcessTime = useRef<number>(0);
-  const PROCESS_INTERVAL = 150; // Optimized processing interval for better responsiveness
+  const PROCESS_INTERVAL = 200; // Intervalo optimizado para procesamiento en tiempo real
 
-  const processFrame = useCallback(() => {
+  const processFrame = useCallback(async () => {
     if (!isActive || !videoRef.current || !canvasRef.current) {
       if (isActive) {
         rafRef.current = requestAnimationFrame(processFrame);
@@ -87,200 +86,96 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-    // 🎯 MEDICIÓN 3D REAL EN TIEMPO REAL
-    detect({
-      imageData,
-      minArea: 1000, // Área mínima para objetos 3D
-      onDetect: (objects3D) => {
-        console.log('🎯 MEDICIÓN 3D REAL - Objetos detectados:', objects3D.length);
+    try {
+      // 🎯 DETECCIÓN REAL CON OPENCV
+      const detectionResult = await detectObjects(imageData, {
+        enable3D: true,
+        confidenceThreshold: 500,
+        maxObjects: 10,
+        cameraParams: calibration ? {
+          focalLength: 800,
+          principalPointX: canvas.width / 2,
+          principalPointY: canvas.height / 2,
+          sensorWidth: 6.17,
+          sensorHeight: 4.63,
+          imageWidth: canvas.width,
+          imageHeight: canvas.height,
+          pixelsPerMm: calibration.pixelsPerMm || 129.87
+        } : undefined
+      });
 
-        // Filtrar objetos válidos para medición 3D
-        const validObjects = objects3D.filter(obj => {
-          return obj.realWidth && obj.realHeight && obj.volume && 
-                 obj.confidence > 0.3 && obj.area > 1000;
-        });
+      // Convertir objetos de OpenCV al formato esperado
+      const convertedObjects: DetectedObject[] = detectionResult.objects.map((obj: OpenCVDetectedObject) => ({
+        id: obj.id,
+        bounds: {
+          x: obj.bounds.x,
+          y: obj.bounds.y,
+          width: obj.bounds.width,
+          height: obj.bounds.height,
+          area: obj.bounds.area
+        },
+        dimensions: {
+          width: obj.realWidth || (obj.bounds.width / (calibration?.pixelsPerMm || 1)),
+          height: obj.realHeight || (obj.bounds.height / (calibration?.pixelsPerMm || 1)),
+          area: obj.realWidth && obj.realHeight ? obj.realWidth * obj.realHeight : obj.bounds.area,
+          unit: 'mm'
+        },
+        confidence: obj.confidence,
+        center: {
+          x: obj.bounds.centerX,
+          y: obj.bounds.centerY
+        },
+        // Datos 3D reales
+        depth: obj.depth,
+        realWidth: obj.realWidth,
+        realHeight: obj.realHeight,
+        realDepth: obj.realDepth,
+        volume: obj.volume,
+        surfaceArea: obj.surfaceArea,
+        estimatedMass: obj.estimatedMass,
+        distanceToCamera: obj.distanceToCamera,
+        viewingAngle: obj.viewingAngle,
+        geometricShape: obj.geometricShape,
+        errorEstimate: obj.errorEstimate,
+        measurementQuality: obj.measurementQuality,
+        precision: {
+          accuracy: obj.measurementQuality || 0.5,
+          stability: 0.8,
+          errorEstimate: obj.errorEstimate || 0,
+          qualityScore: obj.measurementQuality || 0.5
+        }
+      }));
 
-        console.log('✅ Objetos 3D válidos:', validObjects.length);
+      // Filtrar objetos válidos para medición
+      const validObjects = convertedObjects.filter(obj => {
+        return obj.confidence > 0.3 && 
+               obj.bounds.area > 500 &&
+               obj.dimensions.width > 5 &&
+               obj.dimensions.height > 5;
+      });
 
-        // Convertir objetos 3D del worker a formato de interfaz
-        const detectedObjects: DetectedObject[] = validObjects.map((obj3D, i) => {
-          console.log(`📐 OBJETO 3D REAL ${i + 1}:`, {
-            dimensiones2D: { width: obj3D.width, height: obj3D.height },
-            dimensiones3D: { 
-              realWidth: obj3D.realWidth?.toFixed(1), 
-              realHeight: obj3D.realHeight?.toFixed(1), 
-              realDepth: obj3D.realDepth?.toFixed(1) 
-            },
-            volumen: obj3D.volume?.toFixed(2) + ' mm³',
-            areaSuperf: obj3D.surfaceArea?.toFixed(1) + ' mm²',
-            distancia: obj3D.distanceToCamera?.toFixed(0) + ' mm',
-            forma: obj3D.geometricShape,
-            masa: obj3D.estimatedMass?.toFixed(1) + ' g',
-            confianza: (obj3D.confidence * 100).toFixed(0) + '%'
-          });
+      if (validObjects.length > 0) {
+        console.log(`🎯 DETECCIÓN REAL - ${validObjects.length} objetos detectados con ${detectionResult.algorithm}`);
+        console.log('📊 Estadísticas:', detectionResult.metadata);
+        onObjectsDetected(validObjects);
+      }
 
-          return {
-            id: obj3D.id || `3d_obj_${i}_${Date.now()}`,
-            bounds: {
-              x: obj3D.x || 0,
-              y: obj3D.y || 0,
-              width: obj3D.width || 0,
-              height: obj3D.height || 0,
-              area: obj3D.area || 0
-            },
-            dimensions: {
-              width: obj3D.realWidth || 0,
-              height: obj3D.realHeight || 0,
-              area: (obj3D.realWidth || 0) * (obj3D.realHeight || 0),
-              unit: 'mm'
-            },
-            confidence: obj3D.confidence || 0.8,
-            center: { 
-              x: (obj3D.x || 0) + (obj3D.width || 0) / 2, 
-              y: (obj3D.y || 0) + (obj3D.height || 0) / 2 
-            },
-            
-            // 🎯 DATOS 3D REALES DEL WORKER AVANZADO
-            depth: obj3D.depth,
-            realWidth: obj3D.realWidth,
-            realHeight: obj3D.realHeight,
-            realDepth: obj3D.realDepth,
-            volume: obj3D.volume,
-            surfaceArea: obj3D.surfaceArea,
-            estimatedMass: obj3D.estimatedMass,
-            distanceToCamera: obj3D.distanceToCamera,
-            viewingAngle: obj3D.viewingAngle,
-            geometricShape: obj3D.geometricShape,
-            errorEstimate: obj3D.errorEstimate,
-            measurementQuality: obj3D.measurementQuality,
-            
-            precision: {
-              accuracy: obj3D.measurementQuality || 0.85,
-              stability: 0.88,
-              errorEstimate: obj3D.errorEstimate || 2.0,
-              qualityScore: (obj3D.confidence || 0.8) * 100
-            }
-          };
-        }).slice(0, 1); // Solo el mejor objeto para medición estable
-
-        console.log('🚀 OBJETOS 3D FINALES ENVIADOS:', detectedObjects.length);
-        onObjectsDetected(detectedObjects);
-      },
-    });
+    } catch (error) {
+      console.error('❌ Error en detección en tiempo real:', error);
+    }
 
     rafRef.current = requestAnimationFrame(processFrame);
-  }, [isActive, videoRef, detect, calibration, onObjectsDetected]);
-
-  // FACTOR DE CONVERSIÓN CORREGIDO PARA MEDICIONES PRECISAS
-  const calculateConversionFactor = (calibration: any, imageWidth: number, imageHeight: number): number => {
-    if (calibration?.isCalibrated && calibration?.pixelsPerMm > 0) {
-      console.log('Using calibrated conversion factor:', calibration.pixelsPerMm);
-      return calibration.pixelsPerMm;
-    }
-    
-    // CÁLCULO CORREGIDO BASADO EN RESOLUCIONES REALES DE SMARTPHONE
-    // Resolución típica: 1920x1080 a 4000x3000
-    // Distancia típica de medición: 25-35cm
-    
-    // Factor base más realista según el tamaño de imagen
-    let baseFactor;
-    const totalPixels = imageWidth * imageHeight;
-    
-    if (totalPixels > 8000000) { // 4K+ (ej: 4000x3000)
-      baseFactor = 12.0; // Alta resolución = más píxeles por mm
-    } else if (totalPixels > 2000000) { // Full HD+ (ej: 1920x1080)
-      baseFactor = 8.0; // Resolución media
-    } else { // HD o menor
-      baseFactor = 5.0; // Baja resolución = menos píxeles por mm
-    }
-    
-    console.log('Auto-calibration calculation:', {
-      imageSize: { width: imageWidth, height: imageHeight },
-      totalPixels: totalPixels,
-      selectedBaseFactor: baseFactor,
-      expectedDistance: '30cm',
-      note: 'Factor optimizado para mediciones reales'
-    });
-    
-    return baseFactor;
-  };
-
-  // Enhanced object validation for better measurement accuracy
-  const validateObjectForMeasurement = (rect: any, imageWidth: number, imageHeight: number): boolean => {
-    const imageArea = imageWidth * imageHeight;
-    const objectAreaRatio = rect.area / imageArea;
-    const aspectRatio = rect.width / rect.height;
-    
-    // Enhanced filtering criteria for valid measurement objects
-    const isValidSize = rect.area >= 600 && rect.area <= imageArea * 0.5; // More permissive size range
-    const isValidAspectRatio = aspectRatio >= 0.05 && aspectRatio <= 20.0; // More permissive aspect ratio
-    const isValidPosition = rect.x > 5 && rect.y > 5 && 
-                           rect.x + rect.width < imageWidth - 5 && 
-                           rect.y + rect.height < imageHeight - 5; // Smaller border margin
-    const isValidAreaRatio = objectAreaRatio >= 0.0005 && objectAreaRatio <= 0.5; // More permissive area ratio
-    const hasMinimumDimensions = rect.width >= 15 && rect.height >= 15; // Smaller minimum dimensions
-    
-    // Additional quality checks
-    const hasReasonableShape = rect.width > 0 && rect.height > 0;
-    const isNotTooThin = Math.min(rect.width, rect.height) >= 10; // Avoid very thin objects
-    const hasGoodConfidence = (rect.confidence || 0) >= 0.1; // Very low confidence threshold
-    
-    const isValid = isValidSize && isValidAspectRatio && isValidPosition && 
-                   isValidAreaRatio && hasMinimumDimensions && hasReasonableShape && 
-                   isNotTooThin && hasGoodConfidence;
-    
-    if (!isValid) {
-      console.log('Object rejected:', {
-        area: rect.area,
-        aspectRatio: aspectRatio.toFixed(2),
-        areaRatio: objectAreaRatio.toFixed(4),
-        position: { x: rect.x, y: rect.y },
-        dimensions: { width: rect.width, height: rect.height },
-        confidence: rect.confidence || 0,
-        reasons: {
-          size: !isValidSize,
-          aspectRatio: !isValidAspectRatio,
-          position: !isValidPosition,
-          areaRatio: !isValidAreaRatio,
-          minDimensions: !hasMinimumDimensions,
-          shape: !hasReasonableShape,
-          thinness: !isNotTooThin,
-          confidence: !hasGoodConfidence
-        }
-      });
-    }
-    
-    return isValid;
-  };
-
-  // Calculate real-world dimensions with proper scaling
-  const calculateRealDimension = (pixelDimension: number, factor: number): number => {
-    const realDimension = pixelDimension / factor;
-    
-    // Apply slight correction for perspective distortion (objects at edges appear slightly smaller)
-    const correctionFactor = 1.05; // 5% correction
-    
-    return realDimension * correctionFactor;
-  };
-
-  const calculateRealArea = (pixelArea: number, factor: number): number => {
-    const realArea = pixelArea / (factor * factor);
-    
-    // Apply correction for perspective and lighting variations
-    const correctionFactor = 1.1; // 10% correction for area
-    
-    return realArea * correctionFactor;
-  };
+  }, [isActive, videoRef, detectObjects, calibration, onObjectsDetected]);
 
   useEffect(() => {
     if (isActive) {
-      console.log('Starting real-time measurement with OpenCV available:', isLoaded);
       rafRef.current = requestAnimationFrame(processFrame);
     } else {
       if (rafRef.current) {
         cancelAnimationFrame(rafRef.current);
       }
     }
+
     return () => {
       if (rafRef.current) {
         cancelAnimationFrame(rafRef.current);
@@ -288,5 +183,27 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
     };
   }, [isActive, processFrame]);
 
-  return <canvas ref={canvasRef} style={{ display: 'none' }} />;
+  // Mostrar estado de OpenCV
+  useEffect(() => {
+    if (isLoaded) {
+      console.log('✅ OpenCV cargado - Capacidades disponibles:', capabilities);
+    } else {
+      console.log('⏳ Cargando OpenCV...');
+    }
+  }, [isLoaded, capabilities]);
+
+  return (
+    <div className="relative">
+      <canvas
+        ref={canvasRef}
+        className="hidden"
+        style={{ position: 'absolute', top: 0, left: 0 }}
+      />
+      {!isLoaded && (
+        <div className="absolute top-2 left-2 bg-yellow-500 text-white px-2 py-1 rounded text-xs">
+          Cargando OpenCV...
+        </div>
+      )}
+    </div>
+  );
 };

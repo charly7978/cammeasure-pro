@@ -30,7 +30,7 @@ const Index = () => {
               CamMeasure Pro - SISTEMA FUNCIONAL
             </h1>
             <p className="text-muted-foreground">
-              Medición en tiempo real que SÍ FUNCIONA - Sin OpenCV, sin errores
+              Medición en tiempo real que SÍ FUNCIONA - Con OpenCV integrado
             </p>
           </div>
         </div>
@@ -39,7 +39,7 @@ const Index = () => {
         <div className="flex items-center justify-center gap-4 flex-wrap">
           <Badge variant="default" className="bg-green-500 text-white">
             <Cpu className="w-3 h-3 mr-1" />
-            Sistema Nativo ACTIVO
+            Sistema ACTIVO
           </Badge>
           
           <Badge variant="default" className="bg-blue-500 text-white">
@@ -66,15 +66,15 @@ const Index = () => {
             <AlertCircle className="w-5 h-5 text-green-600 mt-0.5" />
             <div className="flex-1">
               <h3 className="font-semibold text-green-800 mb-2">
-                🎉 Sistema de Medición Funcional Implementado
+                🎉 Sistema de Medición Funcional con OpenCV
               </h3>
               <ul className="text-sm text-green-700 space-y-1">
-                <li>✅ Worker de medición nativo que funciona sin OpenCV</li>
+                <li>✅ OpenCV integrado para detección precisa</li>
                 <li>✅ Detección de objetos en tiempo real</li>
                 <li>✅ Mediciones precisas en milímetros</li>
                 <li>✅ Calibración ajustable</li>
                 <li>✅ Interfaz responsive y funcional</li>
-                <li>✅ Sin errores de importación</li>
+                <li>✅ Worker de medición optimizado</li>
               </ul>
               <button 
                 onClick={() => setShowInfo(false)}
@@ -100,9 +100,9 @@ const Index = () => {
           <div>
             <h4 className="font-medium text-gray-700 mb-1">Algoritmos Implementados:</h4>
             <ul className="text-gray-600 space-y-1">
-              <li>• Detección de bordes con operador Sobel</li>
-              <li>• Flood fill para componentes conectados</li>
-              <li>• Filtrado por tamaño y forma</li>
+              <li>• OpenCV para detección de bordes</li>
+              <li>• Filtros Gaussianos para reducción de ruido</li>
+              <li>• Detección de contornos con Canny</li>
               <li>• Cálculo de confianza multi-factor</li>
             </ul>
           </div>
@@ -111,7 +111,7 @@ const Index = () => {
             <ul className="text-gray-600 space-y-1">
               <li>• Medición en tiempo real (200ms)</li>
               <li>• Calibración ajustable</li>
-              <li>• Detección de hasta 3 objetos</li>
+              <li>• Detección de múltiples objetos</li>
               <li>• Mediciones en mm, cm, m</li>
             </ul>
           </div>

@@ -244,7 +244,8 @@ const Index = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background p-4 space-y-4">
+    <ImmersiveMode>
+      <div className="min-h-screen bg-background p-4 space-y-4">
       {/* Header */}
       <div className="text-center space-y-3">
         <div className="flex items-center justify-center gap-3">
@@ -620,6 +621,7 @@ const Index = () => {
         </div>
       </Tabs>
     </div>
+    </ImmersiveMode>
   );
 };
 

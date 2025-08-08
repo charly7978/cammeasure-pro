@@ -1,5 +1,9 @@
 import { BoundingRect, detectContours } from '../lib/imageProcessing';
 
+// Declare worker globals for TypeScript
+declare const self: DedicatedWorkerGlobalScope;
+declare function importScripts(...urls: string[]): void;
+
 // Enhanced measurement worker with real computer vision algorithms
 let cv: any = null;
 let isInitialized = false;
@@ -41,33 +45,27 @@ self.onmessage = function(e: MessageEvent) {
 };
 
 function initializeWorker() {
-  // Check if OpenCV is available
-  if (typeof importScripts !== 'undefined') {
-    try {
-      // Try to load OpenCV in worker context
-      importScripts('https://docs.opencv.org/4.8.0/opencv.js');
-      
-      const checkOpenCV = () => {
-        if (typeof cv !== 'undefined' && cv.Mat) {
-          isInitialized = true;
-          console.log('OpenCV initialized in worker');
-          self.postMessage({ type: 'READY' });
-        } else {
-          // Fallback to native algorithms
-          console.log('OpenCV not available, using native algorithms');
-          isInitialized = true;
-          self.postMessage({ type: 'READY' });
-        }
-      };
-      
-      setTimeout(checkOpenCV, 1000);
-    } catch (error) {
-      console.log('OpenCV loading failed, using native algorithms');
-      isInitialized = true;
-      self.postMessage({ type: 'READY' });
-    }
-  } else {
-    // Native algorithms only
+  try {
+    // Try to load OpenCV in worker context
+    importScripts('https://docs.opencv.org/4.8.0/opencv.js');
+    
+    const checkOpenCV = () => {
+      if (typeof (self as any).cv !== 'undefined' && (self as any).cv.Mat) {
+        cv = (self as any).cv;
+        isInitialized = true;
+        console.log('OpenCV initialized in worker');
+        self.postMessage({ type: 'READY' });
+      } else {
+        // Fallback to native algorithms
+        console.log('OpenCV not available, using native algorithms');
+        isInitialized = true;
+        self.postMessage({ type: 'READY' });
+      }
+    };
+    
+    setTimeout(checkOpenCV, 1000);
+  } catch (error) {
+    console.log('OpenCV loading failed, using native algorithms');
     isInitialized = true;
     self.postMessage({ type: 'READY' });
   }
@@ -472,7 +470,7 @@ function applyAdvancedFiltering(rects: BoundingRect[]): BoundingRect[] {
       const overlap = calculateOverlap(rect, existing);
       
       if (overlap > 0.3) { // 30% overlap threshold
-        if (rect.confidence > existing.confidence) {
+        if ((rect.confidence || 0) > (existing.confidence || 0)) {
           filtered.splice(i, 1); // Remove existing, add new
         } else {
           shouldAdd = false; // Skip this rect
@@ -488,7 +486,7 @@ function applyAdvancedFiltering(rects: BoundingRect[]): BoundingRect[] {
   
   // Sort by confidence and return top candidates
   return filtered
-    .sort((a, b) => b.confidence - a.confidence)
+    .sort((a, b) => (b.confidence || 0) - (a.confidence || 0))
     .slice(0, 3); // Maximum 3 objects
 }
 

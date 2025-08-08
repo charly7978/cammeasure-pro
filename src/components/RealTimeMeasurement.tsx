@@ -1,6 +1,7 @@
 // RealTimeMeasurement.tsx
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useCalibration } from '@/hooks/useCalibration';
+import { NativeMultiCamera } from '@/lib/nativeMultiCamera';
 
 /**
  * RealTimeMeasurement
@@ -45,6 +46,7 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({ videoR
   const workerRef = useRef<Worker | null>(null);
   const { calibration, setCalibration } = useCalibration();
   const [workerReady, setWorkerReady] = useState(false);
+  const nativeStereoListenerRef = useRef<any>(null);
 
   // Inicializar worker
   useEffect(() => {
@@ -134,6 +136,7 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({ videoR
     }
   }, []);
 
+  // WEB: frame loop normal
   const processFrame = useCallback(() => {
     const now = Date.now();
     if (!isActive || !videoRef.current || !workerRef.current) {
@@ -191,6 +194,35 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({ videoR
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
   }, [isActive, processFrame, workerReady]);
+
+  // NATIVO: escuchar frames estéreo y enviarlos al worker como processStereoAdvanced
+  useEffect(() => {
+    let sub: any = null;
+    const run = async () => {
+      if (!NativeMultiCamera.isNative) return;
+      try {
+        const res = await NativeMultiCamera.listCameras();
+        const backs = (res.devices || []).filter((d: any) => d.isBack);
+        if (backs.length < 2) { console.warn('No hay dos cámaras traseras disponibles en nativo'); return; }
+        const leftId = backs[0].id; const rightId = backs[1].id;
+        sub = await NativeMultiCamera.onStereoFrame((payload) => {
+          if (!workerRef.current) return;
+          // Conversion: arrays de enteros a Uint8ClampedArray -> ImageData
+          const { width, height, left, right } = payload;
+          const leftClamped = new Uint8ClampedArray(left);
+          const rightClamped = new Uint8ClampedArray(right);
+          const leftImage = new ImageData(leftClamped, width, height);
+          const rightImage = new ImageData(rightClamped, width, height);
+          workerRef.current.postMessage({ type: 'processStereoAdvanced', left: leftImage, right: rightImage, stereoConfig: {} });
+        });
+        await NativeMultiCamera.startStereo(leftId, rightId, 1280, 720);
+      } catch (e) {
+        console.warn('Stereo nativo no disponible:', e);
+      }
+    };
+    run();
+    return () => { sub?.remove?.(); NativeMultiCamera.stop().catch(() => {}); };
+  }, []);
 
   // Función pública para calibrar automáticamente detectando un checkerboard
   const autoCalibrateWithCheckerboard = async (patternW = 9, patternH = 6, squareSizeMm = 25.4) => {

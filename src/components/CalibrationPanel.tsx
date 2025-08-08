@@ -14,6 +14,11 @@ export interface CalibrationData {
   isCalibrated: boolean;
   calibrationMethod: 'manual' | 'reference' | 'auto';
   lastCalibrationDate?: string;
+  // Parámetros avanzados reales
+  cameraMatrix: number[][];
+  distortionCoefficients: number[];
+  imageSize: { width: number; height: number };
+  realWorldScale: number;
 }
 
 interface CalibrationPanelProps {

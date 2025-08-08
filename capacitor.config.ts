@@ -8,6 +8,20 @@ const config: CapacitorConfig = {
     url: 'https://f976e3b6-c56e-4814-85f8-240003ca6ffe.lovableproject.com?forceHideBadge=true',
     cleartext: true
   },
+  android: {
+    allowMixedContent: true,
+    theme: {
+      fullscreen: true,
+      immersive: true,
+      statusBar: {
+        visible: false,
+        style: 'LIGHT'
+      },
+      navigationBar: {
+        visible: false
+      }
+    }
+  },
   plugins: {
     Camera: {
       permissions: ['camera', 'photos'],
@@ -18,6 +32,10 @@ const config: CapacitorConfig = {
     Motion: {
       permissions: ['motion'],
     },
+    StatusBar: {
+      overlaysWebView: true,
+      style: 'LIGHT'
+    }
   },
 };
 

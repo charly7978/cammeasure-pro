@@ -74,7 +74,8 @@ export interface PhotogrammetricMeasurement {
 
 // ==================== ÁLGEBRA LINEAL AVANZADA ====================
 
-export class AdvancedLinearAlgebra {
+// TODO: Considerar refactorizar a namespace si no se usan instancias
+class AdvancedLinearAlgebra {
   
   /**
    * Multiplicación de matrices 3x3
@@ -106,7 +107,7 @@ export class AdvancedLinearAlgebra {
                 m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
     
     if (Math.abs(det) < 1e-10) {
-      return null; // Matriz singular
+      throw new Error('Matrix is singular');
     }
     
     // Calcular matriz adjunta
@@ -148,6 +149,7 @@ export class AdvancedLinearAlgebra {
     const S_matrix = A.map(row => [...row]);
     
     // Iteraciones de Jacobi
+    // TODO: Optimizar para rendimiento - agregar caché o salida temprana si off-diagonal es pequeña
     for (let iter = 0; iter < maxIterations; iter++) {
       let maxOffDiag = 0;
       let p = 0, q = 0;
@@ -249,7 +251,8 @@ export class AdvancedLinearAlgebra {
 
 // ==================== CALIBRACIÓN DE CÁMARA AVANZADA ====================
 
-export class CameraCalibration {
+// TODO: Considerar refactorizar a namespace si no se usan instancias
+class CameraCalibration {
   
   /**
    * Calibración completa de cámara usando patrón de tablero de ajedrez
@@ -595,7 +598,8 @@ export class CameraCalibration {
 
 // ==================== GEOMETRÍA PROYECTIVA AVANZADA ====================
 
-export class ProjectiveGeometry {
+// TODO: Considerar refactorizar a namespace si no se usan instancias
+class ProjectiveGeometry {
   
   /**
    * Cálculo de homografía usando RANSAC para robustez
@@ -620,7 +624,10 @@ export class ProjectiveGeometry {
       
       // Calcular homografía con 4 puntos
       const H = this.computeHomographyDLT(srcSample, tgtSample);
-      if (!H) continue;
+      if (!H) {
+      console.warn('Homografía no calculada en iteración');
+      continue;
+    }
       
       // Evaluar todos los puntos
       const inliers: Vector2D[] = [];
@@ -799,16 +806,15 @@ export class ProjectiveGeometry {
   }
   
   private static solveLeastSquares(A: number[][]): number[] | null {
-    // Resolver sistema de mínimos cuadrados Ax = 0
-    // Implementación simplificada
-    const n = A[0].length;
-    return Array(n).fill(0.1); // Placeholder
+    // TODO: Implementar solver de mínimos cuadrados adecuado usando SVD o biblioteca externa
+    return null;
   }
 }
 
 // ==================== TRIANGULACIÓN ESTÉREO AVANZADA ====================
 
-export class StereoTriangulation {
+// TODO: Considerar refactorizar a namespace si no se usan instancias
+class StereoTriangulation {
   
   /**
    * Triangulación 3D usando par estéreo calibrado
@@ -923,7 +929,7 @@ export class StereoTriangulation {
     const solution = this.solveSVD(A);
     
     if (!solution || Math.abs(solution[3]) < 1e-10) {
-      return null;
+      throw new Error('Triangulation failed: invalid solution');
     }
     
     // Normalizar coordenadas homogéneas
@@ -950,6 +956,7 @@ export class StereoTriangulation {
     
     const halfWindow = Math.floor(windowSize / 2);
     
+    // TODO: Optimizar para rendimiento - usar procesamiento paralelo o algoritmo más eficiente como SGM
     for (let y = halfWindow; y < height - halfWindow; y++) {
       for (let x = halfWindow; x < width - halfWindow; x++) {
         
@@ -1026,15 +1033,15 @@ export class StereoTriangulation {
   
   // Método auxiliar para resolver SVD (simplificado)
   private static solveSVD(A: number[][]): number[] | null {
-    // Implementación simplificada de SVD para resolver AX = 0
-    // En una implementación real, se usaría una biblioteca de álgebra lineal
-    return [0, 0, 0, 1]; // Placeholder
+    // TODO: Implementar resolución SVD adecuada usando descomposición o biblioteca externa
+    return null;
   }
 }
 
 // ==================== FOTOGRAMETRÍA AVANZADA ====================
 
-export class Photogrammetry {
+// TODO: Considerar refactorizar a namespace si no se usan instancias
+class Photogrammetry {
   
   /**
    * Medición fotogramétrica usando múltiples vistas
@@ -1212,8 +1219,8 @@ export class Photogrammetry {
   }
   
   private static solveSVD(A: number[][]): number[] | null {
-    // Implementación simplificada
-    return [0, 0, 0, 1]; // Placeholder
+    // TODO: Implementar resolución SVD adecuada usando descomposición o biblioteca externa
+    return null;
   }
 }
 

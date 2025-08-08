@@ -18,7 +18,8 @@ interface CameraViewProps {
     pixelsPerMm: number;
     isCalibrated: boolean;
   } | null;
-  onRealTimeObjects?: (objects: any[]) => void;
+  // Objetos reales detectados (provenientes del worker)
+  objects?: any[];
   externalVideoRef?: React.RefObject<HTMLVideoElement>;
 }
 
@@ -26,14 +27,13 @@ export const CameraView: React.FC<CameraViewProps> = ({
   onImageCapture,
   isActive,
   calibrationData,
-  onRealTimeObjects,
+  objects,
   externalVideoRef
 }) => {
   const [isCapturing, setIsCapturing] = useState(false);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [hasPermissions, setHasPermissions] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [detectedObjects, setDetectedObjects] = useState<any[]>([]);
   
   const internalVideoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -96,41 +96,6 @@ export const CameraView: React.FC<CameraViewProps> = ({
     }
   };
 
-  // Simular detección de objetos en tiempo real con datos más realistas
-  useEffect(() => {
-    if (!isActive || !hasPermissions) return;
-    
-    const interval = setInterval(() => {
-      // Simular detección de objetos más realista
-      const mockObjects = [
-        {
-          id: `obj_${Date.now()}`,
-          widthMm: Math.random() * 150 + 50, // 50-200mm
-          heightMm: Math.random() * 100 + 30, // 30-130mm
-          areaMm2: Math.random() * 8000 + 2000, // 2000-10000mm²
-          confidence: Math.random() * 0.4 + 0.6, // 60-100%
-          bbox: {
-            x: Math.random() * 300 + 100,
-            y: Math.random() * 200 + 50,
-            width: Math.random() * 150 + 100,
-            height: Math.random() * 120 + 80
-          },
-          dimensions: {
-            width: Math.random() * 150 + 50,
-            height: Math.random() * 100 + 30,
-            depth: Math.random() * 50 + 10, // Profundidad simulada
-            volume: Math.random() * 500000 + 100000 // Volumen en mm³
-          }
-        }
-      ];
-      
-      setDetectedObjects(mockObjects);
-      onRealTimeObjects?.(mockObjects);
-    }, 2000); // Actualizar cada 2 segundos
-    
-    return () => clearInterval(interval);
-  }, [isActive, hasPermissions, onRealTimeObjects]);
-
   useEffect(() => {
     if (isActive) {
       initializeCamera();
@@ -163,7 +128,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
 
   return (
     <div className="space-y-4">
-      {/* Camera Controls */}
+      {/* Controles */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Camera className="w-5 h-5 text-primary" />
@@ -195,7 +160,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
         </div>
       </div>
 
-      {/* Camera View with Overlay */}
+      {/* Vista cámara + overlay real */}
       <Card className="relative overflow-hidden">
         <div className="relative aspect-video bg-black">
           <video
@@ -206,22 +171,21 @@ export const CameraView: React.FC<CameraViewProps> = ({
             muted
           />
           
-          {/* Hidden canvas for capture */}
+          {/* Canvas oculto para captura */}
           <canvas
             ref={canvasRef}
             style={{ display: 'none' }}
           />
           
-          {/* Measurement Overlay - Asegurar que aparezca */}
-          {hasPermissions && (
+          {/* Overlay: SOLO objetos reales del worker */}
+          {hasPermissions && Array.isArray(objects) && objects.length > 0 && (
             <MeasurementOverlay
-              objects={detectedObjects}
+              objects={objects}
               isActive={isActive && hasPermissions}
               calibrationData={calibrationData}
             />
           )}
           
-          {/* Camera Status Overlay */}
           {!hasPermissions && (
             <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
               <div className="text-center text-white">
@@ -233,7 +197,6 @@ export const CameraView: React.FC<CameraViewProps> = ({
         </div>
       </Card>
 
-      {/* Camera Info */}
       {hasPermissions && (
         <Card className="p-4">
           <h4 className="font-medium mb-3 flex items-center gap-2">
@@ -247,7 +210,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
             </div>
             <div>
               <p className="text-muted-foreground">Objetos Detectados</p>
-              <p className="font-medium">{detectedObjects.length}</p>
+              <p className="font-medium">{Array.isArray(objects) ? objects.length : 0}</p>
             </div>
             {calibrationData && (
               <>

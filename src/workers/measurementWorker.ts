@@ -1,7 +1,7 @@
 import { BoundingRect, detectContours } from '../lib/imageProcessing';
 
 // Declare worker globals for TypeScript
-declare const self: DedicatedWorkerGlobalScope;
+declare const self: any;
 declare function importScripts(...urls: string[]): void;
 
 // Enhanced measurement worker with real computer vision algorithms

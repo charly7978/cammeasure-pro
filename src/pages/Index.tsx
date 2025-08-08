@@ -422,7 +422,7 @@ const Index = () => {
               onImageCapture={handleImageCapture}
               isActive={activeTab === 'camera'}
               calibrationData={calibration}
-              objects={realTimeObjects}
+              onRealTimeObjects={handleRealTimeObjects}
               externalVideoRef={videoRef}
             />
             

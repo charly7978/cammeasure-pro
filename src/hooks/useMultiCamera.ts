@@ -57,15 +57,11 @@ export const useMultiCamera = () => {
       const devices = await navigator.mediaDevices.enumerateDevices();
       const videoDevices = devices.filter(device => device.kind === 'videoinput');
       
-      console.log('Dispositivos de video encontrados:', videoDevices);
-      
       const cameraDevices: CameraDevice[] = [];
       
       // Probar cada dispositivo para obtener información detallada
       for (const device of videoDevices) {
         try {
-          console.log(`Probando dispositivo: ${device.label}`);
-          
           const stream = await navigator.mediaDevices.getUserMedia({
             video: {
               deviceId: { exact: device.deviceId },
@@ -82,11 +78,9 @@ export const useMultiCamera = () => {
           let facingMode: 'environment' | 'user' | 'unknown' = 'unknown';
           const label = device.label.toLowerCase();
           
-          if (label.includes('back') || label.includes('rear') || label.includes('environment') || 
-              label.includes('trás') || label.includes('trasera') || label.includes('posterior')) {
+          if (label.includes('back') || label.includes('rear') || label.includes('environment')) {
             facingMode = 'environment';
-          } else if (label.includes('front') || label.includes('user') || 
-                     label.includes('frontal') || label.includes('delantera')) {
+          } else if (label.includes('front') || label.includes('user')) {
             facingMode = 'user';
           }
           
@@ -99,13 +93,6 @@ export const useMultiCamera = () => {
               facingMode = 'user';
             }
           }
-          
-          // Si no se puede determinar, asumir que es trasera si no es frontal
-          if (facingMode === 'unknown' && !label.includes('front') && !label.includes('user')) {
-            facingMode = 'environment';
-          }
-          
-          console.log(`Dispositivo ${device.label}: facingMode = ${facingMode}`);
           
           cameraDevices.push({
             deviceId: device.deviceId,
@@ -125,11 +112,8 @@ export const useMultiCamera = () => {
         }
       }
       
-      console.log('Cámaras detectadas:', cameraDevices);
-      
       // Filtrar solo cámaras traseras
       const rearCameras = cameraDevices.filter(cam => cam.facingMode === 'environment');
-      console.log('Cámaras traseras:', rearCameras);
       
       // Crear pares estéreo automáticamente
       const stereoPairs: StereoCameraPair[] = [];
@@ -159,24 +143,6 @@ export const useMultiCamera = () => {
         }
       }
       
-      // Si no hay cámaras traseras, crear pares con todas las cámaras disponibles
-      if (rearCameras.length < 2 && cameraDevices.length >= 2) {
-        console.log('No hay suficientes cámaras traseras, usando todas las cámaras disponibles');
-        for (let i = 0; i < cameraDevices.length - 1; i++) {
-          const left = cameraDevices[i];
-          const right = cameraDevices[i + 1];
-          
-          stereoPairs.push({
-            left,
-            right,
-            baseline: 50,
-            isCalibrated: false
-          });
-        }
-      }
-      
-      console.log('Pares estéreo creados:', stereoPairs);
-      
       setState(prev => ({
         ...prev,
         devices: cameraDevices,
@@ -185,7 +151,6 @@ export const useMultiCamera = () => {
       }));
       
     } catch (err) {
-      console.error('Error al escanear cámaras:', err);
       setState(prev => ({
         ...prev,
         error: `Error al escanear cámaras: ${err}`,
@@ -200,8 +165,6 @@ export const useMultiCamera = () => {
     if (!pair) return;
     
     try {
-      console.log('Activando par estéreo:', pair);
-      
       // Detener streams activos
       streamsRef.current.forEach(stream => {
         stream.getTracks().forEach(track => track.stop());
@@ -227,8 +190,6 @@ export const useMultiCamera = () => {
       
       streamsRef.current = [leftStream, rightStream];
       
-      console.log('Streams activados:', streamsRef.current);
-      
       // Actualizar estado con streams activos
       setState(prev => ({
         ...prev,
@@ -240,7 +201,6 @@ export const useMultiCamera = () => {
       }));
       
     } catch (err) {
-      console.error('Error al activar par estéreo:', err);
       setState(prev => ({
         ...prev,
         error: `Error al activar par estéreo: ${err}`

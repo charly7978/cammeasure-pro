@@ -209,7 +209,6 @@ function detectContoursOpenCVAdvanced(imageData: ImageData, minArea: number) {
           height: rect.height,
           area: area,
           confidence: confidence,
-          // Métricas geométricas reales
           circularity: circularity,
           solidity: solidity,
           extent: extent,
@@ -217,7 +216,37 @@ function detectContoursOpenCVAdvanced(imageData: ImageData, minArea: number) {
           compactness: compactness,
           perimeter: perimeter,
           contourPoints: approx.rows,
-          // Centro de masa real
           centerX: cx,
           centerY: cy,
-          // Moment
+          huMoments: Array.from(hu.data64F),
+          isConvex: cv.isContourConvex(contour),
+          boundingCircleRadius: cv.minEnclosingCircle(contour).radius
+        });
+      }
+      
+      approx.delete();
+      hull.delete();
+      hu.delete();
+    }
+    
+    // Limpieza de memoria OpenCV
+    [src, gray, denoised, enhanced, edges1, edges2, edges3, combinedEdges, 
+     morphed, dilated, kernel1, kernel2, contours, hierarchy, clahe].forEach(mat => {
+      try { mat.delete(); } catch(e) {}
+    });
+    
+    // Filtrar superposiciones con algoritmo avanzado
+    const filteredRects = filterOverlappingAdvanced(rects);
+    
+    // Ordenar por score compuesto (confianza × área × calidad)
+    filteredRects.sort((a, b) => {
+      const scoreA = a.confidence * Math.log(a.area) * a.circularity;
+      const scoreB = b.confidence * Math.log(b.area) * b.circularity;
+      return scoreB - scoreA;
+    });
+    
+    const finalRects = filteredRects.slice(0, 6); // Top 6 objetos
+    
+    console.log(`✅ OpenCV REAL detectó ${finalRects.length} objetos válidos con métricas avanzadas`);
+    
+    return finalRects;

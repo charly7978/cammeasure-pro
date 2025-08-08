@@ -9,10 +9,13 @@ import {
   Settings,
   Ruler,
   Smartphone,
-  Cpu
+  Cpu,
+  Zap,
+  Triangle
 } from 'lucide-react';
 
 import { CameraView } from '@/components/CameraView';
+import { MultiCameraView } from '@/components/MultiCameraView';
 import { CalibrationPanel, type CalibrationData } from '@/components/CalibrationPanel';
 import { MeasurementControls, type MeasurementMode } from '@/components/MeasurementControls';
 import { MeasurementEngine, type MeasurementResult, type MeasurementPoint } from '@/components/MeasurementEngine';
@@ -22,14 +25,15 @@ import { useOpenCV } from '@/hooks/useOpenCV';
 import { useCalibration } from '@/hooks/useCalibration';
 
 const Index = () => {
-  const [activeTab, setActiveTab] = useState<'camera' | 'calibration' | 'measurements'>('camera');
+  const [activeTab, setActiveTab] = useState<'camera' | 'multicamera' | 'calibration' | 'measurements'>('multicamera');
   const { calibration, setCalibration } = useCalibration();
-  const [measurementMode, setMeasurementMode] = useState<MeasurementMode>('2d');
+  const [measurementMode, setMeasurementMode] = useState<MeasurementMode>('3d');
   const [measurementResult, setMeasurementResult] = useState<MeasurementResult | null>(null);
   const [capturedImage, setCapturedImage] = useState<ImageData | null>(null);
   const [detectedEdges, setDetectedEdges] = useState<MeasurementPoint[]>([]);
   const [realTimeObjects, setRealTimeObjects] = useState<any[]>([]);
   const [objectCount, setObjectCount] = useState(0);
+  const [stereoObjects, setStereoObjects] = useState<any[]>([]);
   
   const videoRef = useRef<HTMLVideoElement>(null);
   
@@ -59,6 +63,27 @@ const Index = () => {
     toast({
       title: "Imagen capturada",
       description: "Imagen lista para análisis y medición"
+    });
+  };
+
+  const handleStereoCapture = (leftImageData: ImageData, rightImageData: ImageData) => {
+    // Procesar captura estéreo para 3D
+    toast({
+      title: "Captura Estéreo",
+      description: "Procesando datos 3D desde múltiples cámaras"
+    });
+    
+    // Aquí se enviaría al worker para procesamiento 3D
+    console.log('Stereo capture:', { left: leftImageData, right: rightImageData });
+  };
+
+  const handleSingleCapture = (imageData: ImageData, cameraIndex: number) => {
+    setCapturedImage(imageData);
+    setActiveTab('measurements');
+    
+    toast({
+      title: `Captura Cámara ${cameraIndex + 1}`,
+      description: "Imagen lista para análisis"
     });
   };
 
@@ -107,9 +132,29 @@ const Index = () => {
     }
   };
 
+  const handleStereoObjects = (objects: any[]) => {
+    setStereoObjects(objects);
+    
+    if (objects.length > 0) {
+      const best3DObject = objects[0];
+      
+      const result: MeasurementResult = {
+        distance2D: Math.max(best3DObject.dimensions?.width || 0, best3DObject.dimensions?.height || 0),
+        distance3D: best3DObject.dimensions?.depth || 0,
+        area: best3DObject.dimensions?.width * best3DObject.dimensions?.height || 0,
+        volume: best3DObject.dimensions?.volume || 0,
+        unit: 'mm',
+        confidence: best3DObject.confidence || 0,
+        mode: '3d'
+      };
+      
+      setMeasurementResult(result);
+    }
+  };
+
   const handleCapture = async () => {
     // Manually capture an image for detailed analysis
-    setActiveTab('camera');
+    setActiveTab('multicamera');
   };
 
   const handleReset = () => {
@@ -117,13 +162,15 @@ const Index = () => {
     setMeasurementResult(null);
     setDetectedEdges([]);
     setRealTimeObjects([]);
+    setStereoObjects([]);
     setObjectCount(0);
   };
 
   const handleSave = () => {
-    if (measurementResult || realTimeObjects.length > 0) {
+    if (measurementResult || realTimeObjects.length > 0 || stereoObjects.length > 0) {
       const dataToSave = {
         realTimeObjects,
+        stereoObjects,
         measurementResult,
         measurementMode,
         timestamp: new Date().toISOString()
@@ -138,9 +185,10 @@ const Index = () => {
   };
 
   const handleExport = () => {
-    if (measurementResult || realTimeObjects.length > 0) {
+    if (measurementResult || realTimeObjects.length > 0 || stereoObjects.length > 0) {
       const data = {
         realTimeObjects,
+        stereoObjects,
         result: measurementResult,
         calibration: calibration,
         measurementMode,
@@ -187,20 +235,31 @@ const Index = () => {
     }
   };
 
+  const formatVolume = (value: number): string => {
+    // Volumen en mm³
+    if (value < 1000) {
+      return `${Math.round(value)}mm³`;
+    } else if (value < 1000000) {
+      return `${(value / 1000).toFixed(1)}cm³`;
+    } else {
+      return `${(value / 1000000).toFixed(3)}m³`;
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background p-4 space-y-6">
       {/* Header */}
       <div className="text-center space-y-4">
         <div className="flex items-center justify-center gap-3">
           <div className="p-3 bg-gradient-primary rounded-lg shadow-measurement">
-            <Ruler className="w-8 h-8 text-primary-foreground" />
+            <Triangle className="w-8 h-8 text-primary-foreground" />
           </div>
           <div>
             <h1 className="text-3xl font-bold bg-gradient-primary bg-clip-text text-transparent">
-              CamMeasure Pro - SISTEMA AVANZADO
+              CamMeasure Pro - SISTEMA MULTI-CÁMARA 3D
             </h1>
             <p className="text-muted-foreground">
-              Medición en tiempo real con OpenCV y Worker Avanzado
+              Medición 3D avanzada con todas las cámaras traseras disponibles
             </p>
           </div>
         </div>
@@ -241,6 +300,16 @@ const Index = () => {
             </Badge>
           )}
 
+          {stereoObjects.length > 0 && (
+            <Badge 
+              variant="outline"
+              className="border-accent text-accent animate-measurement-pulse"
+            >
+              <Triangle className="w-3 h-3 mr-1" />
+              📐 {stereoObjects.length} objeto{stereoObjects.length !== 1 ? 's' : ''} 3D
+            </Badge>
+          )}
+
           {/* Measurement Mode Indicator */}
           <Badge 
             variant="outline"
@@ -253,36 +322,53 @@ const Index = () => {
       </div>
 
       {/* Real-time Measurement Info */}
-      {realTimeObjects.length > 0 && (
+      {(realTimeObjects.length > 0 || stereoObjects.length > 0) && (
         <Card className="p-4 bg-gradient-measurement border-measurement-active/30 shadow-active">
           <h3 className="font-semibold text-measurement-active mb-3 flex items-center gap-2">
-            <Target className="w-4 h-4" />
-            🎯 Medición en Tiempo Real ({measurementMode.toUpperCase()})
+            <Triangle className="w-4 h-4" />
+            📐 Medición 3D en Tiempo Real ({measurementMode.toUpperCase()})
           </h3>
           <div className="grid grid-cols-1 gap-4">
-            {realTimeObjects.slice(0, 1).map((obj, index) => (
+            {(stereoObjects.length > 0 ? stereoObjects : realTimeObjects).slice(0, 1).map((obj, index) => (
               <div key={obj.id} className="space-y-2">
-                <p className="text-sm font-bold text-measurement-active">🎯 Mejor Objeto Detectado</p>
+                <p className="text-sm font-bold text-measurement-active">
+                  {stereoObjects.length > 0 ? '📐 Mejor Objeto 3D' : '🎯 Mejor Objeto Detectado'}
+                </p>
                 <div className="grid grid-cols-3 gap-4 text-sm">
                   <div className="space-y-1">
                     <p className="text-xs text-muted-foreground">↔️ Ancho</p>
                     <p className="font-mono text-measurement-active font-bold">
-                      {formatDimension(obj.widthMm || 0)}
+                      {formatDimension(obj.dimensions?.width || obj.widthMm || 0)}
                     </p>
                   </div>
                   <div className="space-y-1">
                     <p className="text-xs text-muted-foreground">↕️ Alto</p>
                     <p className="font-mono text-accent font-bold">
-                      {formatDimension(obj.heightMm || 0)}
+                      {formatDimension(obj.dimensions?.height || obj.heightMm || 0)}
                     </p>
                   </div>
                   <div className="space-y-1">
-                    <p className="text-xs text-muted-foreground">📐 Área</p>
+                    <p className="text-xs text-muted-foreground">
+                      {stereoObjects.length > 0 ? '📏 Profundidad' : '📐 Área'}
+                    </p>
                     <p className="font-mono text-primary font-bold">
-                      {formatArea(obj.areaMm2 || 0)}
+                      {stereoObjects.length > 0 
+                        ? formatDimension(obj.dimensions?.depth || 0)
+                        : formatArea(obj.areaMm2 || 0)
+                      }
                     </p>
                   </div>
                 </div>
+                
+                {stereoObjects.length > 0 && obj.dimensions?.volume && (
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">📦 Volumen</p>
+                    <p className="font-mono text-calibration font-bold">
+                      {formatVolume(obj.dimensions.volume)}
+                    </p>
+                  </div>
+                )}
+                
                 <div className="flex justify-between items-center pt-2 border-t border-white/20">
                   <span className="text-xs text-muted-foreground">
                     Confianza: {((obj.confidence || 0) * 100).toFixed(0)}%
@@ -299,13 +385,20 @@ const Index = () => {
 
       {/* Main Interface */}
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as any)}>
-        <TabsList className="grid w-full grid-cols-3 bg-card border border-border">
+        <TabsList className="grid w-full grid-cols-4 bg-card border border-border">
           <TabsTrigger 
             value="camera" 
             className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
           >
             <Camera className="w-4 h-4 mr-2" />
             Cámara
+          </TabsTrigger>
+          <TabsTrigger 
+            value="multicamera"
+            className="data-[state=active]:bg-accent data-[state=active]:text-accent-foreground"
+          >
+            <Triangle className="w-4 h-4 mr-2" />
+            Multi-Cámara
           </TabsTrigger>
           <TabsTrigger 
             value="calibration"
@@ -342,14 +435,35 @@ const Index = () => {
             
             {/* Quick Instructions */}
             <Card className="p-4 bg-primary/5 border-primary/20">
-              <h4 className="font-medium mb-2 text-primary">🎯 Instrucciones de Uso</h4>
+              <h4 className="font-medium mb-2 text-primary">🎯 Instrucciones Cámara Única</h4>
               <ul className="text-sm text-muted-foreground space-y-1">
                 <li>• Apunta la cámara hacia el objeto que quieres medir</li>
                 <li>• La aplicación detectará automáticamente objetos con OpenCV</li>
                 <li>• Las dimensiones aparecerán en tiempo real en mm/cm/m</li>
                 <li>• Mantén el objeto centrado para mejor precisión</li>
-                <li>• El sistema usa Worker avanzado para mejor performance</li>
-                <li>• Para mayor precisión, calibra en la pestaña "Calibración"</li>
+                <li>• Para mediciones 3D, usa el modo Multi-Cámara</li>
+              </ul>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="multicamera" className="space-y-4">
+            <MultiCameraView
+              onStereoCapture={handleStereoCapture}
+              onSingleCapture={handleSingleCapture}
+              isActive={activeTab === 'multicamera'}
+              calibrationData={calibration}
+            />
+            
+            {/* Quick Instructions */}
+            <Card className="p-4 bg-accent/5 border-accent/20">
+              <h4 className="font-medium mb-2 text-accent">📐 Instrucciones Multi-Cámara 3D</h4>
+              <ul className="text-sm text-muted-foreground space-y-1">
+                <li>• El sistema detecta automáticamente todas las cámaras traseras</li>
+                <li>• Se crean pares estéreo automáticamente para medición 3D</li>
+                <li>• Calibra los pares estéreo para mediciones 3D precisas</li>
+                <li>• Usa "Capturar Estéreo" para obtener datos 3D completos</li>
+                <li>• El baseline se ajusta automáticamente según la separación</li>
+                <li>• Mediciones 3D incluyen: ancho, alto, profundidad y volumen</li>
               </ul>
             </Card>
           </TabsContent>
@@ -412,24 +526,28 @@ const Index = () => {
                   </Card>
                 )}
                 
-                {!capturedImage && realTimeObjects.length === 0 && (
+                {!capturedImage && realTimeObjects.length === 0 && stereoObjects.length === 0 && (
                   <Card className="p-8 text-center">
                     <Camera className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
                     <h3 className="text-lg font-semibold mb-2">Sin datos de medición</h3>
                     <p className="text-muted-foreground">
-                      Vaya a la pestaña de cámara para ver mediciones en tiempo real
+                      Vaya a la pestaña de Multi-Cámara para ver mediciones 3D en tiempo real
                     </p>
                   </Card>
                 )}
 
-                {realTimeObjects.length > 0 && (
+                {(realTimeObjects.length > 0 || stereoObjects.length > 0) && (
                   <Card className="p-4">
-                    <h4 className="font-medium mb-3">🎯 Objeto Detectado en Tiempo Real</h4>
+                    <h4 className="font-medium mb-3">
+                      {stereoObjects.length > 0 ? '📐 Objeto 3D Detectado' : '🎯 Objeto Detectado en Tiempo Real'}
+                    </h4>
                     <div className="space-y-3">
-                      {realTimeObjects.slice(0, 1).map((obj, index) => (
+                      {(stereoObjects.length > 0 ? stereoObjects : realTimeObjects).slice(0, 1).map((obj, index) => (
                         <div key={obj.id} className="p-4 bg-measurement-active/10 border border-measurement-active/30 rounded-lg">
                           <div className="flex justify-between items-start mb-3">
-                            <h5 className="text-lg font-bold text-measurement-active">🎯 Mejor Objeto</h5>
+                            <h5 className="text-lg font-bold text-measurement-active">
+                              {stereoObjects.length > 0 ? '📐 Mejor Objeto 3D' : '🎯 Mejor Objeto'}
+                            </h5>
                             <Badge variant="outline" className="text-sm border-measurement-active text-measurement-active">
                               {((obj.confidence || 0) * 100).toFixed(0)}% confianza
                             </Badge>
@@ -439,13 +557,18 @@ const Index = () => {
                               <div>
                                 <p className="text-muted-foreground">↔️ Ancho</p>
                                 <p className="font-mono text-measurement-active font-bold text-lg">
-                                  {formatDimension(obj.widthMm || 0)}
+                                  {formatDimension(obj.dimensions?.width || obj.widthMm || 0)}
                                 </p>
                               </div>
                               <div>
-                                <p className="text-muted-foreground">📐 Área</p>
+                                <p className="text-muted-foreground">
+                                  {stereoObjects.length > 0 ? '📏 Profundidad' : '📐 Área'}
+                                </p>
                                 <p className="font-mono text-primary font-bold">
-                                  {formatArea(obj.areaMm2 || 0)}
+                                  {stereoObjects.length > 0 
+                                    ? formatDimension(obj.dimensions?.depth || 0)
+                                    : formatArea(obj.areaMm2 || 0)
+                                  }
                                 </p>
                               </div>
                             </div>
@@ -453,13 +576,18 @@ const Index = () => {
                               <div>
                                 <p className="text-muted-foreground">↕️ Alto</p>
                                 <p className="font-mono text-accent font-bold text-lg">
-                                  {formatDimension(obj.heightMm || 0)}
+                                  {formatDimension(obj.dimensions?.height || obj.heightMm || 0)}
                                 </p>
                               </div>
                               <div>
-                                <p className="text-muted-foreground">📏 Diagonal</p>
+                                <p className="text-muted-foreground">
+                                  {stereoObjects.length > 0 ? '📦 Volumen' : '📏 Diagonal'}
+                                </p>
                                 <p className="font-mono text-calibration font-bold">
-                                  {formatDimension(Math.sqrt((obj.widthMm || 0) ** 2 + (obj.heightMm || 0) ** 2))}
+                                  {stereoObjects.length > 0 
+                                    ? formatVolume(obj.dimensions?.volume || 0)
+                                    : formatDimension(Math.sqrt((obj.widthMm || 0) ** 2 + (obj.heightMm || 0) ** 2))
+                                  }
                                 </p>
                               </div>
                             </div>

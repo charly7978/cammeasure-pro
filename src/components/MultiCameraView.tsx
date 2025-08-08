@@ -13,7 +13,8 @@ import {
   Play,
   Pause,
   Square,
-  Triangle
+  Triangle,
+  AlertCircle
 } from 'lucide-react';
 import { useMultiCamera, type StereoCameraPair } from '@/hooks/useMultiCamera';
 
@@ -214,26 +215,39 @@ export const MultiCameraView: React.FC<MultiCameraViewProps> = ({
           Cámaras Detectadas ({devices.filter(d => d.facingMode === 'environment').length} traseras)
         </h4>
         
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          {devices.map((device, index) => (
-            <div key={device.deviceId} className="p-3 border rounded-lg">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium">{device.label}</span>
-                <Badge variant={device.facingMode === 'environment' ? 'default' : 'secondary'} className="text-xs">
-                  {device.facingMode === 'environment' ? '🔄 Trasera' : '👤 Frontal'}
-                </Badge>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                ID: {device.deviceId.slice(0, 8)}...
-              </p>
-              {device.capabilities && (
+        {devices.length === 0 ? (
+          <div className="text-center py-8">
+            <AlertCircle className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+            <p className="text-muted-foreground mb-4">No se detectaron cámaras</p>
+            <Button onClick={scanCameras} disabled={isScanning}>
+              {isScanning ? 'Escaneando...' : 'Escanear Cámaras'}
+            </Button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {devices.map((device, index) => (
+              <div key={device.deviceId} className="p-3 border rounded-lg">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium">{device.label}</span>
+                  <Badge variant={device.facingMode === 'environment' ? 'default' : 'secondary'} className="text-xs">
+                    {device.facingMode === 'environment' ? '🔄 Trasera' : '👤 Frontal'}
+                  </Badge>
+                </div>
                 <p className="text-xs text-muted-foreground">
-                  Res: {device.capabilities.width?.max || 'N/A'}x{device.capabilities.height?.max || 'N/A'}
+                  ID: {device.deviceId.slice(0, 8)}...
                 </p>
-              )}
-            </div>
-          ))}
-        </div>
+                {device.capabilities && (
+                  <p className="text-xs text-muted-foreground">
+                    Res: {device.capabilities.width?.max || 'N/A'}x{device.capabilities.height?.max || 'N/A'}
+                  </p>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Grupo: {device.groupId.slice(0, 8)}...
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
       </Card>
 
       {/* Pares estéreo */}
@@ -282,10 +296,16 @@ export const MultiCameraView: React.FC<MultiCameraViewProps> = ({
                   <div>
                     <p className="text-muted-foreground">Cámara Izquierda</p>
                     <p className="font-medium">{pair.left.label}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {pair.left.facingMode === 'environment' ? '🔄 Trasera' : '👤 Frontal'}
+                    </p>
                   </div>
                   <div>
                     <p className="text-muted-foreground">Cámara Derecha</p>
                     <p className="font-medium">{pair.right.label}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {pair.right.facingMode === 'environment' ? '🔄 Trasera' : '👤 Frontal'}
+                    </p>
                   </div>
                 </div>
                 
@@ -383,7 +403,7 @@ export const MultiCameraView: React.FC<MultiCameraViewProps> = ({
       <Card className="p-4 bg-primary/5 border-primary/20">
         <h4 className="font-medium mb-2 text-primary">🎯 Instrucciones Multi-Cámara</h4>
         <ul className="text-sm text-muted-foreground space-y-1">
-          <li>• El sistema detecta automáticamente todas las cámaras traseras disponibles</li>
+          <li>• El sistema detecta automáticamente todas las cámaras disponibles</li>
           <li>• Se crean pares estéreo automáticamente para medición 3D</li>
           <li>• Calibra los pares estéreo para mediciones 3D precisas</li>
           <li>• Usa "Capturar Estéreo" para obtener datos 3D</li>

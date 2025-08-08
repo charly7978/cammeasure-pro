@@ -96,31 +96,37 @@ export const CameraView: React.FC<CameraViewProps> = ({
     }
   };
 
-  // Simular detección de objetos en tiempo real
+  // Simular detección de objetos en tiempo real con datos más realistas
   useEffect(() => {
     if (!isActive || !hasPermissions) return;
     
     const interval = setInterval(() => {
-      // Simular detección de objetos
+      // Simular detección de objetos más realista
       const mockObjects = [
         {
           id: `obj_${Date.now()}`,
-          widthMm: Math.random() * 100 + 20,
-          heightMm: Math.random() * 80 + 15,
-          areaMm2: Math.random() * 5000 + 1000,
-          confidence: Math.random() * 0.3 + 0.7,
+          widthMm: Math.random() * 150 + 50, // 50-200mm
+          heightMm: Math.random() * 100 + 30, // 30-130mm
+          areaMm2: Math.random() * 8000 + 2000, // 2000-10000mm²
+          confidence: Math.random() * 0.4 + 0.6, // 60-100%
           bbox: {
-            x: Math.random() * 200 + 50,
+            x: Math.random() * 300 + 100,
             y: Math.random() * 200 + 50,
-            width: Math.random() * 100 + 50,
-            height: Math.random() * 100 + 50
+            width: Math.random() * 150 + 100,
+            height: Math.random() * 120 + 80
+          },
+          dimensions: {
+            width: Math.random() * 150 + 50,
+            height: Math.random() * 100 + 30,
+            depth: Math.random() * 50 + 10, // Profundidad simulada
+            volume: Math.random() * 500000 + 100000 // Volumen en mm³
           }
         }
       ];
       
       setDetectedObjects(mockObjects);
       onRealTimeObjects?.(mockObjects);
-    }, 1000);
+    }, 2000); // Actualizar cada 2 segundos
     
     return () => clearInterval(interval);
   }, [isActive, hasPermissions, onRealTimeObjects]);
@@ -189,7 +195,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
         </div>
       </div>
 
-      {/* Camera View */}
+      {/* Camera View with Overlay */}
       <Card className="relative overflow-hidden">
         <div className="relative aspect-video bg-black">
           <video
@@ -206,12 +212,14 @@ export const CameraView: React.FC<CameraViewProps> = ({
             style={{ display: 'none' }}
           />
           
-          {/* Measurement Overlay */}
-          <MeasurementOverlay
-            objects={detectedObjects}
-            isActive={isActive && hasPermissions}
-            calibrationData={calibrationData}
-          />
+          {/* Measurement Overlay - Asegurar que aparezca */}
+          {hasPermissions && (
+            <MeasurementOverlay
+              objects={detectedObjects}
+              isActive={isActive && hasPermissions}
+              calibrationData={calibrationData}
+            />
+          )}
           
           {/* Camera Status Overlay */}
           {!hasPermissions && (

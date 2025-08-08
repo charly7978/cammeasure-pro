@@ -1,5 +1,5 @@
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { BoundingRect } from '@/lib/imageProcessing';
 
 interface DetectOptions {
@@ -10,14 +10,17 @@ interface DetectOptions {
 
 export const useMeasurementWorker = () => {
   const workerRef = useRef<Worker>();
-  const readyRef = useRef(false);
+  const [isReady, setIsReady] = useState(false);
   const initializingRef = useRef(false);
+  const pendingCallbacksRef = useRef<Map<string, (rects: BoundingRect[]) => void>>(new Map());
 
   useEffect(() => {
     if (initializingRef.current) return;
     initializingRef.current = true;
 
     try {
+      console.log('🔧 Inicializando Worker de Medición Avanzado...');
+      
       workerRef.current = new Worker(
         new URL('../workers/measurementWorker.ts', import.meta.url), 
         { type: 'module' }
@@ -26,20 +29,54 @@ export const useMeasurementWorker = () => {
       const worker = workerRef.current;
       
       worker.onmessage = (e: MessageEvent<any>) => {
-        console.log('📨 Mensaje del worker:', e.data.type);
+        const { type, rects, timestamp, error } = e.data;
         
-        if (e.data.type === 'READY') {
-          readyRef.current = true;
-          console.log('✅ Worker listo para procesar');
-        } else if (e.data.type === 'ERROR') {
-          console.error('❌ Error en worker:', e.data.error);
-          readyRef.current = false;
+        console.log('📨 Mensaje del worker:', type, { timestamp });
+        
+        switch (type) {
+          case 'READY':
+            setIsReady(true);
+            console.log('✅ Worker OpenCV completamente listo');
+            break;
+            
+          case 'DETECTED':
+            // Ejecutar callback pendiente si existe
+            const callbackKey = timestamp?.toString() || 'latest';
+            const callback = pendingCallbacksRef.current.get(callbackKey);
+            if (callback) {
+              callback(rects || []);
+              pendingCallbacksRef.current.delete(callbackKey);
+            }
+            break;
+            
+          case 'ERROR':
+            console.error('❌ Error en worker:', error);
+            // Limpiar callbacks pendientes en caso de error
+            pendingCallbacksRef.current.clear();
+            // Reintentar inicialización después de un delay
+            setTimeout(() => {
+              if (workerRef.current) {
+                workerRef.current.postMessage({ type: 'INIT' });
+              }
+            }, 2000);
+            break;
+            
+          case 'OPENCV_READY':
+            // OpenCV cargado, worker completamente operativo
+            setIsReady(true);
+            console.log('✅ OpenCV inicializado en worker');
+            break;
         }
       };
       
       worker.onerror = (error) => {
         console.error('❌ Error crítico en worker:', error);
-        readyRef.current = false;
+        setIsReady(false);
+        // Intentar recrear worker
+        setTimeout(() => {
+          initializingRef.current = false;
+          setIsReady(false);
+        }, 1000);
       };
       
       // Inicializar worker
@@ -47,7 +84,8 @@ export const useMeasurementWorker = () => {
       
     } catch (error) {
       console.error('❌ Error creando worker:', error);
-      readyRef.current = false;
+      setIsReady(false);
+      initializingRef.current = false;
     }
 
     return () => {
@@ -55,8 +93,9 @@ export const useMeasurementWorker = () => {
         workerRef.current.terminate();
         workerRef.current = undefined;
       }
-      readyRef.current = false;
+      setIsReady(false);
       initializingRef.current = false;
+      pendingCallbacksRef.current.clear();
     };
   }, []);
 
@@ -67,53 +106,46 @@ export const useMeasurementWorker = () => {
       return;
     }
 
-    if (!readyRef.current) {
-      console.warn('⚠️ Worker no está listo');
+    if (!isReady) {
+      console.warn('⚠️ Worker no está listo, esperando...');
       opts.onDetect([]);
       return;
     }
 
     const { imageData, minArea = 500, onDetect } = opts;
+    const timestamp = Date.now();
     
-    console.log('🔍 Iniciando detección:', {
+    console.log('🔍 Iniciando detección avanzada:', {
       size: `${imageData.width}x${imageData.height}`,
-      minArea
+      minArea,
+      timestamp
     });
 
-    const handleResponse = (e: MessageEvent<any>) => {
-      if (e.data.type === 'DETECTED') {
-        console.log('✅ Detección completada:', e.data.rects.length, 'objetos');
-        onDetect(e.data.rects);
-        workerRef.current?.removeEventListener('message', handleResponse);
-      } else if (e.data.type === 'ERROR') {
-        console.error('❌ Error en detección:', e.data.error);
-        onDetect([]);
-        workerRef.current?.removeEventListener('message', handleResponse);
-      }
-    };
-
-    workerRef.current.addEventListener('message', handleResponse);
+    // Almacenar callback para este timestamp
+    pendingCallbacksRef.current.set(timestamp.toString(), onDetect);
     
-    // Enviar tarea de detección
+    // Enviar tarea de detección con timestamp
     workerRef.current.postMessage({ 
       type: 'DETECT', 
       imageData, 
-      minArea 
+      minArea,
+      timestamp
     });
 
-    // Timeout de seguridad
+    // Timeout de seguridad más generoso para algoritmos avanzados
     setTimeout(() => {
-      if (workerRef.current) {
-        workerRef.current.removeEventListener('message', handleResponse);
-        console.warn('⏰ Timeout en detección');
-        onDetect([]);
+      const callback = pendingCallbacksRef.current.get(timestamp.toString());
+      if (callback) {
+        console.warn('⏰ Timeout en detección avanzada');
+        callback([]);
+        pendingCallbacksRef.current.delete(timestamp.toString());
       }
-    }, 5000);
+    }, 8000); // 8 segundos para algoritmos complejos
 
-  }, []);
+  }, [isReady]);
 
   return { 
     detect,
-    isReady: readyRef.current
+    isReady
   };
 };

@@ -190,7 +190,7 @@ export const useMultiCamera = () => {
       
       streamsRef.current = [leftStream, rightStream];
       
-      // Actualizar estado
+      // Actualizar estado con streams activos
       setState(prev => ({
         ...prev,
         activeStereoPair: {

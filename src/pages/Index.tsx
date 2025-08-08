@@ -25,7 +25,7 @@ import { useOpenCV } from '@/hooks/useOpenCV';
 import { useCalibration } from '@/hooks/useCalibration';
 
 const Index = () => {
-  const [activeTab, setActiveTab] = useState<'camera' | 'multicamera' | 'calibration' | 'measurements'>('multicamera');
+  const [activeTab, setActiveTab] = useState<'camera' | 'multicamera' | 'calibration' | 'measurements'>('camera');BBB
   const { calibration, setCalibration } = useCalibration();
   const [measurementMode, setMeasurementMode] = useState<MeasurementMode>('3d');
   const [measurementResult, setMeasurementResult] = useState<MeasurementResult | null>(null);
@@ -154,7 +154,7 @@ const Index = () => {
 
   const handleCapture = async () => {
     // Manually capture an image for detailed analysis
-    setActiveTab('multicamera');
+    setActiveTab('camera');
   };
 
   const handleReset = () => {
@@ -423,7 +423,7 @@ const Index = () => {
               isActive={activeTab === 'camera'}
               calibrationData={calibration}
               onRealTimeObjects={handleRealTimeObjects}
-              videoRef={videoRef}
+              externalVideoRef={videoRef}
             />
             
             {/* Real-time Measurement Component */}

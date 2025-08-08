@@ -35,6 +35,9 @@ interface ExtendedRect {
   solidity?: number;
   extent?: number;
   aspectRatio?: number;
+  perimeter?: number;
+  contourPoints?: number;
+  compactness?: number;
 }
 
 interface RealTimeMeasurementProps {
@@ -58,9 +61,9 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
   const [objects3D, setObjects3D] = useState<Real3DObject[]>([]);
   const frameCountRef = useRef<number>(0);
   
-  // OPTIMIZACIÓN HÍBRIDA: Intervalos adaptativos para mejor rendimiento
-  const PROCESS_INTERVAL = 300; // 300ms para balance óptimo
-  const FRAME_SKIP = 1; // Procesar cada frame para mejor calidad
+  // OPTIMIZACIÓN PARA MEJOR DETECCIÓN: Intervalos más frecuentes
+  const PROCESS_INTERVAL = 250; // 250ms para detección más responsiva
+  const FRAME_SKIP = 1; // Procesar cada frame para máxima calidad
 
   const processFrame = useCallback(() => {
     if (!isActive || !videoRef.current || !canvasRef.current) {
@@ -105,9 +108,21 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
 
     detect({
       imageData,
-      minArea: 2000, // Área mínima optimizada para mejor detección
+      minArea: 1200, // Área mínima reducida para detectar objetos más pequeños
       onDetect: (rects) => {
-        console.log('🔍 Objetos detectados con algoritmos híbridos:', rects.length);
+        console.log('🔍 Objetos detectados con algoritmos mejorados:', rects.length);
+        
+        if (rects.length > 0) {
+          console.log('📊 Detalles de detección:', rects.map((r, i) => ({
+            objeto: i + 1,
+            dimensiones: `${r.width}x${r.height}px`,
+            area: `${r.area}px²`,
+            confidence: `${((r.confidence || 0) * 100).toFixed(1)}%`,
+            circularity: r.circularity?.toFixed(3) || 'N/A',
+            solidity: r.solidity?.toFixed(3) || 'N/A',
+            aspectRatio: (r.width / r.height).toFixed(2)
+          })));
+        }
 
         // SIEMPRE usar medidas reales en mm/cm (NUNCA píxeles)
         const factor = calibration?.pixelsPerMm || 6.5; // Factor por defecto realista
@@ -115,24 +130,49 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
         
         console.log('📏 Factor de conversión:', factor, 'px/mm', isCalibrated ? '(calibrado)' : '(estimado)');
 
-        // Filtrar y procesar rectángulos con algoritmos híbridos
+        // Filtrar con criterios OPTIMIZADOS para mejor detección
         const filteredRects = rects
           .filter(rect => {
             const aspectRatio = rect.width / rect.height;
             const imageArea = canvas.width * canvas.height;
+            const sizeRatio = rect.area / imageArea;
             
-            return rect.area >= 2000 && 
-                   rect.area <= imageArea * 0.4 &&
-                   aspectRatio > 0.15 && aspectRatio < 8.0 &&
-                   rect.width > 25 && rect.height > 25;
+            // Criterios más permisivos para detectar más objetos
+            const validSize = rect.area >= 1200 && rect.area <= imageArea * 0.7;
+            const validShape = aspectRatio > 0.08 && aspectRatio < 20.0;
+            const validDimensions = rect.width > 15 && rect.height > 15;
+            const validSizeRatio = sizeRatio > 0.0005 && sizeRatio < 0.6;
+            const notTooThin = Math.min(rect.width, rect.height) > 10;
+            
+            const isValid = validSize && validShape && validDimensions && validSizeRatio && notTooThin;
+            
+            if (!isValid) {
+              console.log(`❌ Objeto filtrado:`, {
+                size: `${rect.width}x${rect.height}`,
+                area: rect.area,
+                aspectRatio: aspectRatio.toFixed(2),
+                sizeRatio: (sizeRatio * 100).toFixed(2) + '%',
+                reasons: {
+                  validSize,
+                  validShape,
+                  validDimensions,
+                  validSizeRatio,
+                  notTooThin
+                }
+              });
+            }
+            
+            return isValid;
           })
           .map(rect => ({
             ...rect,
-            qualityScore: calculateHybridQualityScore(rect, canvas.width, canvas.height),
+            qualityScore: calculateEnhancedQualityScore(rect, canvas.width, canvas.height),
             aspectRatio: rect.width / rect.height
           } as ExtendedRect))
           .sort((a, b) => b.qualityScore - a.qualityScore)
-          .slice(0, 3); // Top 3 objetos para balance calidad/rendimiento
+          .slice(0, 4); // Top 4 objetos para mejor cobertura
+
+        console.log(`✅ Objetos válidos después del filtrado: ${filteredRects.length}`);
 
         // Guardar objetos 2D para procesamiento 3D
         setDetected2DObjects(filteredRects);
@@ -151,7 +191,9 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
             metrics: {
               circularity: rect.circularity?.toFixed(3) || 'N/A',
               solidity: rect.solidity?.toFixed(3) || 'N/A',
-              aspectRatio: rect.aspectRatio?.toFixed(2) || (rect.width / rect.height).toFixed(2)
+              aspectRatio: rect.aspectRatio?.toFixed(2) || (rect.width / rect.height).toFixed(2),
+              perimeter: rect.perimeter?.toFixed(1) || 'N/A',
+              contourPoints: rect.contourPoints || 'N/A'
             }
           });
           
@@ -179,14 +221,14 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
     rafRef.current = requestAnimationFrame(processFrame);
   }, [isActive, videoRef, detect, calibration, objects3D, onObjectsDetected]);
 
-  // Funci��n HÍBRIDA para calcular calidad del objeto
-  const calculateHybridQualityScore = (rect: any, imageWidth: number, imageHeight: number): number => {
+  // Función MEJORADA para calcular calidad del objeto
+  const calculateEnhancedQualityScore = (rect: any, imageWidth: number, imageHeight: number): number => {
     const imageArea = imageWidth * imageHeight;
     const sizeRatio = rect.area / imageArea;
-    const idealSizeRatio = 0.06; // 6% del área de la imagen es ideal
+    const idealSizeRatio = 0.05; // 5% del área de la imagen es ideal
     
     // Puntuación por tamaño (distribución gaussiana optimizada)
-    const sizeScore = Math.exp(-Math.pow((sizeRatio - idealSizeRatio) / (idealSizeRatio * 0.8), 2));
+    const sizeScore = Math.exp(-Math.pow((sizeRatio - idealSizeRatio) / (idealSizeRatio * 1.2), 2));
     
     // Puntuación por posición central (más peso al centro)
     const centerX = rect.x + rect.width / 2;
@@ -199,29 +241,37 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
       Math.pow(centerY - imageCenterY, 2)
     );
     const maxDistance = Math.sqrt(Math.pow(imageWidth / 2, 2) + Math.pow(imageHeight / 2, 2));
-    const positionScore = Math.pow(1 - (distanceFromCenter / maxDistance), 1.2);
+    const positionScore = Math.pow(1 - (distanceFromCenter / maxDistance), 1.0);
     
     // Puntuación por forma (relación de aspecto optimizada)
     const aspectRatio = rect.width / rect.height;
-    const aspectScore = 1 / (1 + Math.abs(Math.log(Math.max(aspectRatio, 1/aspectRatio))));
+    const aspectScore = 1 / (1 + Math.abs(Math.log(Math.max(aspectRatio, 1/aspectRatio))) * 0.5);
     
-    // Puntuación por confianza del detector híbrido
-    const detectorConfidence = rect.confidence || 0.8;
+    // Puntuación por confianza del detector
+    const detectorConfidence = rect.confidence || 0.7;
     
     // Puntuaciones adicionales si están disponibles (OpenCV)
-    const circularityScore = rect.circularity ? Math.min(rect.circularity * 3, 1.0) : 0.7;
-    const solidityScore = rect.solidity || 0.8;
-    const extentScore = rect.extent || 0.7;
+    const circularityScore = rect.circularity ? Math.min(rect.circularity * 4, 1.0) : 0.6;
+    const solidityScore = rect.solidity || 0.7;
+    const extentScore = rect.extent || 0.6;
+    
+    // Puntuación por calidad del contorno
+    const contourScore = rect.contourPoints ? Math.min(rect.contourPoints / 30, 1.0) : 0.5;
+    
+    // Puntuación por compacidad
+    const compactnessScore = rect.compactness || 0.6;
     
     // Combinar todos los factores con pesos optimizados
     const totalScore = (
-      sizeScore * 0.25 + 
-      positionScore * 0.2 + 
+      sizeScore * 0.2 + 
+      positionScore * 0.18 + 
       aspectScore * 0.15 + 
       detectorConfidence * 0.15 + 
       circularityScore * 0.1 + 
-      solidityScore * 0.1 +
-      extentScore * 0.05
+      solidityScore * 0.08 +
+      extentScore * 0.07 +
+      contourScore * 0.04 +
+      compactnessScore * 0.03
     );
     
     return Math.min(totalScore, 1.0);
@@ -234,9 +284,9 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
       const matching3D = objects3D.find(obj3D => {
         const overlap = calculateOverlap(obj2D.bounds, obj3D.bounds);
         const sizeCompatibility = calculateSizeCompatibility(obj2D.bounds, obj3D.bounds);
-        const timeCompatibility = Math.abs(Date.now() - obj3D.timestamp) < 2000; // 2 segundos
+        const timeCompatibility = Math.abs(Date.now() - obj3D.timestamp) < 3000; // 3 segundos
         
-        return overlap > 0.5 && sizeCompatibility > 0.6 && timeCompatibility;
+        return overlap > 0.4 && sizeCompatibility > 0.5 && timeCompatibility;
       });
 
       if (matching3D) {
@@ -323,19 +373,30 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
 
   useEffect(() => {
     if (isActive) {
-      console.log('🚀 Iniciando detección HÍBRIDA en tiempo real (2D + 3D REAL)');
-      console.log('⚙️ Configuración híbrida optimizada:', {
+      console.log('🚀 Iniciando detección MEJORADA en tiempo real (2D + 3D REAL)');
+      console.log('⚙️ Configuración mejorada para mejor detección:', {
         interval2D: PROCESS_INTERVAL + 'ms',
         frameSkip: FRAME_SKIP,
-        minArea: '2000px',
-        maxObjects: 3,
+        minArea: '1200px (reducida para detectar objetos más pequeños)',
+        maxObjects: 4,
         algorithms: {
-          detection: 'OpenCV + Nativo Optimizado',
+          detection: 'OpenCV Mejorado + Nativo Avanzado',
+          edgeDetection: 'Canny + Multi-direccional',
+          morphology: 'Cierre morfológico avanzado',
+          filtering: 'Criterios optimizados',
           depth: 'Disparidad Estereoscópica',
           triangulation: 'DLT + Geometría Epipolar'
         },
+        improvements: [
+          'Umbrales Canny más bajos (30-90)',
+          'Filtro bilateral para preservar bordes',
+          'CLAHE para mejorar contraste',
+          'Operaciones morfológicas con kernel elíptico',
+          'Criterios de filtrado más permisivos',
+          'Análisis de calidad multi-factor'
+        ],
         units: 'mm/cm/m (NUNCA píxeles)',
-        quality: 'Máxima con optimización de rendimiento'
+        quality: 'Máxima precisión de detección de contornos'
       });
       rafRef.current = requestAnimationFrame(processFrame);
     } else {

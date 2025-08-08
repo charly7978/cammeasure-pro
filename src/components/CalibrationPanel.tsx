@@ -4,8 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Ruler, Target, CheckCircle, AlertCircle, Zap, Smartphone } from 'lucide-react';
-import { SmartCalibrationSystem, REFERENCE_OBJECTS } from '@/lib/smartCalibration';
+import { Ruler, Target, CheckCircle, AlertCircle } from 'lucide-react';
 
 export interface CalibrationData {
   focalLength: number;
@@ -27,93 +26,21 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
   onCalibrationChange,
   deviceInfo
 }) => {
-  const [smartCalibration] = useState(() => new SmartCalibrationSystem());
   const [calibrationData, setCalibrationData] = useState<CalibrationData>({
-    focalLength: 4.0,
-    sensorSize: 6.17,
-    pixelsPerMm: 10,
-    referenceObjectSize: 25.4,
-    isCalibrated: true
+    focalLength: 4.0, // Default focal length in mm
+    sensorSize: 6.17, // Default sensor diagonal in mm
+    pixelsPerMm: 10, // Valor más realista para mediciones en mm/cm
+    referenceObjectSize: 25.4, // 1 inch in mm
+    isCalibrated: true // Activar por defecto para mostrar medidas en mm/cm
   });
 
   const [referencePixelLength, setReferencePixelLength] = useState<number>(0);
   const [isCalibrating, setIsCalibrating] = useState(false);
-  const [isAutoCalibrating, setIsAutoCalibrating] = useState(false);
-  const [recommendations, setRecommendations] = useState<string[]>([]);
 
   useEffect(() => {
     // Enviar calibración inicial
     onCalibrationChange(calibrationData);
-    
-    // Obtener recomendaciones iniciales
-    const recs = smartCalibration.getCalibrationRecommendations();
-    setRecommendations(recs);
   }, []);
-
-  // Auto-calibración inteligente
-  const handleAutoCalibration = async () => {
-    setIsAutoCalibrating(true);
-    try {
-      const smartData = await smartCalibration.autoCalibrate();
-      const updatedData = {
-        ...calibrationData,
-        focalLength: smartData.focalLength || calibrationData.focalLength,
-        sensorSize: smartData.sensorSize || calibrationData.sensorSize,
-        pixelsPerMm: smartData.pixelsPerMm,
-        isCalibrated: smartData.isCalibrated,
-        deviceProfile: smartData.deviceProfile
-      };
-      
-      setCalibrationData(updatedData);
-      onCalibrationChange(updatedData);
-      
-      // Actualizar recomendaciones
-      const recs = smartCalibration.getCalibrationRecommendations();
-      setRecommendations(recs);
-    } catch (error) {
-      console.error('Auto-calibration failed:', error);
-    } finally {
-      setIsAutoCalibrating(false);
-    }
-  };
-
-  // Calibración con objeto de referencia
-  const handleReferenceCalibration = (objectKey: string) => {
-    const referenceObject = REFERENCE_OBJECTS[objectKey as keyof typeof REFERENCE_OBJECTS];
-    if (!referenceObject) return;
-
-    // Simular medición de píxeles (en una implementación real, esto vendría de la UI)
-    const simulatedPixels = referenceObject.size * (calibrationData.pixelsPerMm || 8);
-    
-    try {
-      const smartData = smartCalibration.calibrateWithReference(
-        objectKey,
-        simulatedPixels,
-        {
-          lightingCondition: 'medium',
-          distanceToObject: 25,
-          cameraAngle: 0,
-          stabilityScore: 0.9
-        }
-      );
-      
-      const updatedData = {
-        ...calibrationData,
-        pixelsPerMm: smartData.pixelsPerMm,
-        referenceObjectSize: smartData.referenceObjectSize || calibrationData.referenceObjectSize,
-        isCalibrated: smartData.isCalibrated
-      };
-      
-      setCalibrationData(updatedData);
-      onCalibrationChange(updatedData);
-      
-      // Actualizar recomendaciones
-      const recs = smartCalibration.getCalibrationRecommendations();
-      setRecommendations(recs);
-    } catch (error) {
-      console.error('Reference calibration failed:', error);
-    }
-  };
 
   useEffect(() => {
     // Auto-detect device specs if possible
@@ -231,67 +158,9 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
         </Badge>
       </div>
 
-      {/* Calibración Automática Inteligente */}
+      {/* Calibración rápida */}
       <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <Label className="text-sm font-medium">Calibración Inteligente</Label>
-          <Button
-            onClick={handleAutoCalibration}
-            disabled={isAutoCalibrating}
-            size="sm"
-            className="bg-gradient-primary hover:bg-primary/90"
-          >
-            <Zap className="w-3 h-3 mr-1" />
-            {isAutoCalibrating ? 'Detectando...' : 'Auto-Calibrar'}
-          </Button>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          Detección automática del dispositivo y calibración optimizada
-        </p>
-      </div>
-
-      {/* Calibración con Objetos de Referencia Profesionales */}
-      <div className="space-y-3">
-        <Label className="text-sm font-medium">Objetos de Referencia Certificados</Label>
-        <div className="grid grid-cols-2 gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => handleReferenceCalibration('euro-1')}
-            className="text-xs"
-          >
-            🪙 Euro 1€ (23.25mm)
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => handleReferenceCalibration('credit-card')}
-            className="text-xs"
-          >
-            💳 Tarjeta (85.6mm)
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => handleReferenceCalibration('aa-battery')}
-            className="text-xs"
-          >
-            🔋 Pila AA (50.5mm)
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => handleReferenceCalibration('ruler-10cm')}
-            className="text-xs"
-          >
-            📏 Regla 10cm (100mm)
-          </Button>
-        </div>
-      </div>
-
-      {/* Calibración rápida legacy */}
-      <div className="space-y-3">
-        <Label className="text-sm font-medium">Calibración Rápida (Legacy)</Label>
+        <Label className="text-sm font-medium">Calibración Rápida</Label>
         <div className="grid grid-cols-2 gap-2">
           <Button
             variant="outline"
@@ -433,26 +302,8 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
         </div>
       )}
 
-      {/* Recomendaciones Inteligentes */}
-      {recommendations.length > 0 && (
-        <div className="space-y-2">
-          <Label className="text-sm font-medium text-amber-600">💡 Recomendaciones</Label>
-          <div className="space-y-1">
-            {recommendations.slice(0, 3).map((rec, index) => (
-              <div key={index} className="p-2 bg-amber-500/10 border border-amber-500/20 rounded text-xs text-amber-700">
-                {rec}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       {deviceInfo && (
         <div className="text-xs text-muted-foreground border-t pt-4">
-          <div className="flex items-center gap-2 mb-1">
-            <Smartphone className="w-3 h-3" />
-            <span className="font-medium">Información del Dispositivo</span>
-          </div>
           <p>Dispositivo: {deviceInfo.model}</p>
           <p>Plataforma: {deviceInfo.platform}</p>
         </div>

@@ -111,11 +111,12 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
   };
 
   const useQuickCalibration = (objectType: string) => {
+    // FACTORES CORREGIDOS PARA MEDICIONES PRECISAS
     const quickCalibrations = {
-      'coin': { size: 24.26, pixelsPerMm: 8 }, // Moneda de 1 euro
-      'card': { size: 85.6, pixelsPerMm: 6 }, // Tarjeta de crédito (ancho)
-      'phone': { size: 147, pixelsPerMm: 4 }, // iPhone promedio (alto)
-      'ruler': { size: 100, pixelsPerMm: 5 } // 10cm de regla
+      'coin': { size: 24.26, pixelsPerMm: 10.0 }, // Moneda de 1 euro - distancia 25cm
+      'card': { size: 85.6, pixelsPerMm: 7.5 }, // Tarjeta de cr��dito (ancho) - distancia 30cm
+      'phone': { size: 147, pixelsPerMm: 5.5 }, // iPhone promedio (alto) - distancia 40cm
+      'ruler': { size: 100, pixelsPerMm: 8.0 } // 10cm de regla - distancia 30cm
     };
 
     const calibration = quickCalibrations[objectType as keyof typeof quickCalibrations];

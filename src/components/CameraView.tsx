@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { useCamera } from '@/hooks/useCamera';
 import { CameraDirection } from '@capacitor/camera';
-import { RealTimeMeasurement, DetectedObject } from './RealTimeMeasurement';
+import { AdvancedRealTimeMeasurement, MeasuredObject } from './AdvancedRealTimeMeasurement';
 import { MeasurementOverlay } from './MeasurementOverlay';
 
 interface CameraViewProps {
@@ -25,7 +25,7 @@ interface CameraViewProps {
     pixelsPerMm: number;
     isCalibrated: boolean;
   } | null;
-  onRealTimeObjects: (objects: DetectedObject[]) => void;
+  onRealTimeObjects: (objects: MeasuredObject[]) => void;
 }
 
 export const CameraView: React.FC<CameraViewProps> = ({
@@ -51,7 +51,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
   const [flashEnabled, setFlashEnabled] = useState(false);
   const [focusPoint, setFocusPoint] = useState<{ x: number; y: number } | null>(null);
   const [hasPermissions, setHasPermissions] = useState(false);
-  const [detectedObjects, setDetectedObjects] = useState<DetectedObject[]>([]);
+  const [detectedObjects, setDetectedObjects] = useState<MeasuredObject[]>([]);
   const [isRealTimeMeasurement, setIsRealTimeMeasurement] = useState(true);
   const [videoContainer, setVideoContainer] = useState({ width: 0, height: 0 });
 
@@ -130,7 +130,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
     onImageCapture(imageData);
   };
 
-  const handleObjectsDetected = (objects: DetectedObject[]) => {
+  const handleObjectsDetected = (objects: MeasuredObject[]) => {
     setDetectedObjects(objects);
     onRealTimeObjects(objects);
   };
@@ -318,10 +318,16 @@ export const CameraView: React.FC<CameraViewProps> = ({
 
           {/* Real-time Processing Component */}
           {isRealTimeMeasurement && (
-            <RealTimeMeasurement
+            <AdvancedRealTimeMeasurement
               videoRef={videoRef}
               onObjectsDetected={handleObjectsDetected}
               isActive={isActive && isRealTimeMeasurement}
+              measurementConfig={{
+                processingMode: 'balanced',
+                enableMultiObject: true,
+                minConfidence: 0.4,
+                updateInterval: 200
+              }}
             />
           )}
       </Card>

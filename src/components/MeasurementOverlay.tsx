@@ -108,10 +108,17 @@ export const MeasurementOverlay: React.FC<MeasurementOverlayProps> = ({
         >
           <div className="space-y-2">
             <div className="flex justify-between items-center border-b border-white/20 pb-2">
-              <span className="text-sm font-bold">🎯 OBJETO DETECTADO</span>
-              <span className="text-xs bg-measurement-active/20 px-2 py-1 rounded">
-                {(bestObject.confidence * 100).toFixed(0)}% confianza
-              </span>
+              <span className="text-sm font-bold">🎯 ANÁLISIS PROFESIONAL</span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs bg-measurement-active/20 px-2 py-1 rounded">
+                  {(bestObject.confidence * 100).toFixed(0)}% confianza
+                </span>
+                {bestObject.precision && (
+                  <span className="text-xs bg-primary/20 px-2 py-1 rounded">
+                    Q: {bestObject.precision.qualityScore}/100
+                  </span>
+                )}
+              </div>
             </div>
             
             <div className="grid grid-cols-2 gap-3 text-sm">
@@ -149,7 +156,7 @@ export const MeasurementOverlay: React.FC<MeasurementOverlayProps> = ({
               </div>
             </div>
             
-            {/* Información adicional */}
+            {/* Información adicional profesional */}
             <div className="text-xs opacity-80 border-t border-white/10 pt-2 space-y-1">
               <div className="flex justify-between">
                 <span>Perímetro:</span>
@@ -159,6 +166,24 @@ export const MeasurementOverlay: React.FC<MeasurementOverlayProps> = ({
                 <span>Relación aspecto:</span>
                 <span>{(bestObject.dimensions.width / bestObject.dimensions.height).toFixed(2)}:1</span>
               </div>
+              {bestObject.depth && (
+                <div className="flex justify-between">
+                  <span>🔍 Profundidad est.:</span>
+                  <span>{formatDimension(bestObject.depth, bestObject.dimensions.unit)}</span>
+                </div>
+              )}
+              {bestObject.volume && (
+                <div className="flex justify-between">
+                  <span>📦 Volumen est.:</span>
+                  <span>{formatArea(bestObject.volume, bestObject.dimensions.unit + '³')}</span>
+                </div>
+              )}
+              {bestObject.precision && (
+                <div className="flex justify-between">
+                  <span>⚡ Error estimado:</span>
+                  <span>±{bestObject.precision.errorEstimate.toFixed(1)}mm</span>
+                </div>
+              )}
             </div>
           </div>
         </div>

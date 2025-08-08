@@ -236,5 +236,91 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
     };
   }, [isActive, processFrame]);
 
+  // Función profesional para calcular la calidad del objeto detectado
+  const calculateAdvancedQualityScore = (
+    rect: any, 
+    imageWidth: number, 
+    imageHeight: number, 
+    imageQuality: any
+  ): number => {
+    let score = 0;
+    
+    // 1. Análisis de tamaño profesional (25%)
+    const imageArea = imageWidth * imageHeight;
+    const sizeRatio = rect.area / imageArea;
+    let sizeScore = 0;
+    if (sizeRatio >= 0.01 && sizeRatio <= 0.05) sizeScore = 1.0; // Pequeño pero visible
+    else if (sizeRatio > 0.05 && sizeRatio <= 0.15) sizeScore = 0.95; // Tamaño ideal
+    else if (sizeRatio > 0.15 && sizeRatio <= 0.3) sizeScore = 0.8; // Grande pero manejable
+    else sizeScore = 0.4; // Muy pequeño o muy grande
+    score += sizeScore * 0.25;
+    
+    // 2. Análisis de posición profesional (20%)
+    const centerX = rect.x + rect.width / 2;
+    const centerY = rect.y + rect.height / 2;
+    const distanceFromCenter = Math.sqrt(
+      Math.pow(centerX - imageWidth / 2, 2) + 
+      Math.pow(centerY - imageHeight / 2, 2)
+    );
+    const maxDistance = Math.sqrt(Math.pow(imageWidth / 2, 2) + Math.pow(imageHeight / 2, 2));
+    const positionScore = 1 - (distanceFromCenter / maxDistance) * 0.5; // Menos penalización
+    score += positionScore * 0.20;
+    
+    // 3. Análisis de forma profesional (20%)
+    const aspectRatio = rect.width / rect.height;
+    let shapeScore = 0;
+    if (aspectRatio >= 0.5 && aspectRatio <= 2.0) shapeScore = 1.0; // Formas regulares
+    else if (aspectRatio >= 0.3 && aspectRatio <= 3.0) shapeScore = 0.8; // Formas aceptables
+    else shapeScore = 0.5; // Formas extremas
+    score += shapeScore * 0.20;
+    
+    // 4. Confianza del detector avanzado (15%)
+    const confidenceScore = Math.min((rect.confidence || 0.7) * 1.2, 1.0);
+    score += confidenceScore * 0.15;
+    
+    // 5. Calidad de imagen (10%)
+    const imageQualityScore = (
+      imageQuality.lighting.score * 0.4 +
+      imageQuality.focus.score * 0.3 +
+      imageQuality.stability.score * 0.3
+    );
+    score += imageQualityScore * 0.10;
+    
+    // 6. Características adicionales (10%)
+    const solidityScore = rect.solidity || 0.8;
+    const extentScore = rect.extent || 0.7;
+    const additionalScore = (solidityScore + extentScore) / 2;
+    score += additionalScore * 0.10;
+    
+    return Math.min(score, 1.0);
+  };
+
+  // Estimar distancia al objeto basada en tamaño
+  const estimateDistance = (rect: any, imageWidth: number, imageHeight: number): number => {
+    const imageArea = imageWidth * imageHeight;
+    const sizeRatio = rect.area / imageArea;
+    
+    // Estimación basada en tamaño relativo (objetos más grandes están más cerca)
+    if (sizeRatio > 0.2) return 15; // Muy cerca (15cm)
+    if (sizeRatio > 0.1) return 25; // Cerca (25cm)
+    if (sizeRatio > 0.05) return 35; // Distancia media (35cm)
+    if (sizeRatio > 0.02) return 50; // Lejos (50cm)
+    return 75; // Muy lejos (75cm)
+  };
+
+  // Estimar ángulo de la cámara basado en posición del objeto
+  const estimateAngle = (rect: any, imageWidth: number, imageHeight: number): number => {
+    const centerX = rect.x + rect.width / 2;
+    const centerY = rect.y + rect.height / 2;
+    
+    // Calcular desviación del centro
+    const deviationX = (centerX - imageWidth / 2) / (imageWidth / 2);
+    const deviationY = (centerY - imageHeight / 2) / (imageHeight / 2);
+    
+    // Estimar ángulo basado en desviación (simplificado)
+    const angle = Math.sqrt(deviationX * deviationX + deviationY * deviationY) * 15; // Máximo 15 grados
+    return Math.min(angle, 15);
+  };
+
   return <canvas ref={canvasRef} style={{ display: 'none' }} />;
 };

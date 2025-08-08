@@ -17,19 +17,23 @@ import { CalibrationPanel, type CalibrationData } from '@/components/Calibration
 import { MeasurementControls, type MeasurementMode } from '@/components/MeasurementControls';
 import { MeasurementEngine, type MeasurementResult, type MeasurementPoint } from '@/components/MeasurementEngine';
 import { type DetectedObject } from '@/components/RealTimeMeasurement';
+import { PrecisionAnalysisPanel } from '@/components/PrecisionAnalysisPanel';
 import { useDeviceSensors } from '@/hooks/useDeviceSensors';
 import { useOpenCV } from '@/hooks/useOpenCV';
 import { useCalibration } from '@/hooks/useCalibration';
+import { AdvancedExportSystem } from '@/lib/advancedExport';
 
 const Index = () => {
-  const [activeTab, setActiveTab] = useState<'camera' | 'calibration' | 'measurements'>('camera');
-  const { calibration, setCalibration } = useCalibration();
+  const [activeTab, setActiveTab] = useState<'camera' | 'calibration' | 'measurements' | 'analysis'>('camera');
+  const { calibration, setCalibration, autoCalibrate, getRecommendations } = useCalibration();
   const [measurementMode, setMeasurementMode] = useState<MeasurementMode>('2d');
   const [measurementResult, setMeasurementResult] = useState<MeasurementResult | null>(null);
   const [capturedImage, setCapturedImage] = useState<ImageData | null>(null);
   const [detectedEdges, setDetectedEdges] = useState<MeasurementPoint[]>([]);
   const [realTimeObjects, setRealTimeObjects] = useState<DetectedObject[]>([]);
   const [objectCount, setObjectCount] = useState(0);
+  const [showPrecisionAnalysis, setShowPrecisionAnalysis] = useState(false);
+  const [exportSystem] = useState(() => new AdvancedExportSystem());
   
   const { sensorData, isListening, startListening, stopListening } = useDeviceSensors();
   const { isLoaded: isOpenCVLoaded, error: openCVError } = useOpenCV();
@@ -135,28 +139,65 @@ const Index = () => {
     }
   };
 
-  const handleExport = () => {
+  const handleExport = async () => {
     if (measurementResult || realTimeObjects.length > 0) {
-      const data = {
-        realTimeObjects,
-        result: measurementResult,
-        calibration: calibration,
-        measurementMode,
-        timestamp: new Date().toISOString(),
-        deviceInfo: sensorData?.deviceInfo
-      };
-      
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `measurement-${measurementMode}-${Date.now()}.json`;
-      a.click();
-      
-      toast({
-        title: "Datos exportados",
-        description: "Archivo de medición descargado"
-      });
+      try {
+        // Crear reporte profesional
+        const report = exportSystem.createMeasurementReport(
+          measurementResult || {
+            distance2D: realTimeObjects[0]?.dimensions.width || 0,
+            unit: realTimeObjects[0]?.dimensions.unit || 'mm',
+            mode: measurementMode,
+            confidence: realTimeObjects[0]?.confidence || 0.8
+          },
+          realTimeObjects[0]?.precision || {
+            accuracy: 0.8,
+            precision: 0.8,
+            stability: 0.8,
+            errorEstimate: 1.0,
+            qualityScore: 80
+          },
+          calibration,
+          {
+            lightingCondition: 'medium',
+            stabilityScore: 0.8,
+            distanceToObject: 30,
+            cameraAngle: 0,
+            deviceInfo: sensorData?.deviceInfo
+          },
+          capturedImage,
+          `Medición ${measurementMode.toUpperCase()} - ${new Date().toLocaleString()}`,
+          [measurementMode, 'professional']
+        );
+
+        // Exportar en formato JSON profesional
+        const exportOptions = {
+          format: 'json' as const,
+          includeImages: true,
+          includeMetadata: true,
+          includePrecisionAnalysis: true,
+          compression: false
+        };
+
+        const blob = await exportSystem.exportReports(exportOptions);
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `professional-measurement-${measurementMode}-${Date.now()}.json`;
+        a.click();
+        
+        toast({
+          title: "Reporte Profesional Exportado",
+          description: "Archivo con análisis completo descargado"
+        });
+      } catch (error) {
+        console.error('Export error:', error);
+        toast({
+          title: "Error en Exportación",
+          description: "No se pudo generar el reporte profesional",
+          variant: "destructive"
+        });
+      }
     }
   };
 
@@ -280,7 +321,7 @@ const Index = () => {
           {/* Vista de Cámara y Medición */}
           <Card className="p-4 h-[80vh] flex flex-col">
             <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as any)} className="flex-grow flex flex-col">
-              <TabsList className="grid w-full grid-cols-3 bg-card border border-border">
+              <TabsList className="grid w-full grid-cols-4 bg-card border border-border">
                 <TabsTrigger value="camera" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
                   <Camera className="w-4 h-4 mr-2" />Cámara
                 </TabsTrigger>
@@ -289,6 +330,9 @@ const Index = () => {
                 </TabsTrigger>
                 <TabsTrigger value="calibration" className="data-[state=active]:bg-calibration data-[state=active]:text-background">
                   <Target className="w-4 h-4 mr-2" />Calibración
+                </TabsTrigger>
+                <TabsTrigger value="analysis" className="data-[state=active]:bg-measurement-active data-[state=active]:text-background">
+                  <Settings className="w-4 h-4 mr-2" />Precisión
                 </TabsTrigger>
               </TabsList>
 
@@ -324,6 +368,29 @@ const Index = () => {
                       deviceInfo={sensorData?.deviceInfo}
                     />
                 </TabsContent>
+                <TabsContent value="analysis" className="h-full">
+                  <PrecisionAnalysisPanel
+                    isVisible={activeTab === 'analysis'}
+                    currentMeasurement={
+                      measurementResult ? {
+                        value: measurementResult.distance2D,
+                        confidence: measurementResult.confidence
+                      } : realTimeObjects.length > 0 ? {
+                        value: Math.max(realTimeObjects[0].dimensions.width, realTimeObjects[0].dimensions.height),
+                        confidence: realTimeObjects[0].confidence
+                      } : undefined
+                    }
+                    imageData={capturedImage}
+                    detectedObjects={realTimeObjects}
+                    calibrationData={calibration}
+                    onRecommendationClick={(recommendation) => {
+                      toast({
+                        title: "Recomendación",
+                        description: recommendation
+                      });
+                    }}
+                  />
+                </TabsContent>
               </div>
             </Tabs>
           </Card>
@@ -342,6 +409,46 @@ const Index = () => {
             onSave={handleSave}
             onExport={handleExport}
           />
+
+          {/* Auto-Calibración Profesional */}
+          <Card className="p-4">
+            <div className="space-y-3">
+              <h4 className="font-medium flex items-center gap-2">
+                <Target className="w-4 h-4 text-calibration" />
+                Calibración Profesional
+              </h4>
+              <div className="grid grid-cols-1 gap-2">
+                <Button
+                  onClick={autoCalibrate}
+                  variant="outline"
+                  size="sm"
+                  className="border-calibration text-calibration hover:bg-calibration hover:text-background"
+                >
+                  🤖 Auto-Calibrar Dispositivo
+                </Button>
+                <Button
+                  onClick={() => setActiveTab('analysis')}
+                  variant="outline"
+                  size="sm"
+                  className="border-measurement-active text-measurement-active hover:bg-measurement-active hover:text-background"
+                >
+                  📊 Ver Análisis de Precisión
+                </Button>
+              </div>
+              
+              {/* Recomendaciones */}
+              {getRecommendations().length > 0 && (
+                <div className="mt-3 p-2 bg-amber-500/10 border border-amber-500/20 rounded">
+                  <p className="text-xs font-medium text-amber-600 mb-1">💡 Recomendaciones:</p>
+                  <ul className="text-xs text-amber-600 space-y-1">
+                    {getRecommendations().slice(0, 2).map((rec, i) => (
+                      <li key={i}>• {rec}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+      
 
           {/* Sensor Data */}
           {sensorData && (

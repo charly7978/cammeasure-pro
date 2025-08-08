@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { DetectedObject } from './RealTimeMeasurement';
 
 interface MeasurementOverlayProps {
@@ -50,26 +50,113 @@ export const MeasurementOverlay: React.FC<MeasurementOverlayProps> = ({
 
   const isReal3D = bestObject.isReal3D && bestObject.measurements3D;
 
+  // Calcular ubicación inteligente del panel
+  const panelPosition = useMemo(() => {
+    const objectCenterX = (bestObject.bounds.x + bestObject.bounds.width / 2) * scaleX;
+    const objectCenterY = (bestObject.bounds.y + bestObject.bounds.height / 2) * scaleY;
+    const objectRight = (bestObject.bounds.x + bestObject.bounds.width) * scaleX;
+    const objectBottom = (bestObject.bounds.y + bestObject.bounds.height) * scaleY;
+    
+    // Determinar cuadrante del objeto
+    const isObjectInLeftHalf = objectCenterX < containerWidth / 2;
+    const isObjectInTopHalf = objectCenterY < containerHeight / 2;
+    
+    // Calcular posición óptima para no obstruir
+    let left, top;
+    const panelWidth = 280;
+    const panelHeight = isReal3D ? 400 : 320;
+    const margin = 20;
+    
+    if (isObjectInLeftHalf) {
+      // Objeto en izquierda - poner panel a la derecha
+      left = Math.min(objectRight + margin, containerWidth - panelWidth - margin);
+    } else {
+      // Objeto en derecha - poner panel a la izquierda
+      left = Math.max(margin, bestObject.bounds.x * scaleX - panelWidth - margin);
+    }
+    
+    if (isObjectInTopHalf) {
+      // Objeto en arriba - poner panel abajo
+      top = Math.min(objectBottom + margin, containerHeight - panelHeight - margin);
+    } else {
+      // Objeto en abajo - poner panel arriba
+      top = Math.max(margin, bestObject.bounds.y * scaleY - panelHeight - margin);
+    }
+    
+    // Asegurar que el panel no se salga de la pantalla
+    left = Math.max(margin, Math.min(left, containerWidth - panelWidth - margin));
+    top = Math.max(margin, Math.min(top, containerHeight - panelHeight - margin));
+    
+    return { left, top, width: panelWidth, height: panelHeight };
+  }, [bestObject, scaleX, scaleY, containerWidth, containerHeight, isReal3D]);
+
   return (
     <div className="absolute inset-0 pointer-events-none">
-      {/* Bounding Box - Color diferente para 3D real */}
+      {/* Contornos reales detectados por OpenCV */}
+      {bestObject.contourPoints && bestObject.contourPoints > 0 && (
+        <svg 
+          className="absolute inset-0 pointer-events-none"
+          style={{ width: containerWidth, height: containerHeight }}
+        >
+          <defs>
+            <filter id="glow">
+              <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+              <feMerge> 
+                <feMergeNode in="coloredBlur"/>
+                <feMergeNode in="SourceGraphic"/>
+              </feMerge>
+            </filter>
+          </defs>
+          
+          {/* Contorno principal basado en detección real */}
+          <rect
+            x={bestObject.bounds.x * scaleX}
+            y={bestObject.bounds.y * scaleY}
+            width={bestObject.bounds.width * scaleX}
+            height={bestObject.bounds.height * scaleY}
+            fill="none"
+            stroke={isReal3D ? "rgba(168, 85, 247, 0.8)" : "rgba(132, 204, 22, 0.8)"}
+            strokeWidth="2"
+            strokeDasharray="5,5"
+            filter="url(#glow)"
+            rx="4"
+            ry="4"
+          />
+        </svg>
+      )}
+
+      {/* Bounding Box con efecto de brillo */}
       <div
         className={`absolute border-2 rounded-lg transition-all duration-200 ${
           isReal3D 
-            ? 'border-purple-400/60 shadow-purple-400/30 shadow-lg' 
-            : 'border-measurement-active/40'
+            ? 'border-purple-400/80 shadow-purple-400/50 shadow-lg animate-pulse' 
+            : 'border-measurement-active/60 shadow-measurement-active/40'
         }`}
         style={{
           left: `${bestObject.bounds.x * scaleX}px`,
           top: `${bestObject.bounds.y * scaleY}px`,
           width: `${bestObject.bounds.width * scaleX}px`,
           height: `${bestObject.bounds.height * scaleY}px`,
+          boxShadow: isReal3D 
+            ? '0 0 20px rgba(168, 85, 247, 0.6), inset 0 0 20px rgba(168, 85, 247, 0.2)'
+            : '0 0 15px rgba(132, 204, 22, 0.4), inset 0 0 15px rgba(132, 204, 22, 0.1)'
         }}
       >
-        {/* Center Point */}
+        {/* Center Point con animación */}
         <div 
-          className={`absolute w-3 h-3 rounded-full border border-white/50 ${
-            isReal3D ? 'bg-purple-400/80' : 'bg-measurement-active/80'
+          className={`absolute w-4 h-4 rounded-full border-2 border-white animate-ping ${
+            isReal3D ? 'bg-purple-400' : 'bg-measurement-active'
+          }`}
+          style={{
+            left: '50%',
+            top: '50%',
+            transform: 'translate(-50%, -50%)',
+            animationDuration: '2s'
+          }}
+        />
+        <div 
+          className={`absolute w-3 h-3 rounded-full border border-white/80 ${
+            isReal3D ? 'bg-purple-400/90' : 'bg-measurement-active/90'
           }`}
           style={{
             left: '50%',
@@ -79,15 +166,18 @@ export const MeasurementOverlay: React.FC<MeasurementOverlayProps> = ({
         />
       </div>
 
-      {/* Panel de información FIJO - Expandido para 3D */}
+      {/* Panel de información INTELIGENTE - Posición dinámica */}
       <div
-        className="absolute top-4 left-4 z-20 font-mono text-sm px-4 py-3 rounded-xl shadow-2xl border backdrop-blur-md"
+        className="absolute z-20 font-mono text-sm px-4 py-3 rounded-2xl shadow-2xl border backdrop-blur-lg transition-all duration-300"
         style={{
-          backgroundColor: 'rgba(0, 0, 0, 0.9)',
-          borderColor: isReal3D ? 'rgba(168, 85, 247, 0.6)' : 'rgba(132, 204, 22, 0.6)',
+          left: `${panelPosition.left}px`,
+          top: `${panelPosition.top}px`,
+          width: `${panelPosition.width}px`,
+          backgroundColor: 'rgba(0, 0, 0, 0.75)', // Más transparente
+          borderColor: isReal3D ? 'rgba(168, 85, 247, 0.8)' : 'rgba(132, 204, 22, 0.8)',
           color: isReal3D ? 'rgb(168, 85, 247)' : 'rgb(132, 204, 22)',
-          minWidth: '240px',
-          maxWidth: '320px'
+          backdropFilter: 'blur(12px)',
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)'
         }}
       >
         <div className="space-y-2">

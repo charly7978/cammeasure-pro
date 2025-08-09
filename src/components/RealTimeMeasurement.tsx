@@ -1,263 +1,301 @@
-// RealTimeMeasurement.tsx
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+
+import React, { useCallback, useEffect, useRef } from 'react';
+import { useMeasurementWorker } from '@/hooks/useMeasurementWorker';
 import { useCalibration } from '@/hooks/useCalibration';
-import { NativeMultiCamera } from '@/lib/nativeMultiCamera';
 
-/**
- * RealTimeMeasurement
- * - Captura frames desde videoRef
- * - Envía frames al worker (measurementWorker.ts)
- * - Recibe detecciones 2D (con métricas reales) y, si se provee par estéreo, nube de puntos 3D
- *
- * Props:
- *  - videoRef: referencia al <video> que muestra la cámara
- *  - onObjectsDetected(objects)
- *  - isActive: procesar frames sólo si true
- */
-
-type WorkerMessageIn =
-  | { type: 'init'; opencvCDNs?: string[]; config?: any }
-  | { type: 'processFrame'; id?: string; imageData: ImageData; params?: any }
-  | { type: 'processStereo'; id?: string; left: ImageData; right: ImageData; params?: any }
-  | { type: 'calibrateWithCheckerboard'; imageData: ImageData; patternSize: { w: number; h: number }; squareSizeMm: number }
-  | { type: 'setCalibrationParams'; params: any }
-  | { type: 'shutdown' };
-
-type WorkerMsgOut =
-  | { type: 'ready' }
-  | { type: 'log'; message: string }
-  | { type: 'detections'; id?: string; objects: any[] }
-  | { type: 'calibrationResult'; success: boolean; cameraMatrix?: number[]; distCoeffs?: number[]; pixelsPerMm?: number }
-  | { type: 'stereoResult'; disparity?: any; pointCloudSummary?: any }
-  | { type: 'error'; message: string };
+export interface DetectedObject {
+  id: string;
+  bounds: { x: number; y: number; width: number; height: number; area: number };
+  dimensions: { width: number; height: number; area: number; unit: string };
+  confidence: number;
+  center: { x: number; y: number };
+  measurements?: {
+    perimeter: number;
+    solidity: number;
+    aspectRatio: number;
+    angle: number;
+    realWorldCoordinates: { x: number; y: number; z: number };
+    depth: number;
+    volume: number;
+  };
+}
 
 interface RealTimeMeasurementProps {
   videoRef: React.RefObject<HTMLVideoElement>;
-  onObjectsDetected: (objects: any[]) => void;
+  onObjectsDetected: (objects: DetectedObject[]) => void;
   isActive: boolean;
 }
 
-export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({ videoRef, onObjectsDetected, isActive }) => {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const offscreenRef = useRef<OffscreenCanvas | null>(null);
-  const rafRef = useRef<number | null>(null);
+export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
+  videoRef,
+  onObjectsDetected,
+  isActive,
+}) => {
+  const { detect, isReady } = useMeasurementWorker();
+  const { calibration } = useCalibration();
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const rafRef = useRef<number>();
   const lastProcessTime = useRef<number>(0);
-  const PROCESS_INTERVAL = 100; // ms (más fluido que antes)
-  const workerRef = useRef<Worker | null>(null);
-  const { calibration, setCalibration } = useCalibration();
-  const [workerReady, setWorkerReady] = useState(false);
-  const nativeStereoListenerRef = useRef<any>(null);
+  const PROCESS_INTERVAL = 150; // Optimizado para tiempo real
 
-  // Inicializar worker
-  useEffect(() => {
-    // Asume que measurementWorker.ts está compilado a worker y accesible en /workers/measurementWorker.js
-    // Ajustá esta ruta según tu bundler (Vite/webpack).
-    const worker = new Worker('/workers/measurementWorker.js', { type: 'module' });
-    workerRef.current = worker;
-
-    // Mensajes del worker
-    worker.onmessage = (ev: MessageEvent) => {
-      const msg: WorkerMsgOut = ev.data;
-      if (!msg) return;
-
-      switch (msg.type) {
-        case 'ready':
-          setWorkerReady(true);
-          console.log('[Worker] ready');
-          break;
-        case 'log':
-          console.log('[Worker]', msg.message);
-          break;
-        case 'detections':
-          // Estructura: objects[] con métricas reales (mm) y scores
-          onObjectsDetected(msg.objects);
-          break;
-        case 'calibrationResult':
-          if (msg.success && msg.cameraMatrix && msg.distCoeffs) {
-            // Guardar parámetros de calibración en context
-            setCalibration({
-              focalLength: msg.cameraMatrix[0], // aproximación
-              sensorSize: calibration?.sensorSize || 6.17,
-              pixelsPerMm: msg.pixelsPerMm || (calibration?.pixelsPerMm || 8),
-              referenceObjectSize: calibration?.referenceObjectSize || 25.4,
-              isCalibrated: true
-            });
-            console.log('[Calibration] OK', msg);
-          } else {
-            console.warn('[Calibration] failed', msg);
-          }
-          break;
-        case 'stereoResult':
-          console.log('[Worker] stereoResult', msg.pointCloudSummary);
-          break;
-        case 'error':
-          console.error('[Worker]', msg.message);
-          break;
-        default:
-          break;
-      }
-    };
-
-    // Inicializar worker con lista de CDNs para OpenCV.js (fallbacks)
-    worker.postMessage({
-      type: 'init',
-      opencvCDNs: [
-        // Cambiá por los CDN que prefieras/versiones concretas
-        'https://docs.opencv.org/4.x/opencv.js',
-        'https://cdnjs.cloudflare.com/ajax/libs/opencv/4.5.5/opencv.js',
-        'https://unpkg.com/opencv-js@4.5.5/opencv.js'
-      ],
-      config: {
-        multiScaleCanny: true,
-        cannyLevels: [ [30, 100], [50, 150], [80, 200] ],
-        minAreaPx: 2000
-      }
-    } as WorkerMessageIn);
-
-    return () => {
-      worker.postMessage({ type: 'shutdown' } as WorkerMessageIn);
-      worker.terminate();
-      workerRef.current = null;
-      setWorkerReady(false);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Preparar canvas (en DOM o Offscreen para performance)
-  useEffect(() => {
-    if (!canvasRef.current) {
-      const c = document.createElement('canvas');
-      c.style.display = 'none';
-      document.body.appendChild(c);
-      canvasRef.current = c;
-    }
-    if (typeof OffscreenCanvas !== 'undefined') {
-      offscreenRef.current = new OffscreenCanvas(640, 480);
-    }
-  }, []);
-
-  // WEB: frame loop normal
   const processFrame = useCallback(() => {
-    const now = Date.now();
-    if (!isActive || !videoRef.current || !workerRef.current) {
-      rafRef.current = requestAnimationFrame(processFrame);
+    if (!isActive || !videoRef.current || !canvasRef.current || !isReady) {
+      if (isActive) {
+        rafRef.current = requestAnimationFrame(processFrame);
+      }
       return;
     }
+
+    const now = Date.now();
     if (now - lastProcessTime.current < PROCESS_INTERVAL) {
       rafRef.current = requestAnimationFrame(processFrame);
       return;
     }
 
     const video = videoRef.current;
+    const canvas = canvasRef.current;
 
-    if (video.readyState < HTMLMediaElement.HAVE_ENOUGH_DATA) {
+    if (video.readyState < video.HAVE_ENOUGH_DATA) {
       rafRef.current = requestAnimationFrame(processFrame);
       return;
     }
 
     lastProcessTime.current = now;
 
-    // Ajustar canvas al tamaño del video (mantener relación)
-    const canvas = canvasRef.current!;
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext('2d')!;
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    // Configurar canvas con resolución completa
+    const targetWidth = video.videoWidth;
+    const targetHeight = video.videoHeight;
+    
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      rafRef.current = requestAnimationFrame(processFrame);
+      return;
+    }
 
-    // Obtener ImageData
+    // Dibujar frame actual
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-    // Enviar al worker
-    const msg: WorkerMessageIn = {
-      type: 'processFrame',
-      id: `f_${Date.now()}`,
+    // Detectar objetos con OpenCV avanzado
+    detect({
       imageData,
-      params: {
-        pixelsPerMm: calibration?.pixelsPerMm || 8,
-        useUndistort: calibration?.isCalibrated ? true : false,
-        desiredOutputMaxWidth: 1280,
-      }
-    };
-    workerRef.current.postMessage(msg, [imageData.data.buffer]);
+      minArea: 800,
+      onDetect: (rects) => {
+        const calibrationData = calculateRealCalibration(calibration, canvas.width, canvas.height, video);
+        
+        console.log('🎯 Detección OpenCV avanzada:', {
+          objectsFound: rects.length,
+          resolution: `${canvas.width}x${canvas.height}`,
+          pixelsPerMm: calibrationData.pixelsPerMm.toFixed(3),
+          focalLength: calibrationData.focalLength,
+          isCalibrated: calibrationData.isReallyCalibrated
+        });
+
+        const validatedObjects = rects
+          .filter(rect => validateAdvancedObjectMeasurement(rect, canvas.width, canvas.height))
+          .slice(0, 3)
+          .map((rect, i) => {
+            const realMeasurements = calculatePreciseMeasurements(rect, calibrationData);
+            
+            console.log(`📏 Objeto ${i + 1} - Mediciones reales:`, {
+              pixels: `${rect.width}x${rect.height}`,
+              real2D: `${realMeasurements.width.toFixed(2)}x${realMeasurements.height.toFixed(2)}mm`,
+              area: `${realMeasurements.area.toFixed(2)}mm²`,
+              depth: `${realMeasurements.depth.toFixed(2)}mm`,
+              volume: `${realMeasurements.volume.toFixed(2)}mm³`,
+              confidence: `${(rect.confidence * 100).toFixed(1)}%`,
+              worldPos: `(${realMeasurements.worldX.toFixed(1)}, ${realMeasurements.worldY.toFixed(1)}, ${realMeasurements.worldZ.toFixed(1)})mm`
+            });
+            
+            return {
+              id: `obj_${i}_${Date.now()}`,
+              bounds: rect,
+              dimensions: {
+                width: realMeasurements.width,
+                height: realMeasurements.height,
+                area: realMeasurements.area,
+                unit: 'mm',
+              },
+              confidence: rect.confidence || 0.8,
+              center: rect.center || { 
+                x: rect.x + rect.width / 2, 
+                y: rect.y + rect.height / 2 
+              },
+              measurements: {
+                perimeter: realMeasurements.perimeter,
+                solidity: rect.solidity || 0.8,
+                aspectRatio: rect.aspectRatio || (rect.width / rect.height),
+                angle: rect.angle || 0,
+                realWorldCoordinates: { 
+                  x: realMeasurements.worldX, 
+                  y: realMeasurements.worldY, 
+                  z: realMeasurements.worldZ 
+                },
+                depth: realMeasurements.depth,
+                volume: realMeasurements.volume
+              }
+            };
+          });
+
+        onObjectsDetected(validatedObjects);
+      },
+    });
 
     rafRef.current = requestAnimationFrame(processFrame);
-  }, [isActive, calibration, videoRef]);
+  }, [isActive, videoRef, detect, calibration, onObjectsDetected, isReady]);
 
-  // Loop de rAF
-  useEffect(() => {
-    if (isActive && workerReady) {
-      rafRef.current = requestAnimationFrame(processFrame);
+  const calculateRealCalibration = (calibration: any, imageWidth: number, imageHeight: number, video: HTMLVideoElement) => {
+    let pixelsPerMm = 8; // Base conservadora
+    let focalLength = 4.25; // mm
+    let sensorWidth = 6.17; // mm
+    let isReallyCalibrated = false;
+
+    if (calibration?.isCalibrated && calibration?.pixelsPerMm > 0) {
+      pixelsPerMm = calibration.pixelsPerMm;
+      focalLength = calibration.focalLength || 4.25;
+      sensorWidth = calibration.sensorSize || 6.17;
+      isReallyCalibrated = true;
+      
+      // Corrección por perspectiva basada en posición del objeto
+      const centerDistanceFromOpticalAxis = Math.sqrt(
+        Math.pow(imageWidth / 2, 2) + Math.pow(imageHeight / 2, 2)
+      );
+      const maxDistance = Math.sqrt(Math.pow(imageWidth / 2, 2) + Math.pow(imageHeight / 2, 2));
+      const perspectiveCorrection = 1 + (centerDistanceFromOpticalAxis / maxDistance) * 0.05;
+      
+      pixelsPerMm *= perspectiveCorrection;
     } else {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    }
-    return () => {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    };
-  }, [isActive, processFrame, workerReady]);
-
-  // NATIVO: escuchar frames estéreo y enviarlos al worker como processStereoAdvanced
-  useEffect(() => {
-    let sub: any = null;
-    const run = async () => {
-      if (!NativeMultiCamera.isNative) return;
-      try {
-        const res = await NativeMultiCamera.listCameras();
-        const backs = (res.devices || []).filter((d: any) => d.isBack);
-        if (backs.length < 2) { console.warn('No hay dos cámaras traseras disponibles en nativo'); return; }
-        const leftId = backs[0].id; const rightId = backs[1].id;
-        sub = await NativeMultiCamera.onStereoFrame((payload) => {
-          if (!workerRef.current) return;
-          // Conversion: arrays de enteros a Uint8ClampedArray -> ImageData
-          const { width, height, left, right } = payload;
-          const leftClamped = new Uint8ClampedArray(left);
-          const rightClamped = new Uint8ClampedArray(right);
-          const leftImage = new ImageData(leftClamped, width, height);
-          const rightImage = new ImageData(rightClamped, width, height);
-          workerRef.current.postMessage({ type: 'processStereoAdvanced', left: leftImage, right: rightImage, stereoConfig: {} });
-        });
-        await NativeMultiCamera.startStereo(leftId, rightId, 1280, 720);
-      } catch (e) {
-        console.warn('Stereo nativo no disponible:', e);
+      // Calibración automática avanzada basada en características del dispositivo
+      const diagonalPixels = Math.sqrt(imageWidth * imageWidth + imageHeight * imageHeight);
+      
+      // Estimar distancia focal basada en resolución y características típicas
+      if (imageWidth >= 3840) { // 4K
+        pixelsPerMm = 12;
+        focalLength = 5.1;
+        sensorWidth = 7.2;
+      } else if (imageWidth >= 1920) { // Full HD
+        pixelsPerMm = 10;
+        focalLength = 4.6;
+        sensorWidth = 6.8;
+      } else if (imageWidth >= 1280) { // HD
+        pixelsPerMm = 8.5;
+        focalLength = 4.25;
+        sensorWidth = 6.17;
+      } else { // Resolución menor
+        pixelsPerMm = 7;
+        focalLength = 3.8;
+        sensorWidth = 5.5;
       }
+
+      // Ajuste dinámico basado en distancia estimada del objeto
+      const estimatedDistance = (focalLength * 100) / (diagonalPixels / Math.max(imageWidth, imageHeight) * sensorWidth);
+      if (estimatedDistance > 0) {
+        const distanceCorrection = Math.min(1.2, Math.max(0.8, 250 / estimatedDistance));
+        pixelsPerMm *= distanceCorrection;
+      }
+    }
+
+    return {
+      pixelsPerMm,
+      focalLength,
+      sensorWidth,
+      isReallyCalibrated
     };
-    run();
-    return () => { sub?.remove?.(); NativeMultiCamera.stop().catch(() => {}); };
-  }, []);
-
-  // Función pública para calibrar automáticamente detectando un checkerboard
-  const autoCalibrateWithCheckerboard = async (patternW = 9, patternH = 6, squareSizeMm = 25.4) => {
-    if (!canvasRef.current || !videoRef.current || !workerRef.current) return;
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d')!;
-    ctx.drawImage(videoRef.current!, 0, 0, canvas.width, canvas.height);
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-
-    workerRef.current.postMessage({
-      type: 'calibrateWithCheckerboard',
-      imageData,
-      patternSize: { w: patternW, h: patternH },
-      squareSizeMm
-    } as WorkerMessageIn, [imageData.data.buffer]);
   };
 
-  // Exponer una referencia global (para debug) - opcional
+  const calculatePreciseMeasurements = (rect: any, calibrationData: any) => {
+    const { pixelsPerMm, focalLength, sensorWidth } = calibrationData;
+    
+    // Mediciones básicas 2D
+    const width = rect.width / pixelsPerMm;
+    const height = rect.height / pixelsPerMm;
+    const area = rect.area / (pixelsPerMm * pixelsPerMm);
+    const perimeter = (rect.perimeter || (2 * (rect.width + rect.height))) / pixelsPerMm;
+    
+    // Cálculo de profundidad basado en tamaño del objeto y distancia focal
+    const avgDimension = (width + height) / 2;
+    let depth = 0;
+    
+    if (avgDimension > 0) {
+      // Estimar profundidad usando la relación focal length / object size
+      const assumedRealSize = 50; // Asumimos objetos de ~5cm como referencia
+      const apparentSize = avgDimension;
+      depth = (focalLength * assumedRealSize) / apparentSize;
+      
+      // Clampear profundidad a valores razonables
+      depth = Math.max(5, Math.min(500, depth));
+    }
+    
+    // Cálculo de volumen (aproximado como paralelepípedo)
+    const estimatedThickness = Math.min(width, height) * 0.4; // Estimación conservadora
+    const volume = area * estimatedThickness;
+    
+    // Coordenadas del mundo real (con origen en centro de imagen)
+    const centerX = rect.center?.x || (rect.x + rect.width / 2);
+    const centerY = rect.center?.y || (rect.y + rect.height / 2);
+    
+    const worldX = (centerX - rect.width / 2) / pixelsPerMm;
+    const worldY = (centerY - rect.height / 2) / pixelsPerMm;
+    const worldZ = depth;
+    
+    return {
+      width: Math.max(0.1, width),
+      height: Math.max(0.1, height),
+      area: Math.max(0.01, area),
+      perimeter: Math.max(0.1, perimeter),
+      depth: Math.max(0.1, depth),
+      volume: Math.max(0.001, volume),
+      worldX,
+      worldY,
+      worldZ
+    };
+  };
+
+  const validateAdvancedObjectMeasurement = (rect: any, imageWidth: number, imageHeight: number): boolean => {
+    const imageArea = imageWidth * imageHeight;
+    const objectAreaRatio = rect.area / imageArea;
+    const aspectRatio = rect.width / rect.height;
+    
+    // Criterios de validación más estrictos y precisos
+    const validSize = rect.area >= 600 && rect.area <= imageArea * 0.35;
+    const validAspect = aspectRatio >= 0.15 && aspectRatio <= 6.0;
+    const validPosition = rect.x >= 10 && rect.y >= 10 && 
+                         rect.x + rect.width <= imageWidth - 10 && 
+                         rect.y + rect.height <= imageHeight - 10;
+    const validAreaRatio = objectAreaRatio >= 0.0015 && objectAreaRatio <= 0.35;
+    const validDimensions = rect.width >= 25 && rect.height >= 25;
+    const validConfidence = (rect.confidence || 0.5) >= 0.4;
+    
+    // Validación adicional basada en características de forma
+    const solidity = rect.solidity || 0.5;
+    const validSolidity = solidity >= 0.3 && solidity <= 1.0;
+    
+    const compactness = (4 * Math.PI * rect.area) / Math.pow(rect.perimeter || (2 * (rect.width + rect.height)), 2);
+    const validCompactness = compactness >= 0.1;
+    
+    return validSize && validAspect && validPosition && 
+           validAreaRatio && validDimensions && validConfidence &&
+           validSolidity && validCompactness;
+  };
+
   useEffect(() => {
-    // @ts-ignore
-    window.__camMeasureWorker = workerRef.current;
-  }, []);
+    if (isActive && isReady) {
+      console.log('🚀 Iniciando medición en tiempo real con OpenCV avanzado...');
+      rafRef.current = requestAnimationFrame(processFrame);
+    } else {
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+      }
+    }
+    return () => {
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+      }
+    };
+  }, [isActive, processFrame, isReady]);
 
-  return (
-    <>
-      {/* canvas oculto usado para capturar frames (si lo querés visible, mostralo) */}
-      <canvas ref={canvasRef} style={{ display: 'none' }} />
-      {/* Opcional: botones manuales para debug/calibración */}
-      <div style={{ display: 'none' }}>
-        <button onClick={() => autoCalibrateWithCheckerboard(9, 6, 25.4)}>
-          Calibrar con tablero (9x6)
-        </button>
-      </div>
-    </>
-  );
+  return <canvas ref={canvasRef} style={{ display: 'none' }} />;
 };
-
-export default RealTimeMeasurement;

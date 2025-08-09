@@ -166,55 +166,55 @@ export const CameraView: React.FC<CameraViewProps> = ({
 
   return (
     <div className="space-y-4">
-      {/* Camera Controls */}
-      <div className="flex items-center justify-between">
+      {/* Camera Controls - Compactos */}
+      <div className="flex items-center justify-between bg-card/50 p-3 rounded-lg">
         <div className="flex items-center gap-2">
-          <Badge variant="outline" className="border-primary text-primary">
+          <Badge variant="outline" className="border-primary text-primary text-xs">
             <Camera className="w-3 h-3 mr-1" />
             {currentCamera === CameraDirection.Rear ? 'Principal' : 'Frontal'}
           </Badge>
           
           {cameraStream && (
-            <Badge variant="secondary" className="animate-measurement-pulse">
+            <Badge variant="secondary" className="animate-measurement-pulse text-xs">
               <div className="w-2 h-2 bg-measurement-active rounded-full mr-1"></div>
               En Vivo
             </Badge>
           )}
 
           {isRealTimeMeasurement && detectedObjects.length > 0 && (
-            <Badge variant="outline" className="border-measurement-active text-measurement-active">
+            <Badge variant="outline" className="border-measurement-active text-measurement-active text-xs">
               <Target className="w-3 h-3 mr-1" />
-              {detectedObjects.length} objeto{detectedObjects.length !== 1 ? 's' : ''}
+              🎯 Detectado
             </Badge>
           )}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
           <Button
             variant="outline"
             size="sm"
             onClick={() => setIsRealTimeMeasurement(!isRealTimeMeasurement)}
-            className={isRealTimeMeasurement ? "bg-measurement-active text-background" : ""}
+            className={`h-8 w-8 p-0 ${isRealTimeMeasurement ? "bg-measurement-active text-background" : ""}`}
           >
-            {isRealTimeMeasurement ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+            {isRealTimeMeasurement ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
           </Button>
 
           <Button
             variant="outline"
             size="sm"
             onClick={() => setShowGrid(!showGrid)}
-            className={showGrid ? "bg-primary text-primary-foreground" : ""}
+            className={`h-8 w-8 p-0 ${showGrid ? "bg-primary text-primary-foreground" : ""}`}
           >
-            <Grid3X3 className="w-4 h-4" />
+            <Grid3X3 className="w-3 h-3" />
           </Button>
           
           <Button
             variant="outline"
             size="sm"
             onClick={() => setFlashEnabled(!flashEnabled)}
-            className={flashEnabled ? "bg-calibration text-background" : ""}
+            className={`h-8 w-8 p-0 ${flashEnabled ? "bg-calibration text-background" : ""}`}
           >
-            <Zap className="w-4 h-4" />
+            <Zap className="w-3 h-3" />
           </Button>
           
           <Button
@@ -222,17 +222,22 @@ export const CameraView: React.FC<CameraViewProps> = ({
             size="sm"
             onClick={handleCameraSwitch}
             disabled={isCapturing}
+            className="h-8 w-8 p-0"
           >
-            <SwitchCamera className="w-4 h-4" />
+            <SwitchCamera className="w-3 h-3" />
           </Button>
         </div>
       </div>
 
-      {/* Camera View with Real-time Overlay */}
-      <Card className="relative overflow-hidden bg-black">
+      {/* Camera View AMPLIADA - Tamaño mucho más grande */}
+      <Card className="relative overflow-hidden bg-black shadow-2xl">
         <div 
           ref={containerRef}
-          className="relative aspect-[4/3] bg-black"
+          className="relative w-full bg-black"
+          style={{ 
+            height: '70vh', // Altura fija grande
+            minHeight: '500px' // Altura mínima
+          }}
           onLoadedData={() => {
             if (containerRef.current) {
               const rect = containerRef.current.getBoundingClientRect();
@@ -255,7 +260,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
             }}
           />
 
-          {/* Real-time Measurement Overlay */}
+          {/* Real-time Measurement Overlay - MÁS TRANSPARENTE Y FIJO */}
           {isRealTimeMeasurement && (
             <MeasurementOverlay
               objects={detectedObjects}
@@ -266,13 +271,13 @@ export const CameraView: React.FC<CameraViewProps> = ({
             />
           )}
           
-          {/* Grid Overlay */}
+          {/* Grid Overlay - Más sutil */}
           {showGrid && (
             <div className="absolute inset-0 pointer-events-none">
               <svg className="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
                 <defs>
                   <pattern id="grid" width="33.33" height="33.33" patternUnits="userSpaceOnUse">
-                    <path d="M 33.33 0 L 0 0 0 33.33" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="0.5"/>
+                    <path d="M 33.33 0 L 0 0 0 33.33" fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="0.3"/>
                   </pattern>
                 </defs>
                 <rect width="100" height="100" fill="url(#grid)" />
@@ -283,44 +288,43 @@ export const CameraView: React.FC<CameraViewProps> = ({
           {/* Focus Point Indicator */}
           {focusPoint && (
             <div 
-              className="absolute w-16 h-16 border-2 border-calibration rounded-full pointer-events-none animate-calibration-glow"
+              className="absolute w-12 h-12 border-2 border-calibration rounded-full pointer-events-none animate-calibration-glow"
               style={{
                 left: `${focusPoint.x}%`,
                 top: `${focusPoint.y}%`,
                 transform: 'translate(-50%, -50%)'
               }}
             >
-              <Focus className="w-4 h-4 text-calibration absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2" />
+              <Focus className="w-3 h-3 text-calibration absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2" />
             </div>
           )}
           
-          {/* Center Crosshair */}
+          {/* Center Crosshair - Más sutil */}
           <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none">
-            <div className="w-8 h-8 border border-measurement-active rounded-full flex items-center justify-center">
-              <div className="w-2 h-2 bg-measurement-active rounded-full"></div>
+            <div className="w-6 h-6 border border-measurement-active/60 rounded-full flex items-center justify-center">
+              <div className="w-1 h-1 bg-measurement-active rounded-full"></div>
             </div>
           </div>
-        </div>
 
-        {/* Capture Button - Only show if capture function is provided */}
-        {onImageCapture && (
-          <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2">
-            <Button
-              onClick={captureFrame}
-              disabled={isCapturing || !cameraStream}
-              size="lg"
-              className="w-16 h-16 rounded-full bg-gradient-primary shadow-measurement border-4 border-background"
-            >
-              <Camera className="w-6 h-6" />
-            </Button>
-          </div>
-        )}
+          {/* Capture Button - Posición fija */}
+          {onImageCapture && (
+            <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2">
+              <Button
+                onClick={captureFrame}
+                disabled={isCapturing || !cameraStream}
+                size="lg"
+                className="w-14 h-14 rounded-full bg-gradient-primary shadow-2xl border-4 border-background hover:scale-105 transition-transform"
+              >
+                <Camera className="w-5 h-5" />
+              </Button>
+            </div>
+          )}
+        </div>
 
         {/* Real-time Processing Component */}
         {isRealTimeMeasurement && (
           <RealTimeMeasurement
             videoRef={videoRef}
-            calibrationData={calibrationData}
             onObjectsDetected={handleObjectsDetected}
             isActive={isActive && isRealTimeMeasurement}
           />

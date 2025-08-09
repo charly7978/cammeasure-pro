@@ -1,4 +1,4 @@
-import type { CapacitorConfig } from '@capacitor/core';
+import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'app.lovable.f976e3b6c56e481485f8240003ca6ffe',
@@ -7,6 +7,9 @@ const config: CapacitorConfig = {
   server: {
     url: 'https://f976e3b6-c56e-4814-85f8-240003ca6ffe.lovableproject.com?forceHideBadge=true',
     cleartext: true
+  },
+  android: {
+    allowMixedContent: true,
   },
   plugins: {
     Camera: {
@@ -18,6 +21,10 @@ const config: CapacitorConfig = {
     Motion: {
       permissions: ['motion'],
     },
+    StatusBar: {
+      overlaysWebView: true,
+      style: 'LIGHT'
+    }
   },
 };
 

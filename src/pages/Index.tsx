@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
@@ -9,7 +9,10 @@ import {
   Settings,
   Ruler,
   Smartphone,
-  Cpu
+  Cpu,
+  AlertTriangle,
+  Box,
+  Zap
 } from 'lucide-react';
 
 import { CameraView } from '@/components/CameraView';
@@ -19,67 +22,93 @@ import { MeasurementEngine, type MeasurementResult, type MeasurementPoint } from
 import { type DetectedObject } from '@/components/RealTimeMeasurement';
 import { useDeviceSensors } from '@/hooks/useDeviceSensors';
 import { useOpenCV } from '@/hooks/useOpenCV';
+import { useCalibration } from '@/hooks/useCalibration';
+import { ImmersiveMode } from '@/components/ImmersiveMode';
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState<'camera' | 'calibration' | 'measurements'>('camera');
-  const [calibrationData, setCalibrationData] = useState<CalibrationData | null>(null);
+  const { calibration, setCalibration } = useCalibration();
   const [measurementMode, setMeasurementMode] = useState<MeasurementMode>('2d');
   const [measurementResult, setMeasurementResult] = useState<MeasurementResult | null>(null);
   const [capturedImage, setCapturedImage] = useState<ImageData | null>(null);
   const [detectedEdges, setDetectedEdges] = useState<MeasurementPoint[]>([]);
   const [realTimeObjects, setRealTimeObjects] = useState<DetectedObject[]>([]);
   const [objectCount, setObjectCount] = useState(0);
+  const lastToastRef = useRef<string>('');
+  const [showCalibrationWarning, setShowCalibrationWarning] = useState(true);
   
   const { sensorData, isListening, startListening, stopListening } = useDeviceSensors();
   const { isLoaded: isOpenCVLoaded, error: openCVError } = useOpenCV();
 
   useEffect(() => {
-    // Start sensor monitoring
     startListening();
     
     return () => {
       stopListening();
     };
-  }, []);
+  }, [startListening, stopListening]);
 
   useEffect(() => {
     if (openCVError) {
-      toast({
-        title: "Error cargando OpenCV",
-        description: "Las funciones avanzadas de medición pueden no estar disponibles",
-        variant: "destructive"
-      });
+      console.warn('OpenCV status:', openCVError);
     }
   }, [openCVError]);
+
+  // Mostrar advertencia de calibración si no está calibrado
+  useEffect(() => {
+    if (!calibration?.isCalibrated && showCalibrationWarning) {
+      const timer = setTimeout(() => {
+        toast({
+          title: "⚠️ Calibración Requerida",
+          description: "Ve a Calibración para medidas precisas en mm/cm"
+        });
+      }, 2000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [calibration?.isCalibrated, showCalibrationWarning]);
 
   const handleImageCapture = (imageData: ImageData) => {
     setCapturedImage(imageData);
     setActiveTab('measurements');
     
-    toast({
-      title: "Imagen capturada",
-      description: "Imagen lista para análisis y medición"
-    });
+    const toastMessage = "Imagen capturada";
+    if (lastToastRef.current !== toastMessage) {
+      lastToastRef.current = toastMessage;
+      toast({
+        title: toastMessage,
+        description: "Lista para análisis"
+      });
+    }
   };
 
   const handleCalibrationChange = (data: CalibrationData) => {
-    setCalibrationData(data);
+    setCalibration(data);
     
     if (data.isCalibrated) {
-      toast({
-        title: "Sistema calibrado",
-        description: "Las mediciones ahora serán más precisas"
-      });
+      setShowCalibrationWarning(false);
+      const toastMessage = "Sistema calibrado";
+      if (lastToastRef.current !== toastMessage) {
+        lastToastRef.current = toastMessage;
+        toast({
+          title: toastMessage,
+          description: `Factor: ${data.pixelsPerMm.toFixed(2)} px/mm`
+        });
+      }
     }
   };
 
   const handleMeasurementResult = (result: MeasurementResult) => {
     setMeasurementResult(result);
     
-    toast({
-      title: "Medición completada",
-      description: `Distancia: ${result.distance2D.toFixed(2)} ${result.unit}`
-    });
+    // Solo mostrar toast para mediciones manuales
+    if (capturedImage) {
+      const modeText = result.mode ? ` (${result.mode.toUpperCase()})` : '';
+      toast({
+        title: `Medición completada${modeText}`,
+        description: `${formatDimension(result.distance2D, result.unit)}`
+      });
+    }
   };
 
   const handleDetectedEdges = (edges: MeasurementPoint[]) => {
@@ -91,16 +120,15 @@ const Index = () => {
     setObjectCount(objects.length);
     
     // Auto-generate measurement result from the best object
-    if (objects.length > 0 && calibrationData?.isCalibrated) {
-      const bestObject = objects.reduce((best, current) => 
-        current.confidence > best.confidence ? current : best
-      );
+    if (objects.length > 0) {
+      const bestObject = objects[0];
       
       const result: MeasurementResult = {
         distance2D: Math.max(bestObject.dimensions.width, bestObject.dimensions.height),
         area: bestObject.dimensions.area,
         unit: bestObject.dimensions.unit,
-        confidence: bestObject.confidence
+        confidence: bestObject.confidence,
+        mode: measurementMode
       };
       
       setMeasurementResult(result);
@@ -108,7 +136,6 @@ const Index = () => {
   };
 
   const handleCapture = async () => {
-    // Manually capture an image for detailed analysis
     setActiveTab('camera');
   };
 
@@ -125,13 +152,15 @@ const Index = () => {
       const dataToSave = {
         realTimeObjects,
         measurementResult,
+        measurementMode,
+        calibration,
         timestamp: new Date().toISOString()
       };
       localStorage.setItem('cammeasure_data', JSON.stringify(dataToSave));
       
       toast({
-        title: "Medición guardada",
-        description: "Los datos han sido guardados localmente"
+        title: "Guardado",
+        description: "Datos guardados localmente"
       });
     }
   };
@@ -141,7 +170,8 @@ const Index = () => {
       const data = {
         realTimeObjects,
         result: measurementResult,
-        calibration: calibrationData,
+        calibration: calibration,
+        measurementMode,
         timestamp: new Date().toISOString(),
         deviceInfo: sensorData?.deviceInfo
       };
@@ -150,103 +180,266 @@ const Index = () => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `measurement-${Date.now()}.json`;
+      a.download = `measurement-${measurementMode}-${Date.now()}.json`;
       a.click();
       
       toast({
-        title: "Datos exportados",
-        description: "Archivo de medición descargado"
+        title: "Exportado",
+        description: "Archivo descargado"
       });
     }
   };
 
+  // Función para formatear dimensiones con unidades inteligentes
+  const formatDimension = (value: number, unit: string): string => {
+    if (unit === 'px') {
+      return `${Math.round(value)}px`;
+    }
+    
+    // Para unidades métricas (mm)
+    if (value < 10) {
+      return `${value.toFixed(1)}mm`;
+    } else if (value < 100) {
+      return `${value.toFixed(0)}mm`;
+    } else if (value < 1000) {
+      return `${(value / 10).toFixed(1)}cm`;
+    } else {
+      return `${(value / 1000).toFixed(2)}m`;
+    }
+  };
+
+  const formatArea = (value: number, unit: string): string => {
+    if (unit === 'px') {
+      return `${Math.round(value)}px²`;
+    }
+    
+    // Para áreas métricas
+    if (value < 1000) {
+      return `${Math.round(value)}mm²`;
+    } else if (value < 100000) {
+      return `${(value / 100).toFixed(1)}cm²`;
+    } else {
+      return `${(value / 1000000).toFixed(3)}m²`;
+    }
+  };
+
+  const formatVolume = (value: number): string => {
+    if (value < 1000) {
+      return `${Math.round(value)}mm³`;
+    } else if (value < 1000000) {
+      return `${(value / 1000).toFixed(1)}cm³`;
+    } else {
+      return `${(value / 1000000).toFixed(3)}m³`;
+    }
+  };
+
+  // Verificar si un objeto tiene mediciones 3D estimadas
+  const hasEstimated3D = (obj: DetectedObject): boolean => {
+    return !!(obj.isReal3D && obj.measurements3D);
+  };
+
+  // Obtener mediciones 3D de un objeto
+  const get3DMeasurements = (obj: DetectedObject) => {
+    return obj.measurements3D || null;
+  };
+
   return (
-    <div className="min-h-screen bg-background p-4 space-y-6">
+    <div className="min-h-screen bg-background p-4 space-y-4">
       {/* Header */}
-      <div className="text-center space-y-4">
+      <div className="text-center space-y-3">
         <div className="flex items-center justify-center gap-3">
-          <div className="p-3 bg-gradient-primary rounded-lg shadow-measurement">
-            <Ruler className="w-8 h-8 text-primary-foreground" />
+          <div className="p-2 bg-gradient-primary rounded-lg shadow-measurement">
+            <Ruler className="w-6 h-6 text-primary-foreground" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold bg-gradient-primary bg-clip-text text-transparent">
+            <h1 className="text-2xl font-bold bg-gradient-primary bg-clip-text text-transparent">
               CamMeasure Pro
             </h1>
-            <p className="text-muted-foreground">
-              Medición en tiempo real con visión computacional
+            <p className="text-sm text-muted-foreground">
+              Medición optimizada en tiempo real
             </p>
           </div>
         </div>
 
         {/* Status Indicators */}
-        <div className="flex items-center justify-center gap-4 flex-wrap">
+        <div className="flex items-center justify-center gap-2 flex-wrap">
           <Badge 
-            variant={isOpenCVLoaded ? "default" : "destructive"}
-            className={isOpenCVLoaded ? "bg-measurement-active text-background" : ""}
+            variant="default"
+            className="text-xs bg-green-500 text-white"
           >
-            <Cpu className="w-3 h-3 mr-1" />
-            OpenCV {isOpenCVLoaded ? 'Cargado' : 'Cargando...'}
+            <Zap className="w-3 h-3 mr-1" />
+            OPTIMIZADO
           </Badge>
           
           <Badge 
-            variant={isListening ? "default" : "secondary"}
-            className={isListening ? "bg-primary text-primary-foreground" : ""}
-          >
-            <Smartphone className="w-3 h-3 mr-1" />
-            Sensores {isListening ? 'Activos' : 'Inactivos'}
-          </Badge>
-          
-          <Badge 
-            variant={calibrationData?.isCalibrated ? "default" : "secondary"}
-            className={calibrationData?.isCalibrated ? "bg-calibration text-background" : ""}
+            variant={calibration?.isCalibrated ? "default" : "destructive"}
+            className={`text-xs ${calibration?.isCalibrated ? "bg-calibration text-background" : ""}`}
           >
             <Target className="w-3 h-3 mr-1" />
-            {calibrationData?.isCalibrated ? 'Calibrado' : 'Sin Calibrar'}
+            {calibration?.isCalibrated ? 'Calibrado' : 'Sin Calibrar'}
           </Badge>
 
           {objectCount > 0 && (
             <Badge 
               variant="outline"
-              className="border-measurement-active text-measurement-active animate-measurement-pulse"
+              className={`text-xs ${
+                realTimeObjects[0] && hasEstimated3D(realTimeObjects[0])
+                  ? 'border-purple-400 text-purple-400' 
+                  : 'border-measurement-active text-measurement-active'
+              }`}
             >
               <Target className="w-3 h-3 mr-1" />
-              {objectCount} objeto{objectCount !== 1 ? 's' : ''} detectado{objectCount !== 1 ? 's' : ''}
+              {realTimeObjects[0] && hasEstimated3D(realTimeObjects[0]) ? '🎯 3D ESTIMADO' : '🎯 Detectado'}
             </Badge>
           )}
+
+          <Badge 
+            variant="outline"
+            className="border-accent text-accent text-xs"
+          >
+            <Ruler className="w-3 h-3 mr-1" />
+            {measurementMode.toUpperCase()}
+          </Badge>
         </div>
       </div>
 
-      {/* Real-time Measurement Info */}
-      {realTimeObjects.length > 0 && calibrationData?.isCalibrated && (
-        <Card className="p-4 bg-gradient-measurement border-measurement-active/30 shadow-active">
-          <h3 className="font-semibold text-measurement-active mb-3 flex items-center gap-2">
-            <Target className="w-4 h-4" />
-            Medición en Tiempo Real
+      {/* Advertencia de calibración */}
+      {!calibration?.isCalibrated && (
+        <Card className="p-4 bg-amber-500/10 border-amber-500/30">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-500" />
+            <div className="flex-1">
+              <h3 className="font-medium text-amber-500">Calibración Requerida para Mediciones Precisas</h3>
+              <p className="text-sm text-amber-600">
+                Las medidas se muestran en píxeles. Calibra para obtener mediciones precisas en mm/cm/m.
+              </p>
+            </div>
+            <button 
+              onClick={() => setActiveTab('calibration')}
+              className="px-3 py-1 bg-amber-500 text-black rounded text-sm font-medium hover:bg-amber-400"
+            >
+              Calibrar
+            </button>
+          </div>
+        </Card>
+      )}
+
+      {/* Panel de información en tiempo real - OPTIMIZADO */}
+      {realTimeObjects.length > 0 && (
+        <Card className={`p-4 border ${
+          realTimeObjects[0] && hasEstimated3D(realTimeObjects[0])
+            ? 'bg-gradient-to-r from-purple-900/20 to-blue-900/20 border-purple-500/30' 
+            : 'bg-gradient-to-r from-green-900/20 to-blue-900/20 border-green-500/30'
+        }`}>
+          <h3 className={`font-semibold mb-3 flex items-center gap-2 ${
+            realTimeObjects[0] && hasEstimated3D(realTimeObjects[0]) ? 'text-purple-400' : 'text-green-400'
+          }`}>
+            {realTimeObjects[0] && hasEstimated3D(realTimeObjects[0]) ? <Box className="w-4 h-4" /> : <Target className="w-4 h-4" />}
+            {realTimeObjects[0] && hasEstimated3D(realTimeObjects[0]) ? '🎯 OBJETO 3D ESTIMADO' : '🎯 Objeto Detectado'} 
+            {!calibration?.isCalibrated && '(en píxeles)'}
           </h3>
-          <div className="grid grid-cols-2 gap-4">
-            {realTimeObjects.slice(0, 2).map((obj, index) => (
-              <div key={obj.id} className="space-y-2">
-                <p className="text-xs text-muted-foreground">Objeto {index + 1}</p>
-                <div className="space-y-1 text-sm">
-                  <p className="font-mono text-measurement-active">
-                    W: {obj.dimensions.width < 1000 ? 
-                      `${obj.dimensions.width.toFixed(1)}${obj.dimensions.unit}` : 
-                      `${(obj.dimensions.width/1000).toFixed(2)}m`
-                    }
-                  </p>
-                  <p className="font-mono text-accent">
-                    H: {obj.dimensions.height < 1000 ? 
-                      `${obj.dimensions.height.toFixed(1)}${obj.dimensions.unit}` : 
-                      `${(obj.dimensions.height/1000).toFixed(2)}m`
-                    }
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Conf: {(obj.confidence * 100).toFixed(0)}%
-                  </p>
+          
+          {realTimeObjects.slice(0, 1).map((obj, index) => {
+            const measurements3D = get3DMeasurements(obj);
+            const hasEst3D = hasEstimated3D(obj);
+            
+            return (
+              <div key={obj.id} className="space-y-4">
+                {/* Mediciones 2D básicas */}
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="space-y-1">
+                    <p className="text-xs text-gray-300">↔️ Ancho {hasEst3D ? '(2D)' : ''}</p>
+                    <p className="font-mono text-green-400 font-bold text-lg">
+                      {formatDimension(obj.dimensions.width, obj.dimensions.unit)}
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-gray-300">↕️ Alto {hasEst3D ? '(2D)' : ''}</p>
+                    <p className="font-mono text-cyan-400 font-bold text-lg">
+                      {formatDimension(obj.dimensions.height, obj.dimensions.unit)}
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-gray-300">📐 Área {hasEst3D ? '(2D)' : ''}</p>
+                    <p className="font-mono text-blue-400 font-bold">
+                      {formatArea(obj.dimensions.area, obj.dimensions.unit)}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Mediciones 3D ESTIMADAS */}
+                {hasEst3D && measurements3D && (
+                  <div className="border-t border-purple-400/30 pt-4">
+                    <h4 className="text-sm font-bold text-purple-300 mb-3 flex items-center gap-2">
+                      📊 ESTIMACIONES 3D RÁPIDAS
+                      <span className="text-xs bg-purple-500/20 px-2 py-1 rounded">ESTIMADO</span>
+                    </h4>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <div className="space-y-1">
+                          <p className="text-xs text-gray-300">📏 Ancho 3D</p>
+                          <p className="font-mono text-purple-300 font-bold text-lg">
+                            {formatDimension(measurements3D.width3D, 'mm')}
+                          </p>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-xs text-gray-300">📐 Alto 3D</p>
+                          <p className="font-mono text-purple-300 font-bold text-lg">
+                            {formatDimension(measurements3D.height3D, 'mm')}
+                          </p>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-xs text-gray-300">🔍 Profundidad Est.</p>
+                          <p className="font-mono text-orange-400 font-bold text-lg">
+                            {formatDimension(measurements3D.depth3D, 'mm')}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="space-y-1">
+                          <p className="text-xs text-gray-300">📦 Volumen Est.</p>
+                          <p className="font-mono text-yellow-400 font-bold">
+                            {formatVolume(measurements3D.volume3D)}
+                          </p>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-xs text-gray-300">📍 Distancia Est.</p>
+                          <p className="font-mono text-green-400 font-bold">
+                            {formatDimension(measurements3D.distance, 'mm')}
+                          </p>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-xs text-gray-300">🎯 Confianza</p>
+                          <p className="font-mono text-white font-bold">
+                            {(measurements3D.confidence * 100).toFixed(0)}%
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Información del sistema */}
+                <div className="flex justify-between items-center pt-3 border-t border-white/10 text-xs text-gray-400">
+                  <div className="space-y-1">
+                    <div>Confianza: {(obj.confidence * 100).toFixed(0)}%</div>
+                    <div>
+                      {calibration?.isCalibrated ? 
+                        `Factor: ${calibration.pixelsPerMm.toFixed(2)} px/mm` : 
+                        'Sin calibrar - medidas en píxeles'
+                      }
+                    </div>
+                  </div>
+                  <div className="text-right space-y-1">
+                    <div className={hasEst3D ? 'text-purple-300 font-bold' : ''}>
+                      {hasEst3D ? 'Modo: 3D ESTIMADO' : 'Modo: 2D'}
+                    </div>
+                    <div>{hasEst3D ? 'Estimación rápida' : 'Detección básica'}</div>
+                  </div>
                 </div>
               </div>
-            ))}
-          </div>
+            );
+          })}
         </Card>
       )}
 
@@ -276,24 +469,27 @@ const Index = () => {
           </TabsTrigger>
         </TabsList>
 
-        <div className="mt-6">
+        <div className="mt-4">
           <TabsContent value="camera" className="space-y-4">
             <CameraView
               onImageCapture={handleImageCapture}
               isActive={activeTab === 'camera'}
-              calibrationData={calibrationData}
+              calibrationData={calibration}
               onRealTimeObjects={handleRealTimeObjects}
             />
             
-            {/* Quick Instructions */}
-            <Card className="p-4 bg-primary/5 border-primary/20">
-              <h4 className="font-medium mb-2 text-primary">🎯 Instrucciones de Uso</h4>
-              <ul className="text-sm text-muted-foreground space-y-1">
-                <li>• Apunta la cámara hacia el objeto que quieres medir</li>
-                <li>• La aplicación detectará automáticamente los objetos</li>
-                <li>• Las dimensiones aparecerán en tiempo real sobre la imagen</li>
-                <li>• Para mayor precisión, calibra primero en la pestaña "Calibración"</li>
-                <li>• El botón ⏸️/▶️ pausa/reanuda la detección automática</li>
+            {/* Instrucciones */}
+            <Card className="p-3 bg-primary/5 border-primary/20">
+              <h4 className="font-medium mb-2 text-primary text-sm">🎯 Instrucciones Optimizadas</h4>
+              <ul className="text-xs text-muted-foreground space-y-1">
+                <li>• Apunta hacia el objeto y mantén centrado</li>
+                <li>• {calibration?.isCalibrated ? 
+                  'Sistema calibrado: mediciones precisas disponibles' : 
+                  'Calibra primero para mediciones precisas (actualmente en píxeles)'
+                }</li>
+                <li>• Sistema optimizado para rendimiento sin congelación</li>
+                <li>• Las estimaciones 3D aparecen automáticamente</li>
+                <li>• Procesamiento rápido para mejor experiencia</li>
               </ul>
             </Card>
           </TabsContent>
@@ -303,41 +499,6 @@ const Index = () => {
               onCalibrationChange={handleCalibrationChange}
               deviceInfo={sensorData?.deviceInfo}
             />
-            
-            {sensorData && sensorData.acceleration && sensorData.rotation && (
-              <Card className="p-4 bg-secondary/30">
-                <h4 className="font-medium mb-3 flex items-center gap-2">
-                  <Smartphone className="w-4 h-4" />
-                  Datos del Sensor
-                </h4>
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <p className="text-muted-foreground">Aceleración</p>
-                    <p className="font-mono">
-                      X: {sensorData.acceleration.x?.toFixed(2) || '0.00'}m/s²
-                    </p>
-                    <p className="font-mono">
-                      Y: {sensorData.acceleration.y?.toFixed(2) || '0.00'}m/s²
-                    </p>
-                    <p className="font-mono">
-                      Z: {sensorData.acceleration.z?.toFixed(2) || '0.00'}m/s²
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Orientación</p>
-                    <p className="font-mono">
-                      α: {sensorData.rotation.alpha?.toFixed(1) || '0.0'}°
-                    </p>
-                    <p className="font-mono">
-                      β: {sensorData.rotation.beta?.toFixed(1) || '0.0'}°
-                    </p>
-                    <p className="font-mono">
-                      γ: {sensorData.rotation.gamma?.toFixed(1) || '0.0'}°
-                    </p>
-                  </div>
-                </div>
-              </Card>
-            )}
           </TabsContent>
 
           <TabsContent value="measurements" className="space-y-4">
@@ -345,12 +506,13 @@ const Index = () => {
               <div className="space-y-4">
                 {capturedImage && (
                   <Card className="p-4">
-                    <h4 className="font-medium mb-3">Análisis Detallado</h4>
+                    <h4 className="font-medium mb-3">Análisis - {measurementMode.toUpperCase()}</h4>
                     <MeasurementEngine
                       imageData={capturedImage}
-                      calibrationData={calibrationData}
+                      calibrationData={calibration}
                       onMeasurementResult={handleMeasurementResult}
                       onDetectedEdges={handleDetectedEdges}
+                      measurementMode={measurementMode}
                     />
                   </Card>
                 )}
@@ -358,56 +520,84 @@ const Index = () => {
                 {!capturedImage && realTimeObjects.length === 0 && (
                   <Card className="p-8 text-center">
                     <Camera className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                    <h3 className="text-lg font-semibold mb-2">Sin datos de medición</h3>
+                    <h3 className="text-lg font-semibold mb-2">Sin datos</h3>
                     <p className="text-muted-foreground">
-                      Vaya a la pestaña de cámara para ver mediciones en tiempo real
+                      Ve a la cámara para mediciones optimizadas en tiempo real
                     </p>
                   </Card>
                 )}
 
                 {realTimeObjects.length > 0 && (
-                  <Card className="p-4">
-                    <h4 className="font-medium mb-3">Objetos Detectados en Tiempo Real</h4>
+                  <Card className={`p-4 ${
+                    realTimeObjects[0] && hasEstimated3D(realTimeObjects[0])
+                      ? 'bg-gradient-to-r from-purple-900/10 to-blue-900/10 border-purple-500/20' 
+                      : 'bg-gradient-to-r from-green-900/10 to-blue-900/10 border-green-500/20'
+                  }`}>
+                    <h4 className={`font-medium mb-3 ${
+                      realTimeObjects[0] && hasEstimated3D(realTimeObjects[0]) ? 'text-purple-400' : 'text-green-400'
+                    }`}>
+                      {realTimeObjects[0] && hasEstimated3D(realTimeObjects[0]) ? '🎯 Objeto 3D Estimado' : '🎯 Objeto en Tiempo Real'} 
+                      {!calibration?.isCalibrated && '(píxeles)'}
+                    </h4>
                     <div className="space-y-3">
-                      {realTimeObjects.map((obj, index) => (
-                        <div key={obj.id} className="p-3 bg-secondary/30 rounded-lg">
-                          <div className="flex justify-between items-start mb-2">
-                            <h5 className="text-sm font-medium">Objeto {index + 1}</h5>
-                            <Badge variant="outline" className="text-xs">
-                              {(obj.confidence * 100).toFixed(0)}% conf.
-                            </Badge>
+                      {realTimeObjects.slice(0, 1).map((obj, index) => {
+                        const measurements3D = get3DMeasurements(obj);
+                        const hasEst3D = hasEstimated3D(obj);
+                        
+                        return (
+                          <div key={obj.id} className="p-4 bg-black/20 rounded-lg">
+                            <div className="grid grid-cols-2 gap-4">
+                              <div className="space-y-2">
+                                <div>
+                                  <p className="text-gray-300 text-sm">↔️ Ancho {hasEst3D ? '(2D)' : ''}</p>
+                                  <p className="font-mono text-green-400 font-bold text-xl">
+                                    {formatDimension(obj.dimensions.width, obj.dimensions.unit)}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-gray-300 text-sm">📐 Área {hasEst3D ? '(2D)' : ''}</p>
+                                  <p className="font-mono text-blue-400 font-bold">
+                                    {formatArea(obj.dimensions.area, obj.dimensions.unit)}
+                                  </p>
+                                </div>
+                                {hasEst3D && measurements3D && (
+                                  <div>
+                                    <p className="text-gray-300 text-sm">🔍 Profundidad Est.</p>
+                                    <p className="font-mono text-orange-400 font-bold text-xl">
+                                      {formatDimension(measurements3D.depth3D, 'mm')}
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+                              <div className="space-y-2">
+                                <div>
+                                  <p className="text-gray-300 text-sm">↕️ Alto {hasEst3D ? '(2D)' : ''}</p>
+                                  <p className="font-mono text-cyan-400 font-bold text-xl">
+                                    {formatDimension(obj.dimensions.height, obj.dimensions.unit)}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-gray-300 text-sm">📏 Diagonal</p>
+                                  <p className="font-mono text-yellow-400 font-bold">
+                                    {formatDimension(
+                                      Math.sqrt(obj.dimensions.width ** 2 + obj.dimensions.height ** 2), 
+                                      obj.dimensions.unit
+                                    )}
+                                  </p>
+                                </div>
+                                {hasEst3D && measurements3D && (
+                                  <div>
+                                    <p className="text-gray-300 text-sm">📦 Volumen Est.</p>
+                                    <p className="font-mono text-yellow-400 font-bold text-xl">
+                                      {formatVolume(measurements3D.volume3D)}
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
                           </div>
-                          <div className="grid grid-cols-3 gap-2 text-xs">
-                            <div>
-                              <p className="text-muted-foreground">Ancho</p>
-                              <p className="font-mono text-measurement-active">
-                                {obj.dimensions.width < 1000 ? 
-                                  `${obj.dimensions.width.toFixed(1)}${obj.dimensions.unit}` : 
-                                  `${(obj.dimensions.width/1000).toFixed(2)}m`
-                                }
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-muted-foreground">Alto</p>
-                              <p className="font-mono text-accent">
-                                {obj.dimensions.height < 1000 ? 
-                                  `${obj.dimensions.height.toFixed(1)}${obj.dimensions.unit}` : 
-                                  `${(obj.dimensions.height/1000).toFixed(2)}m`
-                                }
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-muted-foreground">Área</p>
-                              <p className="font-mono text-primary">
-                                {obj.dimensions.area < 1000000 ? 
-                                  `${obj.dimensions.area.toFixed(0)}${obj.dimensions.unit}²` : 
-                                  `${(obj.dimensions.area/1000000).toFixed(2)}m²`
-                                }
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </Card>
                 )}
@@ -418,7 +608,7 @@ const Index = () => {
                   measurementMode={measurementMode}
                   onModeChange={setMeasurementMode}
                   measurementResult={measurementResult}
-                  isCalibrated={calibrationData?.isCalibrated || false}
+                  isCalibrated={calibration?.isCalibrated || false}
                   onCapture={handleCapture}
                   onReset={handleReset}
                   onSave={handleSave}

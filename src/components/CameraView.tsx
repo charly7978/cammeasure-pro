@@ -8,19 +8,31 @@ import {
   Settings,
   Zap,
   Grid3X3,
-  Focus
+  Focus,
+  Target,
+  Pause,
+  Play
 } from 'lucide-react';
 import { useCamera } from '@/hooks/useCamera';
 import { CameraDirection } from '@capacitor/camera';
+import { RealTimeMeasurement, DetectedObject } from './RealTimeMeasurement';
+import { MeasurementOverlay } from './MeasurementOverlay';
 
 interface CameraViewProps {
-  onImageCapture: (imageData: ImageData) => void;
+  onImageCapture?: (imageData: ImageData) => void;
   isActive: boolean;
+  calibrationData: {
+    pixelsPerMm: number;
+    isCalibrated: boolean;
+  } | null;
+  onRealTimeObjects: (objects: DetectedObject[]) => void;
 }
 
 export const CameraView: React.FC<CameraViewProps> = ({
   onImageCapture,
-  isActive
+  isActive,
+  calibrationData,
+  onRealTimeObjects
 }) => {
   const { 
     videoRef, 
@@ -33,17 +45,33 @@ export const CameraView: React.FC<CameraViewProps> = ({
   } = useCamera();
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [currentCamera, setCurrentCamera] = useState<CameraDirection>(CameraDirection.Rear);
   const [showGrid, setShowGrid] = useState(true);
   const [flashEnabled, setFlashEnabled] = useState(false);
   const [focusPoint, setFocusPoint] = useState<{ x: number; y: number } | null>(null);
   const [hasPermissions, setHasPermissions] = useState(false);
+  const [detectedObjects, setDetectedObjects] = useState<DetectedObject[]>([]);
+  const [isRealTimeMeasurement, setIsRealTimeMeasurement] = useState(true);
+  const [videoContainer, setVideoContainer] = useState({ width: 0, height: 0 });
 
   useEffect(() => {
     initializeCamera();
     
+    // Update container dimensions when video loads
+    const updateDimensions = () => {
+      if (containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        setVideoContainer({ width: rect.width, height: rect.height });
+      }
+    };
+    
+    window.addEventListener('resize', updateDimensions);
+    updateDimensions();
+    
     return () => {
       stopCamera();
+      window.removeEventListener('resize', updateDimensions);
     };
   }, []);
 
@@ -82,7 +110,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
   };
 
   const captureFrame = () => {
-    if (!videoRef.current || !canvasRef.current) return;
+    if (!videoRef.current || !canvasRef.current || !onImageCapture) return;
 
     const video = videoRef.current;
     const canvas = canvasRef.current;
@@ -100,6 +128,11 @@ export const CameraView: React.FC<CameraViewProps> = ({
     // Get ImageData from canvas
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     onImageCapture(imageData);
+  };
+
+  const handleObjectsDetected = (objects: DetectedObject[]) => {
+    setDetectedObjects(objects);
+    onRealTimeObjects(objects);
   };
 
   const handleVideoClick = (e: React.MouseEvent<HTMLVideoElement>) => {
@@ -147,9 +180,25 @@ export const CameraView: React.FC<CameraViewProps> = ({
               En Vivo
             </Badge>
           )}
+
+          {isRealTimeMeasurement && detectedObjects.length > 0 && (
+            <Badge variant="outline" className="border-measurement-active text-measurement-active">
+              <Target className="w-3 h-3 mr-1" />
+              {detectedObjects.length} objeto{detectedObjects.length !== 1 ? 's' : ''}
+            </Badge>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsRealTimeMeasurement(!isRealTimeMeasurement)}
+            className={isRealTimeMeasurement ? "bg-measurement-active text-background" : ""}
+          >
+            {isRealTimeMeasurement ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+          </Button>
+
           <Button
             variant="outline"
             size="sm"
@@ -179,9 +228,18 @@ export const CameraView: React.FC<CameraViewProps> = ({
         </div>
       </div>
 
-      {/* Camera View */}
+      {/* Camera View with Real-time Overlay */}
       <Card className="relative overflow-hidden bg-black">
-        <div className="relative aspect-[4/3] bg-black">
+        <div 
+          ref={containerRef}
+          className="relative aspect-[4/3] bg-black"
+          onLoadedData={() => {
+            if (containerRef.current) {
+              const rect = containerRef.current.getBoundingClientRect();
+              setVideoContainer({ width: rect.width, height: rect.height });
+            }
+          }}
+        >
           <video
             ref={videoRef}
             className="w-full h-full object-cover"
@@ -189,7 +247,24 @@ export const CameraView: React.FC<CameraViewProps> = ({
             playsInline
             muted
             onClick={handleVideoClick}
+            onLoadedMetadata={() => {
+              if (containerRef.current) {
+                const rect = containerRef.current.getBoundingClientRect();
+                setVideoContainer({ width: rect.width, height: rect.height });
+              }
+            }}
           />
+
+          {/* Real-time Measurement Overlay */}
+          {isRealTimeMeasurement && (
+            <MeasurementOverlay
+              objects={detectedObjects}
+              videoWidth={videoRef.current?.videoWidth || 1}
+              videoHeight={videoRef.current?.videoHeight || 1}
+              containerWidth={videoContainer.width}
+              containerHeight={videoContainer.height}
+            />
+          )}
           
           {/* Grid Overlay */}
           {showGrid && (
@@ -227,17 +302,29 @@ export const CameraView: React.FC<CameraViewProps> = ({
           </div>
         </div>
 
-        {/* Capture Button */}
-        <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2">
-          <Button
-            onClick={captureFrame}
-            disabled={isCapturing || !cameraStream}
-            size="lg"
-            className="w-16 h-16 rounded-full bg-gradient-primary shadow-measurement border-4 border-background"
-          >
-            <Camera className="w-6 h-6" />
-          </Button>
-        </div>
+        {/* Capture Button - Only show if capture function is provided */}
+        {onImageCapture && (
+          <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2">
+            <Button
+              onClick={captureFrame}
+              disabled={isCapturing || !cameraStream}
+              size="lg"
+              className="w-16 h-16 rounded-full bg-gradient-primary shadow-measurement border-4 border-background"
+            >
+              <Camera className="w-6 h-6" />
+            </Button>
+          </div>
+        )}
+
+        {/* Real-time Processing Component */}
+        {isRealTimeMeasurement && (
+          <RealTimeMeasurement
+            videoRef={videoRef}
+            calibrationData={calibrationData}
+            onObjectsDetected={handleObjectsDetected}
+            isActive={isActive && isRealTimeMeasurement}
+          />
+        )}
       </Card>
 
       {/* Hidden canvas for image capture */}

@@ -19,22 +19,4 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
-  worker: {
-    format: 'es',
-    plugins: () => [
-      // Add any worker-specific plugins here if needed
-    ],
-  },
-  build: {
-    rollupOptions: {
-      output: {
-        assetFileNames: (assetInfo) => {
-          if (assetInfo.name === 'measurementWorker.js') {
-            return 'assets/[name]-[hash][extname]';
-          }
-          return 'assets/[name]-[hash][extname]';
-        },
-      },
-    },
-  },
 }));

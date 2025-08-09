@@ -213,7 +213,7 @@ const Index = () => {
               deviceInfo={sensorData?.deviceInfo}
             />
             
-            {sensorData && sensorData.acceleration && sensorData.rotation && (
+            {sensorData && (
               <Card className="p-4 bg-secondary/30">
                 <h4 className="font-medium mb-3 flex items-center gap-2">
                   <Smartphone className="w-4 h-4" />
@@ -223,25 +223,25 @@ const Index = () => {
                   <div>
                     <p className="text-muted-foreground">Aceleración</p>
                     <p className="font-mono">
-                      X: {sensorData.acceleration.x?.toFixed(2) || '0.00'}m/s²
+                      X: {sensorData.acceleration.x.toFixed(2)}m/s²
                     </p>
                     <p className="font-mono">
-                      Y: {sensorData.acceleration.y?.toFixed(2) || '0.00'}m/s²
+                      Y: {sensorData.acceleration.y.toFixed(2)}m/s²
                     </p>
                     <p className="font-mono">
-                      Z: {sensorData.acceleration.z?.toFixed(2) || '0.00'}m/s²
+                      Z: {sensorData.acceleration.z.toFixed(2)}m/s²
                     </p>
                   </div>
                   <div>
                     <p className="text-muted-foreground">Orientación</p>
                     <p className="font-mono">
-                      α: {sensorData.rotation.alpha?.toFixed(1) || '0.0'}°
+                      α: {sensorData.rotation.alpha.toFixed(1)}°
                     </p>
                     <p className="font-mono">
-                      β: {sensorData.rotation.beta?.toFixed(1) || '0.0'}°
+                      β: {sensorData.rotation.beta.toFixed(1)}°
                     </p>
                     <p className="font-mono">
-                      γ: {sensorData.rotation.gamma?.toFixed(1) || '0.0'}°
+                      γ: {sensorData.rotation.gamma.toFixed(1)}°
                     </p>
                   </div>
                 </div>

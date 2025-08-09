@@ -129,12 +129,27 @@ export const useMeasurementWorker = () => {
   // Transformar objetos del worker al formato BoundingRect
   const transformToBoundingRect = useCallback((objects: any[]): BoundingRect[] => {
     return objects.map(obj => ({
-      x: obj.x,
-      y: obj.y,
-      width: obj.width,
-      height: obj.height,
-      area: obj.area || (obj.width * obj.height),
-      confidence: obj.confidence || 0.5
+      x: Number(obj.x),
+      y: Number(obj.y),
+      width: Number(obj.width),
+      height: Number(obj.height),
+      area: Number(obj.area || (obj.width * obj.height)),
+      confidence: Number(obj.confidence || 0.5),
+      circularity: Number(obj.circularity || 0.5),
+      solidity: Number(obj.solidity || 0.8),
+      extent: Number(obj.extent || 0.7),
+      aspectRatio: Number(obj.aspectRatio || (obj.width / obj.height)),
+      compactness: Number(obj.compactness || 0.6),
+      perimeter: Number(obj.perimeter || (2 * (obj.width + obj.height))),
+      contourPoints: Number(obj.contourPoints || 4),
+      centerX: Number(obj.centerX || (obj.x + obj.width / 2)),
+      centerY: Number(obj.centerY || (obj.y + obj.height / 2)),
+      huMoments: Array.isArray(obj.huMoments) ? obj.huMoments : [0, 0, 0, 0, 0, 0, 0],
+      isConvex: Boolean(obj.isConvex !== false),
+      boundingCircleRadius: Number(obj.boundingCircleRadius || Math.sqrt(obj.width * obj.width + obj.height * obj.height) / 2),
+      depth: obj.depth !== undefined ? Number(obj.depth) : undefined,
+      realWidth: obj.realWidth !== undefined ? Number(obj.realWidth) : undefined,
+      realHeight: obj.realHeight !== undefined ? Number(obj.realHeight) : undefined
     }));
   }, []);
 

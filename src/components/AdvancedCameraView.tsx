@@ -6,8 +6,6 @@
  */
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { View, TouchableOpacity, Text, Alert, Dimensions } from 'react-native';
-import { Camera, CameraView, CameraType, useCameraPermissions } from 'expo-camera';
 import { 
   Play, Pause, RotateCcw, Zap, ZapOff, Settings, 
   Target, Grid3X3, Focus, Layers, Box 
@@ -27,7 +25,8 @@ interface AdvancedCameraViewProps {
 
 type OverlayMode = 'minimal' | 'detailed' | 'professional';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const SCREEN_WIDTH = window.innerWidth;
+const SCREEN_HEIGHT = window.innerHeight;
 
 export const AdvancedCameraView: React.FC<AdvancedCameraViewProps> = ({
   onMeasurementComplete,
@@ -35,9 +34,7 @@ export const AdvancedCameraView: React.FC<AdvancedCameraViewProps> = ({
   measurementMode = 'auto'
 }) => {
   // Estados principales
-  const [permission, requestPermission] = useCameraPermissions();
   const [isActive, setIsActive] = useState(false);
-  const [cameraType, setCameraType] = useState<CameraType>('back');
   const [flashMode, setFlashMode] = useState(false);
   const [overlayMode, setOverlayMode] = useState<OverlayMode>('professional');
   const [selectedObjectId, setSelectedObjectId] = useState<string>();
@@ -52,7 +49,7 @@ export const AdvancedCameraView: React.FC<AdvancedCameraViewProps> = ({
   });
 
   // Referencias
-  const cameraRef = useRef<any>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const pipeline = useRef(NativeDataPipeline.getInstance());
   const { calibration } = useCalibration();
 
@@ -85,12 +82,23 @@ export const AdvancedCameraView: React.FC<AdvancedCameraViewProps> = ({
 
   // Inicialización del sistema
   useEffect(() => {
-    if (!permission?.granted) return;
-
     const initializeSystem = async () => {
       console.log('[AdvancedCamera] Inicializando sistema completo...');
       
       try {
+        // Inicializar acceso a cámara web
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { 
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+            facingMode: 'environment'
+          } 
+        });
+        
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+
         // Inicializar pipeline nativo
         const initialized = await pipeline.current.initialize();
         if (!initialized) {
@@ -106,11 +114,6 @@ export const AdvancedCameraView: React.FC<AdvancedCameraViewProps> = ({
         
       } catch (error) {
         console.error('[AdvancedCamera] ❌ Error en inicialización:', error);
-        Alert.alert(
-          'Error de Sistema',
-          'No se pudo inicializar el sistema de medición. Verifique los permisos y hardware.',
-          [{ text: 'OK' }]
-        );
       }
     };
 
@@ -121,7 +124,7 @@ export const AdvancedCameraView: React.FC<AdvancedCameraViewProps> = ({
       pipeline.current.unregisterCallback('calibrationUpdate');
       pipeline.current.unregisterCallback('systemStatusUpdate');
     };
-  }, [permission?.granted]);
+  }, []);
 
   // Manejo de resultados de procesamiento
   const handleProcessingComplete = useCallback((result: any) => {
@@ -165,11 +168,6 @@ export const AdvancedCameraView: React.FC<AdvancedCameraViewProps> = ({
     }
   }, [isActive]);
 
-  // Cambio de cámara
-  const toggleCameraType = useCallback(() => {
-    setCameraType(current => current === 'back' ? 'front' : 'back');
-  }, []);
-
   // Cambio de modo de overlay
   const cycleOverlayMode = useCallback(() => {
     setOverlayMode(current => {
@@ -196,41 +194,13 @@ export const AdvancedCameraView: React.FC<AdvancedCameraViewProps> = ({
     }
   }, [isActive]);
 
-  // Verificación de permisos
-  if (!permission) {
-    return (
-      <View className="flex-1 justify-center items-center bg-background">
-        <Text>Solicitando permisos de cámara...</Text>
-      </View>
-    );
-  }
-
-  if (!permission.granted) {
-    return (
-      <Card className="m-4 p-6">
-        <View className="items-center space-y-4">
-          <Target className="w-16 h-16 text-muted-foreground" />
-          <Text className="text-xl font-semibold text-center">
-            Permisos de Cámara Requeridos
-          </Text>
-          <Text className="text-muted-foreground text-center">
-            Se necesita acceso a la cámara para el sistema de medición avanzado
-          </Text>
-          <Button onPress={requestPermission} className="w-full">
-            Conceder Permisos
-          </Button>
-        </View>
-      </Card>
-    );
-  }
-
   return (
-    <View className="flex-1 bg-black">
+    <div className="flex-1 bg-black relative">
       {/* Panel de Estado Superior */}
-      <View className="absolute top-12 left-4 right-4 z-20">
+      <div className="absolute top-12 left-4 right-4 z-20">
         <Card className="bg-background/90 backdrop-blur-sm">
-          <View className="p-3 flex-row items-center justify-between">
-            <View className="flex-row items-center space-x-3">
+          <div className="p-3 flex items-center justify-between">
+            <div className="flex items-center space-x-3">
               <Badge 
                 variant={systemStatus.isCalibrated ? "default" : "destructive"}
                 className="animate-pulse"
@@ -245,27 +215,24 @@ export const AdvancedCameraView: React.FC<AdvancedCameraViewProps> = ({
               <Badge variant="outline" className="bg-background/80">
                 {Math.round(systemStatus.confidence * 100)}% confianza
               </Badge>
-            </View>
+            </div>
             
-            <View className="flex-row items-center space-x-2">
-              <Text className="text-xs text-muted-foreground">
+            <div className="flex items-center space-x-2">
+              <span className="text-xs text-muted-foreground">
                 {measurementMode.toUpperCase()}
-              </Text>
-            </View>
-          </View>
+              </span>
+            </div>
+          </div>
         </Card>
-      </View>
+      </div>
 
       {/* Vista de Cámara Principal */}
-      <View className="flex-1">
-        <CameraView
-          ref={cameraRef}
-          style={{ flex: 1 }}
-          facing={cameraType}
-          flash={flashMode ? 'on' : 'off'}
-          onCameraReady={() => {
-            console.log('[AdvancedCamera] Cámara lista');
-          }}
+      <div className="flex-1 relative">
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          className="w-full h-full object-cover"
         />
 
         {/* Overlay AR Optimizado */}
@@ -279,22 +246,22 @@ export const AdvancedCameraView: React.FC<AdvancedCameraViewProps> = ({
         />
 
         {/* Crosshair Central */}
-        <View className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
-          <View className="w-8 h-8 border-2 border-measurement-active/60 rounded-full items-center justify-center">
-            <View className="w-2 h-2 bg-measurement-active rounded-full" />
-          </View>
-        </View>
-      </View>
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
+          <div className="w-8 h-8 border-2 border-primary/60 rounded-full flex items-center justify-center">
+            <div className="w-2 h-2 bg-primary rounded-full" />
+          </div>
+        </div>
+      </div>
 
       {/* Panel de Controles Inferior */}
       <Card className="m-4 mb-8 bg-background/90 backdrop-blur-sm">
-        <View className="p-4">
+        <div className="p-4">
           {/* Controles Principales */}
-          <View className="flex-row items-center justify-center space-x-4 mb-4">
+          <div className="flex items-center justify-center space-x-4 mb-4">
             <Button
               variant={isActive ? "destructive" : "default"}
               size="lg"
-              onPress={toggleProcessing}
+              onClick={toggleProcessing}
               className="flex-1"
             >
               {isActive ? (
@@ -313,30 +280,21 @@ export const AdvancedCameraView: React.FC<AdvancedCameraViewProps> = ({
             <Button
               variant="outline"
               size="lg"
-              onPress={resetSystem}
+              onClick={resetSystem}
               className="flex-1"
             >
               <RotateCcw className="w-4 h-4 mr-2" />
               Reset
             </Button>
-          </View>
+          </div>
 
           {/* Controles Secundarios */}
-          <View className="flex-row items-center justify-between">
-            <View className="flex-row space-x-2">
+          <div className="flex items-center justify-between">
+            <div className="flex space-x-2">
               <Button
                 variant="ghost"
                 size="sm"
-                onPress={toggleCameraType}
-                className="p-2"
-              >
-                <RotateCcw className="w-4 h-4" />
-              </Button>
-              
-              <Button
-                variant="ghost"
-                size="sm"
-                onPress={() => setFlashMode(!flashMode)}
+                onClick={() => setFlashMode(!flashMode)}
                 className="p-2"
               >
                 {flashMode ? <Zap className="w-4 h-4" /> : <ZapOff className="w-4 h-4" />}
@@ -345,19 +303,19 @@ export const AdvancedCameraView: React.FC<AdvancedCameraViewProps> = ({
               <Button
                 variant="ghost"
                 size="sm"
-                onPress={cycleOverlayMode}
+                onClick={cycleOverlayMode}
                 className="p-2"
               >
                 <Layers className="w-4 h-4" />
               </Button>
-            </View>
+            </div>
             
-            <Text className="text-xs text-muted-foreground">
+            <span className="text-xs text-muted-foreground">
               Modo: {overlayMode}
-            </Text>
-          </View>
-        </View>
+            </span>
+          </div>
+        </div>
       </Card>
-    </View>
+    </div>
   );
 };

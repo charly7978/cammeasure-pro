@@ -6,11 +6,6 @@
  */
 
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
-import { View, StyleSheet } from 'react-native';
-import Svg, { 
-  Line, Circle, Rect, Text as SvgText, Defs, Marker, Path, G,
-  LinearGradient, Stop, Filter, FeDropShadow, ClipPath
-} from 'react-native-svg';
 import { NativeDataPipeline, type DetectedObject, type ProcessingResult } from '@/lib/NativeDataPipeline';
 
 interface OptimizedAROverlayProps {
@@ -47,6 +42,7 @@ export const OptimizedAROverlay: React.FC<OptimizedAROverlayProps> = ({
   const pipeline = useRef(NativeDataPipeline.getInstance());
   const renderCache = useRef(new Map<string, any>());
   const lastRenderTime = useRef(Date.now());
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // Configuración de overlay según modo
   const overlayConfig = useMemo(() => {
@@ -242,183 +238,139 @@ export const OptimizedAROverlay: React.FC<OptimizedAROverlayProps> = ({
     }
   };
 
-  // Renderizado de elementos AR individuales
-  const renderARElement = useCallback((element: ARElement, obj?: DetectedObject) => {
+  // Renderizado usando Canvas para mejor rendimiento
+  useEffect(() => {
+    if (!canvasRef.current || !isVisible || !processingResult) return;
+
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Limpiar canvas
+    ctx.clearRect(0, 0, screenWidth, screenHeight);
+
+    // Renderizar elementos AR
+    arElements.forEach(element => {
+      const objectId = element.id.split('-')[1];
+      const obj = processingResult.detectedObjects.find(o => o.id === objectId);
+      
+      if (obj) {
+        renderARElementCanvas(ctx, element, obj);
+      }
+    });
+
+    // Indicador de sistema
+    renderSystemIndicator(ctx);
+  }, [arElements, processingResult, isVisible, frameRate]);
+
+  const renderARElementCanvas = (ctx: CanvasRenderingContext2D, element: ARElement, obj: DetectedObject) => {
     const opacity = element.visibility;
+    ctx.globalAlpha = opacity;
     
     switch (element.type) {
       case 'center':
-        return (
-          <G key={element.id} opacity={opacity}>
-            <Circle
-              cx={element.position.x}
-              cy={element.position.y}
-              r="3"
-              fill="hsl(var(--measurement-active))"
-              filter="url(#glow)"
-            />
-            <Circle
-              cx={element.position.x}
-              cy={element.position.y}
-              r="8"
-              stroke="hsl(var(--measurement-active))"
-              strokeWidth="1.5"
-              fill="none"
-              opacity="0.6"
-            />
-          </G>
-        );
+        // Punto central
+        ctx.fillStyle = '#3B82F6';
+        ctx.beginPath();
+        ctx.arc(element.position.x, element.position.y, 4, 0, 2 * Math.PI);
+        ctx.fill();
+        
+        // Anillo exterior
+        ctx.strokeStyle = '#3B82F6';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(element.position.x, element.position.y, 12, 0, 2 * Math.PI);
+        ctx.stroke();
+        break;
         
       case 'measurement':
-        if (!obj?.dimensions) return null;
-        return (
-          <G key={element.id} opacity={opacity}>
-            <Rect
-              x={element.position.x}
-              y={element.position.y}
-              width="80"
-              height="30"
-              fill="hsla(var(--background), 0.9)"
-              stroke="hsl(var(--measurement-active))"
-              strokeWidth="1"
-              rx="4"
-              filter="url(#dropShadow)"
-            />
-            <SvgText
-              x={element.position.x + 40}
-              y={element.position.y + 15}
-              fontSize="11"
-              fill="hsl(var(--foreground))"
-              textAnchor="middle"
-              fontFamily="monospace"
-            >
-              {obj.dimensions.width.toFixed(1)}×{obj.dimensions.height.toFixed(1)}
-            </SvgText>
-            <SvgText
-              x={element.position.x + 40}
-              y={element.position.y + 25}
-              fontSize="9"
-              fill="hsl(var(--muted-foreground))"
-              textAnchor="middle"
-            >
-              {obj.dimensions.unit}
-            </SvgText>
-          </G>
-        );
+        if (obj.dimensions) {
+          // Fondo de medición
+          ctx.fillStyle = 'rgba(59, 130, 246, 0.9)';
+          ctx.fillRect(element.position.x, element.position.y, 80, 30);
+          
+          // Texto de medición
+          ctx.fillStyle = 'white';
+          ctx.font = '12px monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(
+            `${obj.dimensions.width.toFixed(1)}×${obj.dimensions.height.toFixed(1)}`,
+            element.position.x + 40,
+            element.position.y + 18
+          );
+          ctx.font = '10px sans-serif';
+          ctx.fillText(
+            obj.dimensions.unit,
+            element.position.x + 40,
+            element.position.y + 28
+          );
+        }
+        break;
         
       case 'boundary':
-        if (!obj) return null;
+        // Caja delimitadora
         const isSelected = selectedObjectId === obj.id;
-        return (
-          <G key={element.id} opacity={opacity}>
-            <Rect
-              x={obj.boundingBox.x}
-              y={obj.boundingBox.y}
-              width={obj.boundingBox.width}
-              height={obj.boundingBox.height}
-              stroke={isSelected ? "hsl(var(--measurement-active))" : "hsl(var(--primary))"}
-              strokeWidth={isSelected ? "2" : "1"}
-              fill="none"
-              strokeDasharray={isSelected ? "none" : "4,2"}
-              rx="2"
-            />
-          </G>
-        );
+        ctx.strokeStyle = isSelected ? '#10B981' : '#3B82F6';
+        ctx.lineWidth = isSelected ? 3 : 2;
+        ctx.setLineDash(isSelected ? [] : [8, 4]);
+        ctx.strokeRect(obj.boundingBox.x, obj.boundingBox.y, obj.boundingBox.width, obj.boundingBox.height);
+        ctx.setLineDash([]);
+        break;
         
       case 'label':
-        if (!obj) return null;
-        return (
-          <G key={element.id} opacity={opacity * 0.9}>
-            <Rect
-              x={element.position.x}
-              y={element.position.y}
-              width="100"
-              height="20"
-              fill="hsla(var(--background), 0.95)"
-              stroke="hsl(var(--border))"
-              strokeWidth="0.5"
-              rx="10"
-              filter="url(#dropShadow)"
-            />
-            <SvgText
-              x={element.position.x + 50}
-              y={element.position.y + 13}
-              fontSize="10"
-              fill="hsl(var(--foreground))"
-              textAnchor="middle"
-            >
-              {obj.type} ({(obj.confidence * 100).toFixed(0)}%)
-            </SvgText>
-          </G>
-        );
+        // Etiqueta flotante
+        ctx.fillStyle = 'rgba(59, 130, 246, 0.95)';
+        ctx.fillRect(element.position.x, element.position.y, 100, 40);
         
-      default:
-        return null;
+        ctx.fillStyle = 'white';
+        ctx.font = 'bold 12px sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(
+          obj.type.toUpperCase(),
+          element.position.x + 8,
+          element.position.y + 18
+        );
+        ctx.font = '10px sans-serif';
+        ctx.fillText(
+          `${(obj.confidence * 100).toFixed(0)}%`,
+          element.position.x + 8,
+          element.position.y + 32
+        );
+        break;
     }
-  }, [selectedObjectId]);
+    
+    ctx.globalAlpha = 1.0;
+  };
 
-  // Renderizado principal optimizado
-  const renderedElements = useMemo(() => {
-    if (!processingResult || !isVisible) return [];
+  const renderSystemIndicator = (ctx: CanvasRenderingContext2D) => {
+    // Indicador de estado del sistema
+    ctx.fillStyle = processingResult && processingResult.confidence > 0.8 ? '#10B981' : '#EF4444';
+    ctx.beginPath();
+    ctx.arc(screenWidth - 30, 30, 8, 0, 2 * Math.PI);
+    ctx.fill();
     
-    const objectsById = new Map(processingResult.detectedObjects.map(obj => [obj.id, obj]));
-    
-    return arElements.map(element => {
-      const objectId = element.id.split('-')[1];
-      const obj = objectsById.get(objectId);
-      return renderARElement(element, obj);
-    });
-  }, [arElements, processingResult, isVisible, renderARElement]);
+    // Texto de framerate
+    ctx.fillStyle = 'white';
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(
+      `${Math.round(frameRate)}fps`,
+      screenWidth - 30,
+      50
+    );
+  };
 
   if (!isVisible || !processingResult) {
     return null;
   }
 
   return (
-    <View style={styles.overlay} pointerEvents="none">
-      <Svg
-        width={screenWidth}
-        height={screenHeight}
-        style={StyleSheet.absoluteFillObject}
-      >
-        <Defs>
-          {/* Efectos visuales optimizados */}
-          <Filter id="dropShadow">
-            <FeDropShadow dx="1" dy="1" stdDeviation="2" floodColor="#000" floodOpacity="0.3" />
-          </Filter>
-          <Filter id="glow">
-            <FeDropShadow dx="0" dy="0" stdDeviation="3" floodColor="hsl(var(--measurement-active))" floodOpacity="0.6" />
-          </Filter>
-        </Defs>
-
-        {/* Elementos AR renderizados */}
-        {renderedElements}
-
-        {/* Indicador de estado del sistema (esquina) */}
-        <G opacity="0.8">
-          <Circle
-            cx={screenWidth - 30}
-            cy={30}
-            r="8"
-            fill={processingResult.confidence > 0.8 ? "hsl(var(--measurement-active))" : "hsl(var(--destructive))"}
-          />
-          <SvgText
-            x={screenWidth - 30}
-            y={48}
-            fontSize="8"
-            fill="hsl(var(--foreground))"
-            textAnchor="middle"
-          >
-            {Math.round(frameRate)}fps
-          </SvgText>
-        </G>
-      </Svg>
-    </View>
+    <canvas
+      ref={canvasRef}
+      width={screenWidth}
+      height={screenHeight}
+      className="absolute inset-0 pointer-events-none"
+      style={{ width: screenWidth, height: screenHeight }}
+    />
   );
 };
-
-const styles = StyleSheet.create({
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-  },
-});

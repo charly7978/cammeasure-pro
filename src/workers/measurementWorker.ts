@@ -1,3 +1,4 @@
+
 import { BoundingRect, detectContours } from '../lib/imageProcessing';
 
 // Declaraciones para el worker

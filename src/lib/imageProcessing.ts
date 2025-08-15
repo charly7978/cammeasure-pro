@@ -4,22 +4,20 @@ export interface BoundingRect {
   width: number;
   height: number;
   area: number;
-  confidence: number;
-  circularity: number;
-  solidity: number;
-  extent: number;
-  aspectRatio: number;
-  compactness: number;
-  perimeter: number;
-  contourPoints: number;
-  centerX: number;
-  centerY: number;
-  huMoments: number[];
-  isConvex: boolean;
-  boundingCircleRadius: number;
-  depth?: number;
-  realWidth?: number;
-  realHeight?: number;
+  confidence?: number;
+  // Geometric properties for advanced analysis
+  circularity?: number;
+  solidity?: number;
+  extent?: number;
+  aspectRatio?: number;
+  compactness?: number;
+  perimeter?: number;
+  contourPoints?: number;
+  centerX?: number;
+  centerY?: number;
+  huMoments?: number[];
+  isConvex?: boolean;
+  boundingCircleRadius?: number;
 }
 
 /**
@@ -67,17 +65,20 @@ export function detectContours(
         const centerX = moments.m10 / moments.m00;
         const centerY = moments.m01 / moments.m00;
         
+        // Calcular propiedades geométricas
+        const aspectRatio = rect.width / rect.height;
+        const extent = area / (rect.width * rect.height);
+        
         // Calcular convex hull para solidity
         const hull = new cv.Mat();
         cv.convexHull(contour, hull, false, true);
         const hullArea = cv.contourArea(hull);
         const solidity = hullArea > 0 ? area / hullArea : 0;
-        hull.delete();
         
-        // Calcular propiedades geométricas
-        const extent = area / (rect.width * rect.height);
-        const aspectRatio = rect.width / rect.height;
+        // Calcular circularity
         const circularity = (4 * Math.PI * area) / (perimeter * perimeter);
+        
+        // Calcular compactness
         const compactness = (perimeter * perimeter) / area;
         
         // Calcular Hu moments
@@ -117,6 +118,8 @@ export function detectContours(
           isConvex,
           boundingCircleRadius
         });
+        
+        hull.delete();
       }
       contour.delete();
     }

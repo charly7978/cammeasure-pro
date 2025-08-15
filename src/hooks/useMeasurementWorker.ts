@@ -47,6 +47,34 @@ export const useMeasurementWorker = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Referencias para manejo de tareas mejorado
+  const currentTaskRef = useRef<Task | null>(null);
+  const taskQueueRef = useRef<Task[]>([]);
+  const isProcessingRef = useRef(false);
+  const readyRef = useRef(false);
+
+  // Almacenar solicitudes pendientes (compatibilidad con versión simple)
+  const pendingRequests = useRef<Map<string, { onDetect: (rects: any[]) => void }>>(new Map());
+
+  // Tipos para tareas
+  interface Task {
+    id: string;
+    imageData: ImageData;
+    minArea: number;
+    onDetect: (rects: any[]) => void;
+    onError?: (error: Error) => void;
+    onTimeout?: () => void;
+    timeoutId?: NodeJS.Timeout;
+  }
+
+  interface DetectOptions {
+    imageData: ImageData;
+    minArea?: number;
+    onDetect: (rects: any[]) => void;
+    onError?: (error: Error) => void;
+    onTimeout?: () => void;
+  }
+
   // Inicializar el worker
   useEffect(() => {
     try {
@@ -64,15 +92,18 @@ export const useMeasurementWorker = () => {
         switch (type) {
           case 'SUCCESS':
             if (data?.objects) {
-              // Encontrar el callback correspondiente por taskId
+              // Manejar tanto el nuevo sistema como el antiguo para compatibilidad
               const pendingRequest = pendingRequests.current.get(taskId);
               if (pendingRequest) {
                 pendingRequest.onDetect(data.objects);
                 pendingRequests.current.delete(taskId);
               }
+              // También manejar con el nuevo sistema
+              handleDetectionResult(taskId, data.objects);
             }
             if (data?.isOpenCVReady !== undefined) {
               setIsOpenCVReady(data.isOpenCVReady);
+              readyRef.current = true;
             }
             break;
 
@@ -80,6 +111,7 @@ export const useMeasurementWorker = () => {
             if (workerError) {
               setError(workerError);
               console.error('Worker error:', workerError);
+              handleTaskError(taskId, new Error(workerError));
             }
             break;
 
@@ -91,12 +123,14 @@ export const useMeasurementWorker = () => {
         }
 
         setIsProcessing(false);
+        isProcessingRef.current = false;
       };
 
       worker.onerror = (error) => {
         console.error('Worker error:', error);
         setError('Error en el worker de detección');
         setIsProcessing(false);
+        isProcessingRef.current = false;
       };
 
       // Inicializar el worker
@@ -117,52 +151,184 @@ export const useMeasurementWorker = () => {
     }
   }, []);
 
-  // Almacenar solicitudes pendientes
-  const pendingRequests = useRef<Map<string, { onDetect: (rects: any[]) => void }>>(new Map());
-
   const generateTaskId = useCallback(() => {
     return `task_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }, []);
 
-  const detect = useCallback(async (params: {
-    imageData: ImageData;
-    minArea: number;
-    onDetect: (rects: any[]) => void;
-  }) => {
-    if (!workerRef.current || !isInitialized) {
-      console.warn('Worker no está inicializado');
+  // Procesar siguiente tarea en la cola
+  const processNextTask = useCallback(() => {
+    if (taskQueueRef.current.length === 0) {
+      isProcessingRef.current = false;
+      setIsProcessing(false);
       return;
     }
 
-    if (isProcessing) {
-      console.warn('Worker ya está procesando');
-      return;
-    }
-
+    const task = taskQueueRef.current.shift()!;
+    currentTaskRef.current = task;
+    isProcessingRef.current = true;
     setIsProcessing(true);
-    setError(null);
 
-    const taskId = generateTaskId();
-    
-    // Almacenar el callback
-    pendingRequests.current.set(taskId, {
-      onDetect: params.onDetect
-    });
+    // Configurar timeout (5 segundos)
+    task.timeoutId = setTimeout(() => {
+      if (task.onTimeout) {
+        task.onTimeout();
+      }
+      handleTaskError(task.id, new Error('Timeout en la detección'));
+    }, 5000);
 
+    // Enviar tarea al worker
     try {
-      workerRef.current.postMessage({
+      workerRef.current?.postMessage({
         type: 'DETECT',
-        taskId,
-        imageData: params.imageData,
-        minArea: params.minArea
+        taskId: task.id,
+        imageData: task.imageData,
+        minArea: task.minArea
       });
     } catch (err) {
       console.error('Error sending message to worker:', err);
-      setError('Error al enviar datos al worker');
-      setIsProcessing(false);
-      pendingRequests.current.delete(taskId);
+      handleTaskError(task.id, err as Error);
     }
-  }, [isInitialized, isProcessing, generateTaskId]);
+  }, []);
+
+  // Transformar objetos del worker al formato BoundingRect
+  const transformToBoundingRect = useCallback((objects: any[]): any[] => {
+    return objects.map(obj => ({
+      x: obj.x,
+      y: obj.y,
+      width: obj.width,
+      height: obj.height,
+      area: obj.area || (obj.width * obj.height),
+      confidence: obj.confidence || 0.5
+    }));
+  }, []);
+
+  // Manejar resultado de detección
+  const handleDetectionResult = useCallback((taskId: string, objects: any[]) => {
+    const task = currentTaskRef.current;
+    if (task && task.id === taskId) {
+      // Limpiar timeout
+      if (task.timeoutId) {
+        clearTimeout(task.timeoutId);
+      }
+      
+      // Transformar objetos al formato esperado
+      const rects = transformToBoundingRect(objects);
+      
+      // Ejecutar callback
+      try {
+        task.onDetect(rects);
+      } catch (err) {
+        console.error('Error in detection callback:', err);
+      }
+      
+      // Limpiar tarea actual
+      currentTaskRef.current = null;
+      
+      // Procesar siguiente tarea
+      processNextTask();
+    }
+  }, [processNextTask, transformToBoundingRect]);
+
+  // Manejar error en tarea
+  const handleTaskError = useCallback((taskId: string, error: Error) => {
+    const task = currentTaskRef.current;
+    if (task && task.id === taskId) {
+      // Limpiar timeout
+      if (task.timeoutId) {
+        clearTimeout(task.timeoutId);
+      }
+      
+      // Ejecutar callback de error
+      if (task.onError) {
+        try {
+          task.onError(error);
+        } catch (err) {
+          console.error('Error in error callback:', err);
+        }
+      }
+      
+      // Actualizar estado de error
+      setError(error.message);
+      
+      // Limpiar tarea actual
+      currentTaskRef.current = null;
+      
+      // Procesar siguiente tarea
+      processNextTask();
+    }
+  }, [processNextTask]);
+
+  // Detectar objetos (versión mejorada con compatibilidad)
+  const detect = useCallback((opts: DetectOptions) => {
+    if (!workerRef.current || !isInitialized) {
+      const error = new Error('Worker no está inicializado');
+      setError(error.message);
+      if (opts.onError) {
+        opts.onError(error);
+      }
+      return;
+    }
+
+    const { imageData, minArea = 100, onDetect, onError, onTimeout } = opts;
+    
+    // Usar el nuevo sistema de colas para mejor manejo
+    const task: Task = {
+      id: generateTaskId(),
+      imageData,
+      minArea,
+      onDetect,
+      onError,
+      onTimeout
+    };
+
+    // Agregar a la cola
+    taskQueueRef.current.push(task);
+    
+    // Si no se está procesando, iniciar
+    if (!isProcessingRef.current) {
+      processNextTask();
+    }
+  }, [isInitialized, processNextTask, generateTaskId]);
+
+  // Cancelar todas las tareas pendientes
+  const cancelAll = useCallback(() => {
+    // Cancelar tarea actual
+    if (currentTaskRef.current) {
+      if (currentTaskRef.current.timeoutId) {
+        clearTimeout(currentTaskRef.current.timeoutId);
+      }
+      currentTaskRef.current = null;
+    }
+    
+    // Cancelar tareas en cola
+    taskQueueRef.current.forEach(task => {
+      if (task.timeoutId) {
+        clearTimeout(task.timeoutId);
+      }
+    });
+    taskQueueRef.current = [];
+    
+    // Resetear estado
+    isProcessingRef.current = false;
+    setIsProcessing(false);
+  }, []);
+
+  // Reiniciar worker
+  const restart = useCallback(() => {
+    cancelAll();
+    readyRef.current = false;
+    setIsOpenCVReady(false);
+    setError(null);
+    
+    // Re-inicializar worker
+    if (workerRef.current) {
+      const taskId = generateTaskId();
+      workerRef.current.postMessage({
+        type: 'INIT',
+        taskId
+      });
+    }
+  }, [cancelAll, generateTaskId]);
 
   const getStatus = useCallback(() => {
     if (!workerRef.current || !isInitialized) {
@@ -177,6 +343,8 @@ export const useMeasurementWorker = () => {
     isOpenCVReady,
     isProcessing,
     error,
-    getStatus
+    getStatus,
+    cancelAll,
+    restart
   };
 };

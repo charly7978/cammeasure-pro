@@ -1,3 +1,4 @@
+
 import { useEffect, useRef, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -15,7 +16,7 @@ import {
 } from 'lucide-react';
 import { useCamera } from '@/hooks/useCamera';
 import { CameraDirection } from '@capacitor/camera';
-import { RealTimeMeasurement, DetectedObject } from './RealTimeMeasurement';
+import { RealTimeMeasurement, type DetectedObject } from './RealTimeMeasurement';
 import { MeasurementOverlay } from './MeasurementOverlay';
 
 interface CameraViewProps {
@@ -235,8 +236,8 @@ export const CameraView: React.FC<CameraViewProps> = ({
           ref={containerRef}
           className="relative w-full bg-black"
           style={{ 
-            height: '70vh', // Altura fija grande
-            minHeight: '500px' // Altura mínima
+            height: '70vh',
+            minHeight: '500px'
           }}
           onLoadedData={() => {
             if (containerRef.current) {

@@ -1,129 +1,153 @@
-import { useState, useRef } from 'react';
-import { Camera, CameraResultType, CameraSource, CameraDirection } from '@capacitor/camera';
+import { useState, useRef, useCallback } from 'react';
 
 export interface CameraConfig {
-  direction: CameraDirection;
-  source: CameraSource;
+  direction: 'front' | 'back';
+  source: 'camera';
   quality: number;
   allowEditing: boolean;
-  resultType: CameraResultType;
+  resultType: 'uri';
 }
 
 export const useCamera = () => {
   const [isCapturing, setIsCapturing] = useState(false);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
-  const requestCameraPermissions = async () => {
+  const requestCameraPermissions = useCallback(async () => {
     try {
-      // Always try web API first since we're in a web environment
-      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        try {
-          // Test camera access
-          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-          // Stop the test stream immediately
-          stream.getTracks().forEach(track => track.stop());
-          return true;
-        } catch (webError) {
-          console.error('Web camera access failed:', webError);
-          
-          // If web fails, try Capacitor as fallback (for mobile builds)
-          try {
-            const permissions = await Camera.requestPermissions();
-            return permissions.camera === 'granted';
-          } catch (capacitorError) {
-            console.error('Capacitor camera permissions failed:', capacitorError);
-            return false;
-          }
-        }
-      } else {
-        // Fallback to Capacitor if mediaDevices is not available
-        const permissions = await Camera.requestPermissions();
-        return permissions.camera === 'granted';
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        console.error('MediaDevices no disponible');
+        return false;
       }
+
+      // Solicitar permisos de cámara
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: {
+          facingMode: 'environment',
+          width: { ideal: 1280, max: 1920 },
+          height: { ideal: 720, max: 1080 }
+        } 
+      });
+      
+      // Detener stream de prueba inmediatamente
+      stream.getTracks().forEach(track => track.stop());
+      return true;
     } catch (error) {
-      console.error('Error requesting camera permissions:', error);
+      console.error('Error solicitando permisos de cámara:', error);
       return false;
     }
-  };
+  }, []);
 
-  const startCamera = async (constraints: MediaStreamConstraints = {
+  const startCamera = useCallback(async (constraints: MediaStreamConstraints = {
     video: {
       facingMode: 'environment',
-      width: { ideal: 1920 },
-      height: { ideal: 1080 }
+      width: { ideal: 1280, max: 1920 },
+      height: { ideal: 720, max: 1080 }
     }
   }) => {
     try {
+      // Detener stream anterior si existe
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+      }
+
+      // Iniciar nuevo stream
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      streamRef.current = stream;
       setCameraStream(stream);
       
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        videoRef.current.play();
+        await videoRef.current.play();
       }
       
       return stream;
     } catch (error) {
-      console.error('Error starting camera:', error);
+      console.error('Error iniciando cámara:', error);
       throw error;
     }
-  };
+  }, []);
 
-  const stopCamera = () => {
-    if (cameraStream) {
-      cameraStream.getTracks().forEach(track => track.stop());
-      setCameraStream(null);
+  const stopCamera = useCallback(() => {
+    try {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => {
+          track.stop();
+        });
+        streamRef.current = null;
+      }
+      
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+        setCameraStream(null);
+      }
       
       if (videoRef.current) {
         videoRef.current.srcObject = null;
       }
+    } catch (error) {
+      console.error('Error deteniendo cámara:', error);
     }
-  };
+  }, [cameraStream]);
 
-  const captureImage = async (config: Partial<CameraConfig> = {}) => {
+  const switchCamera = useCallback(async (direction: 'front' | 'back') => {
+    try {
+      const newConstraints: MediaStreamConstraints = {
+        video: {
+          facingMode: direction === 'front' ? 'user' : 'environment',
+          width: { ideal: 1280, max: 1920 },
+          height: { ideal: 720, max: 1080 }
+        }
+      };
+      
+      await startCamera(newConstraints);
+    } catch (error) {
+      console.error('Error cambiando cámara:', error);
+      throw error;
+    }
+  }, [startCamera]);
+
+  const captureImage = useCallback(async (config: Partial<CameraConfig> = {}) => {
     setIsCapturing(true);
     
     try {
-      const image = await Camera.getPhoto({
-        quality: config.quality || 90,
-        allowEditing: config.allowEditing || false,
-        resultType: config.resultType || CameraResultType.Uri,
-        source: config.source || CameraSource.Camera,
-        direction: config.direction || CameraDirection.Rear
-      });
+      if (!videoRef.current || !cameraStream) {
+        throw new Error('Cámara no disponible');
+      }
+
+      // Crear canvas para capturar frame
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('No se pudo obtener contexto del canvas');
+
+      canvas.width = videoRef.current.videoWidth;
+      canvas.height = videoRef.current.videoHeight;
       
-      return image;
+      // Dibujar frame actual
+      ctx.drawImage(videoRef.current, 0, 0);
+      
+      // Obtener ImageData
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      
+      return imageData;
     } catch (error) {
-      console.error('Error capturing image:', error);
+      console.error('Error capturando imagen:', error);
       throw error;
     } finally {
       setIsCapturing(false);
     }
-  };
-
-  const switchCamera = async (direction: CameraDirection = CameraDirection.Rear) => {
-    stopCamera();
-    
-    const constraints = {
-      video: {
-        facingMode: direction === CameraDirection.Rear ? 'environment' : 'user',
-        width: { ideal: 1920 },
-        height: { ideal: 1080 }
-      }
-    };
-    
-    return startCamera(constraints);
-  };
+  }, [cameraStream]);
 
   return {
     videoRef,
     cameraStream,
     isCapturing,
-    requestCameraPermissions,
     startCamera,
     stopCamera,
+    switchCamera,
     captureImage,
-    switchCamera
+    requestCameraPermissions
   };
 };

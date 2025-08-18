@@ -15,7 +15,6 @@ import {
   Play
 } from 'lucide-react';
 import { useCamera } from '@/hooks/useCamera';
-import { CameraDirection } from '@capacitor/camera';
 import { DetectedObject } from '@/lib/types';
 import { detectContoursSimple, realDepthCalculator } from '@/lib';
 
@@ -48,7 +47,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
-  const [currentCamera, setCurrentCamera] = useState<CameraDirection>(CameraDirection.Rear);
+  const [currentCamera, setCurrentCamera] = useState<'front' | 'back'>('back');
   const [showGrid, setShowGrid] = useState(true);
   const [flashEnabled, setFlashEnabled] = useState(false);
   const [focusPoint, setFocusPoint] = useState<{ x: number; y: number } | null>(null);
@@ -63,103 +62,89 @@ export const CameraView: React.FC<CameraViewProps> = ({
   const [frameCount, setFrameCount] = useState(0);
   const processingInterval = useRef<NodeJS.Timeout | null>(null);
 
+  // UN SOLO useEffect PARA MANEJAR TODO - EVITAR CONFLICTOS
   useEffect(() => {
-    initializeCamera();
+    let isMounted = true;
+    let intervalId: NodeJS.Timeout | null = null;
+    let resizeHandler: (() => void) | null = null;
     
-    // Update container dimensions when video loads
-    const updateDimensions = () => {
-      if (containerRef.current) {
+    const initialize = async () => {
+      try {
+        // 1. SOLICITAR PERMISOS
+        const granted = await requestCameraPermissions();
+        if (!isMounted) return;
+        
+        setHasPermissions(granted);
+        
+        if (granted && isActive) {
+          // 2. INICIAR CÁMARA
+          await startCamera();
+          
+          // 3. ACTUALIZAR DIMENSIONES
+          if (containerRef.current) {
+            const rect = containerRef.current.getBoundingClientRect();
+            setVideoContainer({ width: rect.width, height: rect.height });
+          }
+          
+          // 4. INICIAR MEDICIÓN AUTOMÁTICA CON RETRASO
+          setTimeout(() => {
+            if (!isMounted || !videoRef?.current || !overlayCanvasRef?.current) return;
+            
+            console.log('🎯 INICIANDO MEDICIÓN AUTOMÁTICA ESTABLE');
+            
+            // Procesar cada 1000ms para máxima estabilidad
+            intervalId = setInterval(() => {
+              if (!isMounted || !videoRef?.current || !overlayCanvasRef?.current || isProcessing) return;
+              
+              try {
+                processFrameAutomatically();
+              } catch (error) {
+                console.error('Error en procesamiento automático:', error);
+              }
+            }, 1000); // MUY LENTO PARA ESTABILIDAD
+          }, 2000);
+        }
+      } catch (error) {
+        console.error('Error en inicialización:', error);
+      }
+    };
+    
+    // MANEJADOR DE RESIZE
+    resizeHandler = () => {
+      if (containerRef.current && isMounted) {
         const rect = containerRef.current.getBoundingClientRect();
         setVideoContainer({ width: rect.width, height: rect.height });
       }
     };
     
-    window.addEventListener('resize', updateDimensions);
-    updateDimensions();
+    window.addEventListener('resize', resizeHandler);
     
-    return () => {
-      stopCamera();
-      window.removeEventListener('resize', updateDimensions);
-      if (processingInterval.current) {
-        clearInterval(processingInterval.current);
-      }
-    };
-  }, []); // SOLO UNA VEZ AL MONTAR
-
-  useEffect(() => {
-    if (isActive && hasPermissions && !cameraStream) {
-      startCamera();
-    } else if (!isActive && cameraStream) {
-      stopCamera();
-    }
-  }, [isActive, hasPermissions, cameraStream, startCamera, stopCamera]); // DEPENDENCIAS CORRECTAS
-
-  // INICIAR MEDICIÓN AUTOMÁTICA EN TIEMPO REAL - SEPARADO Y SEGURO
-  useEffect(() => {
-    let intervalId: NodeJS.Timeout | null = null;
+    // INICIAR TODO
+    initialize();
     
-    if (isActive && isRealTimeMeasurement && videoRef?.current && overlayCanvasRef?.current) {
-      console.log('🚀 INICIANDO MEDICIÓN AUTOMÁTICA EN TIEMPO REAL');
-      
-      // FORZAR PRIMERA MEDICIÓN INMEDIATA
-      const firstMeasurement = setTimeout(() => {
-        console.log('🎯 FORZANDO PRIMERA MEDICIÓN INMEDIATA');
-        if (videoRef?.current && overlayCanvasRef?.current && !isProcessing) {
-          processFrameAutomatically();
-        }
-      }, 500);
-      
-      // Procesar cada 500ms para medición en tiempo real (MÁS LENTO PARA EVITAR SOBRECARGA)
-      intervalId = setInterval(() => {
-        if (!isProcessing && videoRef?.current && overlayCanvasRef?.current) {
-          console.log('📸 Procesando frame automáticamente...');
-          processFrameAutomatically();
-        }
-      }, 500); // CAMBIADO DE 200ms A 500ms
-      
-      // LIMPIAR PRIMERA MEDICIÓN
-      return () => {
-        clearTimeout(firstMeasurement);
-        if (intervalId) {
-          console.log('⏹️ Deteniendo medición automática');
-          clearInterval(intervalId);
-        }
-      };
-    }
-
+    // LIMPIEZA COMPLETA
     return () => {
+      isMounted = false;
+      
+      // Detener cámara
+      stopCamera();
+      
+      // Limpiar intervalos
       if (intervalId) {
-        console.log('⏹️ Deteniendo medición automática');
         clearInterval(intervalId);
       }
-    };
-  }, [isActive, isRealTimeMeasurement, isProcessing]); // DEPENDENCIAS MÍNIMAS
-
-  const initializeCamera = async () => {
-    try {
-      const granted = await requestCameraPermissions();
-      setHasPermissions(granted);
       
-      if (granted) {
-        await startCamera();
-        
-        // FORZAR MEDICIÓN AUTOMÁTICA DESPUÉS DE INICIAR CÁMARA - CON RETRASO MÁS LARGO
-        setTimeout(() => {
-          console.log('🎯 FORZANDO MEDICIÓN DESPUÉS DE INICIAR CÁMARA');
-          if (videoRef?.current && overlayCanvasRef?.current && !isProcessing) {
-            processFrameAutomatically();
-          }
-        }, 3000); // CAMBIADO DE 2000ms A 3000ms
+      // Limpiar event listeners
+      if (resizeHandler) {
+        window.removeEventListener('resize', resizeHandler);
       }
-    } catch (error) {
-      console.error('Error initializing camera:', error);
-    }
-  };
+    };
+  }, [isActive, requestCameraPermissions, startCamera, stopCamera, isProcessing]); // DEPENDENCIAS MÍNIMAS
+
+  // FUNCIÓN ELIMINADA - AHORA MANEJADA EN useEffect
 
   const handleCameraSwitch = async () => {
-    const newDirection = currentCamera === CameraDirection.Rear 
-      ? CameraDirection.Front 
-      : CameraDirection.Rear;
+    const newDirection = currentCamera === 'back' ? 'front' : 'back';
     
     try {
       await switchCamera(newDirection);
@@ -940,7 +925,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
             Se necesita acceso a la cámara para realizar mediciones
           </p>
         </div>
-        <Button onClick={initializeCamera} className="bg-gradient-primary">
+        <Button onClick={() => requestCameraPermissions()} className="bg-gradient-primary">
           <Camera className="w-4 h-4 mr-2" />
           Conceder Permisos
         </Button>
@@ -955,7 +940,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
         <div className="flex items-center gap-2">
           <Badge variant="outline" className="border-primary text-primary text-xs">
             <Camera className="w-3 h-3 mr-1" />
-            {currentCamera === CameraDirection.Rear ? 'Principal' : 'Frontal'}
+                            {currentCamera === 'back' ? 'Principal' : 'Frontal'}
           </Badge>
           
           {cameraStream && (

@@ -92,14 +92,33 @@ export const CameraView: React.FC<CameraViewProps> = ({
     } else if (!isActive && cameraStream) {
       stopCamera();
     }
-  }, [isActive, hasPermissions]);
+    
+    // FORZAR INICIO DE MEDICIÓN AUTOMÁTICA
+    if (isActive && hasPermissions && cameraStream) {
+      console.log('🎯 FORZANDO INICIO DE MEDICIÓN AUTOMÁTICA');
+      setTimeout(() => {
+        if (videoRef?.current && overlayCanvasRef?.current) {
+          processFrameAutomatically();
+        }
+      }, 1000); // Esperar 1 segundo para que la cámara esté lista
+    }
+  }, [isActive, hasPermissions, cameraStream]);
 
   // INICIAR MEDICIÓN AUTOMÁTICA EN TIEMPO REAL
   useEffect(() => {
     if (isActive && isRealTimeMeasurement && videoRef?.current && overlayCanvasRef?.current) {
+      console.log('🚀 INICIANDO MEDICIÓN AUTOMÁTICA EN TIEMPO REAL');
+      
+      // FORZAR PRIMERA MEDICIÓN INMEDIATA
+      setTimeout(() => {
+        console.log('🎯 FORZANDO PRIMERA MEDICIÓN INMEDIATA');
+        processFrameAutomatically();
+      }, 500);
+      
       // Procesar cada 200ms para medición en tiempo real
       processingInterval.current = setInterval(() => {
         if (!isProcessing) {
+          console.log('📸 Procesando frame automáticamente...');
           processFrameAutomatically();
         }
       }, 200);
@@ -107,6 +126,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
 
     return () => {
       if (processingInterval.current) {
+        console.log('⏹️ Deteniendo medición automática');
         clearInterval(processingInterval.current);
       }
     };
@@ -119,6 +139,14 @@ export const CameraView: React.FC<CameraViewProps> = ({
       
       if (granted) {
         await startCamera();
+        
+        // FORZAR MEDICIÓN AUTOMÁTICA DESPUÉS DE INICIAR CÁMARA
+        setTimeout(() => {
+          console.log('🎯 FORZANDO MEDICIÓN DESPUÉS DE INICIAR CÁMARA');
+          if (videoRef?.current && overlayCanvasRef?.current) {
+            processFrameAutomatically();
+          }
+        }, 2000);
       }
     } catch (error) {
       console.error('Error initializing camera:', error);
@@ -162,8 +190,12 @@ export const CameraView: React.FC<CameraViewProps> = ({
 
       // 2. DETECTAR CONTORNOS AUTOMÁTICAMENTE
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const detectionResult = await detectContoursSimple(imageData, 200); // Área mínima de 200 píxeles
-
+      console.log('🔍 Detectando contornos en frame...');
+      
+      // DETECCIÓN ROBUSTA CON ALGORITMO COMPLETO
+      const detectionResult = await detectContoursSimple(imageData, 100); // Área mínima más pequeña
+      console.log('📊 Objetos detectados:', detectionResult.rects.length);
+      
       // 3. SELECCIONAR OBJETO MÁS PROMINENTE
       const prominentObject = selectMostProminentObject(detectionResult.rects);
 
@@ -470,14 +502,27 @@ export const CameraView: React.FC<CameraViewProps> = ({
         </div>
 
         <div className="flex items-center gap-1">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setIsRealTimeMeasurement(!isRealTimeMeasurement)}
-            className={`h-8 w-8 p-0 ${isRealTimeMeasurement ? "bg-measurement-active text-background" : ""}`}
-          >
-            {isRealTimeMeasurement ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
-          </Button>
+                     <Button
+             variant="outline"
+             size="sm"
+             onClick={() => {
+               const newState = !isRealTimeMeasurement;
+               setIsRealTimeMeasurement(newState);
+               
+               // FORZAR MEDICIÓN INMEDIATA AL ACTIVAR
+               if (newState) {
+                 console.log('🎯 ACTIVANDO MEDICIÓN - FORZANDO EJECUCIÓN INMEDIATA');
+                 setTimeout(() => {
+                   if (videoRef?.current && overlayCanvasRef?.current) {
+                     processFrameAutomatically();
+                   }
+                 }, 500);
+               }
+             }}
+             className={`h-8 w-8 p-0 ${isRealTimeMeasurement ? "bg-measurement-active text-background" : ""}`}
+           >
+             {isRealTimeMeasurement ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+           </Button>
 
           <Button
             variant="outline"
@@ -525,20 +570,28 @@ export const CameraView: React.FC<CameraViewProps> = ({
             }
           }}
         >
-          <video
-            ref={videoRef}
-            className="w-full h-full object-cover"
-            autoPlay
-            playsInline
-            muted
-            onClick={handleVideoClick}
-            onLoadedMetadata={() => {
-              if (containerRef.current) {
-                const rect = containerRef.current.getBoundingClientRect();
-                setVideoContainer({ width: rect.width, height: rect.height });
-              }
-            }}
-          />
+                     <video
+             ref={videoRef}
+             className="w-full h-full object-cover"
+             autoPlay
+             playsInline
+             muted
+             onClick={handleVideoClick}
+             onLoadedMetadata={() => {
+               if (containerRef.current) {
+                 const rect = containerRef.current.getBoundingClientRect();
+                 setVideoContainer({ width: rect.width, height: rect.height });
+               }
+               
+               // FORZAR MEDICIÓN AUTOMÁTICA CUANDO EL VIDEO ESTÉ LISTO
+               console.log('🎯 VIDEO LISTO - FORZANDO MEDICIÓN AUTOMÁTICA');
+               setTimeout(() => {
+                 if (videoRef?.current && overlayCanvasRef?.current) {
+                   processFrameAutomatically();
+                 }
+               }, 1000);
+             }}
+           />
 
           {/* Canvas para overlay de mediciones en tiempo real */}
           {isRealTimeMeasurement && (

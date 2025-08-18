@@ -190,14 +190,14 @@ export const CameraView: React.FC<CameraViewProps> = ({
 
       // 2. DETECTAR CONTORNOS AUTOMÁTICAMENTE
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      console.log('🔍 Detectando contornos en frame...');
+      console.log('🔍 Detectando contornos específicos del objeto...');
       
-      // DETECCIÓN ROBUSTA CON ALGORITMO COMPLETO
-      const detectionResult = await detectContoursSimple(imageData, 100); // Área mínima más pequeña
-      console.log('📊 Objetos detectados:', detectionResult.rects.length);
+      // DETECCIÓN ESPECÍFICA DEL OBJETO EN FOCO
+      const detectionResult = await detectSpecificObject(imageData, canvas.width, canvas.height);
+      console.log('📊 Objetos específicos detectados:', detectionResult.length);
       
-      // 3. SELECCIONAR OBJETO MÁS PROMINENTE
-      const prominentObject = selectMostProminentObject(detectionResult.rects);
+      // 3. SELECCIONAR OBJETO MÁS PROMINENTE Y ESPECÍFICO
+      const prominentObject = selectMostSpecificObject(detectionResult, canvas.width, canvas.height);
 
       if (prominentObject) {
         // 4. CALCULAR MEDICIONES EN TIEMPO REAL
@@ -277,33 +277,405 @@ export const CameraView: React.FC<CameraViewProps> = ({
     });
   };
 
+  // DETECCIÓN ESPECÍFICA DEL OBJETO EN FOCO
+  const detectSpecificObject = async (imageData: ImageData, width: number, height: number): Promise<any[]> => {
+    try {
+      console.log('🎯 INICIANDO DETECCIÓN ESPECÍFICA DEL OBJETO');
+      
+      // 1. CONVERTIR A ESCALA DE GRISES
+      const grayData = new Uint8Array(width * height);
+      for (let i = 0; i < imageData.data.length; i += 4) {
+        const r = imageData.data[i];
+        const g = imageData.data[i + 1];
+        const b = imageData.data[i + 2];
+        grayData[i / 4] = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+      }
+      
+      // 2. DETECCIÓN DE BORDES CON OPERADOR CANNY MEJORADO
+      const edges = detectCannyEdges(grayData, width, height);
+      
+      // 3. DETECCIÓN DE CONTORNOS ESPECÍFICOS
+      const contours = findSpecificContours(edges, width, height);
+      
+      // 4. FILTRAR POR FORMA Y TAMAÑO
+      const filteredContours = filterByShapeAndSize(contours, width, height);
+      
+      console.log('✅ DETECCIÓN ESPECÍFICA COMPLETADA:', filteredContours.length, 'objetos válidos');
+      return filteredContours;
+      
+    } catch (error) {
+      console.error('❌ Error en detección específica:', error);
+      return [];
+    }
+  };
+
+  // OPERADOR CANNY MEJORADO PARA DETECCIÓN ESPECÍFICA
+  const detectCannyEdges = (grayData: Uint8Array, width: number, height: number): Uint8Array => {
+    const edges = new Uint8Array(width * height);
+    
+    // 1. APLICAR FILTRO GAUSSIANO
+    const blurred = applyGaussianFilter(grayData, width, height);
+    
+    // 2. CALCULAR GRADIENTES
+    const gradients = calculateGradients(blurred, width, height);
+    
+    // 3. SUPRESIÓN DE MÁXIMOS NO MÁXIMOS
+    const suppressed = nonMaxSuppression(gradients, width, height);
+    
+    // 4. UMBRALIZACIÓN DOBLE
+    const thresholded = doubleThreshold(suppressed, width, height);
+    
+    return thresholded;
+  };
+
+  // FILTRO GAUSSIANO
+  const applyGaussianFilter = (data: Uint8Array, width: number, height: number): Uint8Array => {
+    const result = new Uint8Array(width * height);
+    const kernel = [
+      [1, 4, 6, 4, 1],
+      [4, 16, 24, 16, 4],
+      [6, 24, 36, 24, 6],
+      [4, 16, 24, 16, 4],
+      [1, 4, 6, 4, 1]
+    ];
+    const kernelSum = 256;
+    
+    for (let y = 2; y < height - 2; y++) {
+      for (let x = 2; x < width - 2; x++) {
+        let sum = 0;
+        for (let ky = -2; ky <= 2; ky++) {
+          for (let kx = -2; kx <= 2; kx++) {
+            sum += data[(y + ky) * width + (x + kx)] * kernel[ky + 2][kx + 2];
+          }
+        }
+        result[y * width + x] = sum / kernelSum;
+      }
+    }
+    
+    return result;
+  };
+
+  // CALCULAR GRADIENTES
+  const calculateGradients = (data: Uint8Array, width: number, height: number): any => {
+    const gradients = {
+      magnitude: new Uint8Array(width * height),
+      direction: new Float32Array(width * height)
+    };
+    
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        const gx = data[y * width + (x + 1)] - data[y * width + (x - 1)];
+        const gy = data[(y + 1) * width + x] - data[(y - 1) * width + x];
+        
+        gradients.magnitude[y * width + x] = Math.sqrt(gx * gx + gy * gy);
+        gradients.direction[y * width + x] = Math.atan2(gy, gx);
+      }
+    }
+    
+    return gradients;
+  };
+
+  // SUPRESIÓN DE MÁXIMOS NO MÁXIMOS
+  const nonMaxSuppression = (gradients: any, width: number, height: number): Uint8Array => {
+    const result = new Uint8Array(width * height);
+    
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        const idx = y * width + x;
+        const magnitude = gradients.magnitude[idx];
+        const direction = gradients.direction[idx];
+        
+        // Interpolar en la dirección del gradiente
+        const interpolated = interpolateAlongGradient(gradients, x, y, direction, width, height);
+        
+        if (magnitude >= interpolated) {
+          result[idx] = magnitude;
+        }
+      }
+    }
+    
+    return result;
+  };
+
+  // INTERPOLAR A LO LARGO DEL GRADIENTE
+  const interpolateAlongGradient = (gradients: any, x: number, y: number, direction: number, width: number, height: number): number => {
+    const cos = Math.cos(direction);
+    const sin = Math.sin(direction);
+    
+    const x1 = x + cos;
+    const y1 = y + sin;
+    const x2 = x - cos;
+    const y2 = y - sin;
+    
+    if (x1 < 0 || x1 >= width || y1 < 0 || y1 >= height ||
+        x2 < 0 || x2 >= width || y2 < 0 || y2 >= height) {
+      return 0;
+    }
+    
+    const mag1 = gradients.magnitude[Math.floor(y1) * width + Math.floor(x1)];
+    const mag2 = gradients.magnitude[Math.floor(y2) * width + Math.floor(x2)];
+    
+    return (mag1 + mag2) / 2;
+  };
+
+  // UMBRALIZACIÓN DOBLE
+  const doubleThreshold = (data: Uint8Array, width: number, height: number): Uint8Array => {
+    const result = new Uint8Array(width * height);
+    const highThreshold = 50;
+    const lowThreshold = 20;
+    
+    // Primer umbral
+    for (let i = 0; i < data.length; i++) {
+      if (data[i] >= highThreshold) {
+        result[i] = 255; // Fuerte
+      } else if (data[i] >= lowThreshold) {
+        result[i] = 128; // Débil
+      }
+    }
+    
+    // Segundo umbral - conectar bordes débiles
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        const idx = y * width + x;
+        if (result[idx] === 128) {
+          // Verificar si hay bordes fuertes vecinos
+          let hasStrongNeighbor = false;
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              if (result[(y + dy) * width + (x + dx)] === 255) {
+                hasStrongNeighbor = true;
+                break;
+              }
+            }
+            if (hasStrongNeighbor) break;
+          }
+          
+          if (hasStrongNeighbor) {
+            result[idx] = 255;
+          } else {
+            result[idx] = 0;
+          }
+        }
+      }
+    }
+    
+    return result;
+  };
+
+  // ENCONTRAR CONTORNOS ESPECÍFICOS
+  const findSpecificContours = (edges: Uint8Array, width: number, height: number): any[] => {
+    const visited = new Set<number>();
+    const contours: any[] = [];
+    
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const index = y * width + x;
+        
+        if (edges[index] === 255 && !visited.has(index)) {
+          // Nuevo contorno específico encontrado
+          const contour = floodFillSpecificContour(edges, width, height, x, y, visited);
+          if (contour.points.length > 20) { // Filtrar contornos muy pequeños
+            contours.push(contour);
+          }
+        }
+      }
+    }
+    
+    return contours;
+  };
+
+  // FLOOD FILL PARA CONTORNOS ESPECÍFICOS
+  const floodFillSpecificContour = (edges: Uint8Array, width: number, height: number, startX: number, startY: number, visited: Set<number>): any => {
+    const points: { x: number; y: number }[] = [];
+    const stack: { x: number; y: number }[] = [{ x: startX, y: startY }];
+    
+    let minX = startX, maxX = startX;
+    let minY = startY, maxY = startY;
+    
+    while (stack.length > 0) {
+      const { x, y } = stack.pop()!;
+      const index = y * width + x;
+      
+      if (x < 0 || x >= width || y < 0 || y >= height || 
+          edges[index] !== 255 || visited.has(index)) {
+        continue;
+      }
+      
+      visited.add(index);
+      points.push({ x, y });
+      
+      // Actualizar bounding box
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y);
+      maxY = Math.max(maxY, y);
+      
+      // Agregar vecinos en 8 direcciones
+      stack.push(
+        { x: x + 1, y: y }, { x: x - 1, y: y },
+        { x: x, y: y + 1 }, { x: x, y: y - 1 },
+        { x: x + 1, y: y + 1 }, { x: x + 1, y: y - 1 },
+        { x: x - 1, y: y + 1 }, { x: x - 1, y: y - 1 }
+      );
+    }
+    
+    const boundingBox = {
+      x: minX,
+      y: minY,
+      width: maxX - minX + 1,
+      height: maxY - minY + 1
+    };
+    
+    const area = boundingBox.width * boundingBox.height;
+    
+    return {
+      points,
+      boundingBox,
+      area
+    };
+  };
+
+  // FILTRAR POR FORMA Y TAMAÑO
+  const filterByShapeAndSize = (contours: any[], width: number, height: number): any[] => {
+    return contours.filter(contour => {
+      const { width: w, height: h, area } = contour.boundingBox;
+      
+      // Filtrar por tamaño mínimo y máximo
+      const minArea = 500; // 500 píxeles mínimo
+      const maxArea = width * height * 0.8; // Máximo 80% de la imagen
+      
+      if (area < minArea || area > maxArea) return false;
+      
+      // Filtrar por proporción (evitar líneas muy delgadas)
+      const aspectRatio = w / h;
+      if (aspectRatio < 0.1 || aspectRatio > 10) return false;
+      
+      // Filtrar por densidad de puntos (evitar contornos muy dispersos)
+      const density = area / contour.points.length;
+      if (density < 0.5) return false;
+      
+      return true;
+    });
+  };
+
+  // Seleccionar objeto más específico y prominente
+  const selectMostSpecificObject = (contours: any[], width: number, height: number): DetectedObject | null => {
+    if (contours.length === 0) return null;
+
+    // Convertir contornos a DetectedObject con análisis de especificidad
+    const detectedObjects: DetectedObject[] = contours.map((contour, index) => {
+      const { x, y, width: w, height: h, area } = contour.boundingBox;
+      
+      // Calcular especificidad basada en posición y forma
+      const centerX = x + w / 2;
+      const centerY = y + h / 2;
+      
+      // Distancia desde el centro de la imagen (objetos centrales son más específicos)
+      const imageCenterX = width / 2;
+      const imageCenterY = height / 2;
+      const distanceFromCenter = Math.sqrt(
+        Math.pow(centerX - imageCenterX, 2) + Math.pow(centerY - imageCenterY, 2)
+      );
+      
+      // Normalizar distancia (0 = centro, 1 = borde)
+      const normalizedDistance = distanceFromCenter / (Math.sqrt(width * width + height * height) / 2);
+      
+      // Calcular especificidad (0 = menos específico, 1 = más específico)
+      const specificity = 1 - normalizedDistance;
+      
+      // Calcular confianza basada en especificidad y área
+      const confidence = (specificity * 0.7) + (Math.min(area / (width * height), 0.3));
+      
+      return {
+        // Propiedades de BoundingRect
+        x: x,
+        y: y,
+        width: w,
+        height: h,
+        area: area,
+        
+        // Propiedades de DetectedObject
+        id: `obj_${index}`,
+        type: 'detected',
+        boundingBox: {
+          x: x,
+          y: y,
+          width: w,
+          height: h
+        },
+        dimensions: {
+          width: w,
+          height: h,
+          area: area,
+          unit: 'px'
+        },
+        confidence: Math.min(confidence, 1), // Limitar a máximo 1
+        depth: undefined,
+        realWidth: undefined,
+        realHeight: undefined,
+        volume: undefined,
+        surfaceArea: undefined,
+        curvature: undefined,
+        roughness: undefined,
+        orientation: undefined,
+        materialProperties: undefined
+      };
+    });
+
+    // Seleccionar por especificidad y confianza
+    return detectedObjects.reduce((mostSpecific, current) => {
+      const currentScore = current.confidence * current.dimensions.area;
+      const specificScore = mostSpecific.confidence * mostSpecific.dimensions.area;
+      return currentScore > specificScore ? current : mostSpecific;
+    });
+  };
+
   // Calcular mediciones en tiempo real
   const calculateRealTimeMeasurements = async (object: DetectedObject, imageData: ImageData) => {
     const { width, height, area } = object.dimensions;
     
+    // CONVERTIR PÍXELES A UNIDADES REALES (mm/cm)
+    const pixelsPerMm = calibrationData?.pixelsPerMm || 10; // Valor por defecto: 10 píxeles = 1mm
+    const realWidth = width / pixelsPerMm; // mm
+    const realHeight = height / pixelsPerMm; // mm
+    const realArea = area / (pixelsPerMm * pixelsPerMm); // mm²
+    
     // Cálculo de profundidad estimada
     const estimatedDepth = await estimateDepthFromObjectSize(object, imageData);
     
-    // Cálculo de volumen estimado
-    const estimatedVolume = estimateVolumeFromDimensions(width, height, estimatedDepth);
+    // Cálculo de volumen estimado en mm³
+    const estimatedVolume = estimateVolumeFromDimensions(realWidth, realHeight, estimatedDepth);
     
-    // Cálculo de superficie
-    const surfaceArea = calculateSurfaceArea(width, height, estimatedDepth);
+    // Cálculo de superficie en mm²
+    const surfaceArea = calculateSurfaceArea(realWidth, realHeight, estimatedDepth);
     
     // Cálculo de distancia desde la cámara
     const distanceFromCamera = calculateDistanceFromCamera(object, imageData);
 
     return {
+      // Medidas en píxeles (originales)
       width: width,
       height: height,
-      depth: estimatedDepth,
       area: area,
+      
+      // Medidas en unidades reales (mm)
+      realWidth: realWidth,
+      realHeight: realHeight,
+      realArea: realArea,
+      
+      // Medidas 3D
+      depth: estimatedDepth,
       volume: estimatedVolume,
       surfaceArea: surfaceArea,
       distance: distanceFromCamera,
-      perimeter: 2 * (width + height),
-      diagonal: Math.sqrt(width * width + height * height),
-      aspectRatio: width / height
+      
+      // Medidas derivadas
+      perimeter: 2 * (realWidth + realHeight), // mm
+      diagonal: Math.sqrt(realWidth * realWidth + realHeight * realHeight), // mm
+      aspectRatio: realWidth / realHeight,
+      
+      // Unidades
+      unit: 'mm'
     };
   };
 
@@ -387,7 +759,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
     // Limpiar canvas
     ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
     
-    // Dibujar bounding box
+    // Dibujar bounding box específico del objeto
     ctx.strokeStyle = '#00ff00';
     ctx.lineWidth = 3;
     ctx.strokeRect(x, y, width, height);
@@ -398,25 +770,45 @@ export const CameraView: React.FC<CameraViewProps> = ({
     ctx.arc(x + width / 2, y + height / 2, 5, 0, 2 * Math.PI);
     ctx.fill();
     
-    // Dibujar mediciones
+    // Dibujar mediciones en UNIDADES REALES (mm/cm)
     ctx.fillStyle = '#ffffff';
     ctx.font = '16px Arial';
-    ctx.fillText(`Ancho: ${measurements.width.toFixed(1)}px`, x, y - 40);
-    ctx.fillText(`Alto: ${measurements.height.toFixed(1)}px`, x, y - 20);
-    ctx.fillText(`Área: ${measurements.area.toFixed(0)}px²`, x, y - 5);
     
+    // Medidas en píxeles
+    ctx.fillText(`Píxeles: ${measurements.width.toFixed(0)} × ${measurements.height.toFixed(0)}`, x, y - 60);
+    
+    // Medidas en unidades reales
+    if (measurements.realWidth && measurements.realHeight) {
+      ctx.fillStyle = '#00ff00';
+      ctx.fillText(`Ancho: ${measurements.realWidth.toFixed(1)}mm`, x, y - 40);
+      ctx.fillText(`Alto: ${measurements.realHeight.toFixed(1)}mm`, x, y - 20);
+      ctx.fillText(`Área: ${measurements.realArea.toFixed(1)}mm²`, x, y - 5);
+    }
+    
+    // Medidas 3D
     if (measurements.depth) {
+      ctx.fillStyle = '#00ffff';
       ctx.fillText(`Profundidad: ${measurements.depth.toFixed(1)}mm`, x, y + 15);
     }
     
     if (measurements.volume) {
-      ctx.fillText(`Volumen: ${measurements.volume.toFixed(0)}mm³`, x, y + 35);
+      ctx.fillStyle = '#ffff00';
+      ctx.fillText(`Volumen: ${measurements.volume.toFixed(1)}mm³`, x, y + 35);
+    }
+    
+    if (measurements.perimeter) {
+      ctx.fillStyle = '#ff00ff';
+      ctx.fillText(`Perímetro: ${measurements.perimeter.toFixed(1)}mm`, x, y + 55);
     }
     
     // Dibujar indicador de confianza
     const confidence = object.confidence;
     ctx.fillStyle = confidence > 0.8 ? '#00ff00' : confidence > 0.6 ? '#ffff00' : '#ff0000';
-    ctx.fillText(`Confianza: ${(confidence * 100).toFixed(0)}%`, x, y + 55);
+    ctx.fillText(`Confianza: ${(confidence * 100).toFixed(0)}%`, x, y + 75);
+    
+    // Dibujar indicador de especificidad
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(`🎯 Objeto Específico Detectado`, x, y + 95);
   };
 
   const captureFrame = () => {
@@ -668,48 +1060,65 @@ export const CameraView: React.FC<CameraViewProps> = ({
             <h3 className="font-semibold text-green-400">Medición en Tiempo Real</h3>
           </div>
           
-          <div className="grid grid-cols-3 gap-4 text-sm">
-            <div>
-              <p className="text-gray-300">Ancho</p>
-              <p className="font-mono text-green-400 font-bold">
-                {currentMeasurement.measurements.width.toFixed(1)}px
-              </p>
-            </div>
-            <div>
-              <p className="text-gray-300">Alto</p>
-              <p className="font-mono text-cyan-400 font-bold">
-                {currentMeasurement.measurements.height.toFixed(1)}px
-              </p>
-            </div>
-            <div>
-              <p className="text-gray-300">Área</p>
-              <p className="font-mono text-blue-400 font-bold">
-                {currentMeasurement.measurements.area.toFixed(0)}px²
-              </p>
-            </div>
-            {currentMeasurement.measurements.depth && (
-              <div>
-                <p className="text-gray-300">Profundidad</p>
-                <p className="font-mono text-orange-400 font-bold">
-                  {currentMeasurement.measurements.depth.toFixed(1)}mm
-                </p>
-              </div>
-            )}
-            {currentMeasurement.measurements.volume && (
-              <div>
-                <p className="text-gray-300">Volumen</p>
-                <p className="font-mono text-yellow-400 font-bold">
-                  {currentMeasurement.measurements.volume.toFixed(0)}mm³
-                </p>
-              </div>
-            )}
-            <div>
-              <p className="text-gray-300">Frame</p>
-              <p className="font-mono text-white font-bold">
-                {frameCount}
-              </p>
-            </div>
-          </div>
+                     <div className="grid grid-cols-3 gap-4 text-sm">
+             <div>
+               <p className="text-gray-300">Ancho</p>
+               <p className="font-mono text-green-400 font-bold">
+                 {currentMeasurement.measurements.realWidth ? 
+                   `${currentMeasurement.measurements.realWidth.toFixed(1)}mm` : 
+                   `${currentMeasurement.measurements.width.toFixed(1)}px`
+                 }
+               </p>
+             </div>
+             <div>
+               <p className="text-gray-300">Alto</p>
+               <p className="font-mono text-cyan-400 font-bold">
+                 {currentMeasurement.measurements.realHeight ? 
+                   `${currentMeasurement.measurements.realHeight.toFixed(1)}mm` : 
+                   `${currentMeasurement.measurements.height.toFixed(1)}px`
+                 }
+               </p>
+             </div>
+             <div>
+               <p className="text-gray-300">Área</p>
+               <p className="font-mono text-blue-400 font-bold">
+                 {currentMeasurement.measurements.realArea ? 
+                   `${currentMeasurement.measurements.realArea.toFixed(1)}mm²` : 
+                   `${currentMeasurement.measurements.area.toFixed(0)}px²`
+                 }
+               </p>
+             </div>
+             {currentMeasurement.measurements.depth && (
+               <div>
+                 <p className="text-gray-300">Profundidad</p>
+                 <p className="font-mono text-orange-400 font-bold">
+                   {currentMeasurement.measurements.depth.toFixed(1)}mm
+                 </p>
+               </div>
+             )}
+             {currentMeasurement.measurements.volume && (
+               <div>
+                 <p className="text-gray-300">Volumen</p>
+                 <p className="font-mono text-yellow-400 font-bold">
+                   {currentMeasurement.measurements.volume.toFixed(1)}mm³
+                 </p>
+               </div>
+             )}
+             {currentMeasurement.measurements.perimeter && (
+               <div>
+                 <p className="text-gray-300">Perímetro</p>
+                 <p className="font-mono text-purple-400 font-bold">
+                   {currentMeasurement.measurements.perimeter.toFixed(1)}mm
+                 </p>
+               </div>
+             )}
+             <div>
+               <p className="text-gray-300">Frame</p>
+               <p className="font-mono text-white font-bold">
+                 {frameCount}
+               </p>
+             </div>
+           </div>
         </Card>
       )}
     </div>

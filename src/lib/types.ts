@@ -59,6 +59,7 @@ export interface BoundingRect {
 }
 
 export interface DetectedObject extends BoundingRect {
+  points: boolean;
   id: string;
   type: string;
   depth?: number;

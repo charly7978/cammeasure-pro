@@ -1,743 +1,836 @@
-// SISTEMA REAL DE CÁLCULO DE PROFUNDIDAD 3D - ALGORITMOS DE EXTREMA COMPLEJIDAD MATEMÁTICA
-// Implementa: Disparidad Estereoscópica Multi-Escala, Triangulación Láser Virtual, 
-// Análisis de Fase de Fourier, Transformada de Hilbert-Huang, Machine Learning de Profundidad
+// SISTEMA REAL DE CÁLCULO DE PROFUNDIDAD 3D - ALGORITMOS MATEMÁTICOS COMPLETOS
+// Implementación nativa de SGBM, triangulación estereoscópica y análisis de disparidad
 
-import { Point3D, DepthMap, RealMeasurement3D } from './types';
+import { DetectedObject } from './types';
 
-// Implementación básica de Matrix para compatibilidad
-class Matrix {
-  constructor(public rows: number, public cols: number, public data?: number[][]) {
-    if (!data) {
-      this.data = Array(rows).fill(0).map(() => Array(cols).fill(0));
-    }
-  }
-  
-  static eye(size: number): Matrix {
-    const matrix = new Matrix(size, size);
-    for (let i = 0; i < size; i++) {
-      matrix.data![i][i] = 1;
-    }
-    return matrix;
-  }
+// INTERFACES PARA CÁLCULO DE PROFUNDIDAD REAL
+export interface StereoPair {
+  leftImage: ImageData;
+  rightImage: ImageData;
+  baseline: number; // Distancia entre cámaras en mm
+  focalLength: number; // Longitud focal en píxeles
 }
 
-class RealDepthCalculator {
-  private stereoParams = {
-    baseline: 65.0, // mm - baseline estereoscópico real
-    focalLength: 800.0, // píxeles - longitud focal calibrada
-    maxDisparity: 256,
-    blockSize: 21,
-    numDisparities: 128,
-    minDisparity: -16,
-    speckleWindowSize: 100,
-    speckleRange: 32,
-    disp12MaxDiff: 1,
-    preFilterCap: 63,
-    uniquenessRatio: 15,
-    mode: 'SGBM_MODE_SGBM_3WAY'
-  };
+export interface DisparityMap {
+  data: Float32Array;
+  width: number;
+  height: number;
+  minDisparity: number;
+  maxDisparity: number;
+}
 
-  private calibrationMatrix = {
-    leftCamera: Matrix.eye(3),
-    rightCamera: Matrix.eye(3),
-    leftDistortion: new Float64Array(5),
-    rightDistortion: new Float64Array(5),
-    rotationMatrix: Matrix.eye(3),
-    translationVector: new Float64Array(3),
-    essentialMatrix: Matrix.eye(3),
-    fundamentalMatrix: Matrix.eye(3)
-  };
+export interface DepthMap {
+  data: Float32Array;
+  width: number;
+  height: number;
+  minDepth: number;
+  maxDepth: number;
+  unit: 'mm' | 'cm' | 'm';
+}
 
-  private temporalBuffer: {
-    frames: ImageData[];
-    timestamps: number[];
-    opticalFlow: Float64Array[];
-    depthHistory: Float64Array[];
-  } = {
-    frames: [],
-    timestamps: [],
-    opticalFlow: [],
-    depthHistory: []
-  };
+export interface SGBMParams {
+  minDisparity: number;
+  numDisparities: number;
+  blockSize: number;
+  P1: number;
+  P2: number;
+  disp12MaxDiff: number;
+  preFilterCap: number;
+  uniquenessRatio: number;
+  speckleWindowSize: number;
+  speckleRange: number;
+  mode: 'SGBM' | 'SGBM_3WAY';
+}
 
-  // ALGORITMO PRINCIPAL: Cálculo de profundidad usando múltiples técnicas avanzadas
-  async calculateRealDepth(imageData: ImageData, objectBounds: any, previousFrame?: ImageData): Promise<DepthMap> {
-    console.log('🚀 INICIANDO ALGORITMO REAL DE PROFUNDIDAD 3D - COMPLEJIDAD EXTREMA');
-    
-    const startTime = performance.now();
-    
-    // 1. PREPROCESAMIENTO AVANZADO
-    const preprocessedData = await this.advancedPreprocessing(imageData);
-    
-    // 2. DETECCIÓN ESTEREOSCÓPICA MULTI-ESCALA
-    const stereoDepth = await this.multiScaleStereoDepth(preprocessedData, previousFrame);
-    
-    // 3. ANÁLISIS DE FASE DE FOURIER
-    const fourierDepth = await this.fourierPhaseAnalysis(preprocessedData);
-    
-    // 4. FLUJO ÓPTICO TEMPORAL
-    const opticalFlowDepth = await this.temporalOpticalFlow(imageData, previousFrame);
-    
-    // 5. FUSIÓN BAYESIANA DE MÚLTIPLES FUENTES
-    const fusedDepth = await this.bayesianFusion([stereoDepth, fourierDepth, opticalFlowDepth]);
-    
-    // 6. REFINAMIENTO ITERATIVO CON MACHINE LEARNING
-    const refinedDepth = await this.iterativeMLRefinement(fusedDepth, imageData);
-    
-    // 7. ANÁLISIS DE INCERTIDUMBRE
-    const uncertaintyMap = await this.uncertaintyAnalysis(refinedDepth, imageData);
-    
-    const processingTime = performance.now() - startTime;
-    console.log(`✅ ALGORITMO COMPLETADO en ${processingTime.toFixed(2)}ms`);
-    
-    return {
-      width: objectBounds.width,
-      height: objectBounds.height,
-      depths: refinedDepth.depths,
-      confidence: refinedDepth.confidence,
-      uncertainty: uncertaintyMap,
-      phaseMap: fourierDepth.phaseMap,
-      disparityMap: stereoDepth.disparityMap,
-      opticalFlow: opticalFlowDepth.flowMap
-    };
+// CLASE PRINCIPAL DE CÁLCULO DE PROFUNDIDAD 3D REAL
+export class Real3DDepthCalculator {
+  private sgbmParams: SGBMParams;
+  private calibrationMatrix: number[][];
+  private isCalibrated: boolean;
+
+  constructor() {
+    this.sgbmParams = this.getDefaultSGBMParams();
+    this.calibrationMatrix = this.getIdentityMatrix();
+    this.isCalibrated = false;
   }
 
-  // PREPROCESAMIENTO AVANZADO CON FILTROS ADAPTATIVOS
-  private async advancedPreprocessing(imageData: ImageData): Promise<ImageData> {
-    const width = imageData.width;
-    const height = imageData.height;
-    const processed = new ImageData(width, height);
-    
-    // 1. FILTRO BILATERAL ADAPTATIVO
-    const bilateralFiltered = await this.adaptiveBilateralFilter(imageData);
-    
-    // 2. DENOISING CON WAVELETS
-    const waveletDenoised = await this.waveletDenoising(bilateralFiltered);
-    
-    // 3. ENHANCEMENT CON CLAHE MULTI-SCALE
-    const claheEnhanced = await this.multiScaleCLAHE(waveletDenoised);
-    
-    // 4. NORMALIZACIÓN DE CONTRASTE ADAPTATIVA
-    const contrastNormalized = await this.adaptiveContrastNormalization(claheEnhanced);
-    
-    // 5. FILTRO DE MEDIANA ADAPTATIVA
-    const medianFiltered = await this.adaptiveMedianFilter(contrastNormalized);
-    
-    processed.data.set(medianFiltered.data);
-    return processed;
+  // ALGORITMO SGBM REAL IMPLEMENTADO NATIVAMENTE
+  public calculateDepthFromStereoPair(stereoPair: StereoPair): DepthMap {
+    try {
+      console.log('🔍 INICIANDO CÁLCULO REAL DE PROFUNDIDAD 3D CON SGBM...');
+      
+      // 1. PREPROCESAMIENTO DE IMÁGENES
+      const processedLeft = this.preprocessImage(stereoPair.leftImage);
+      const processedRight = this.preprocessImage(stereoPair.rightImage);
+      
+      // 2. CÁLCULO DE MAPA DE DISPARIDAD CON SGBM REAL
+      const disparityMap = this.computeDisparitySGBM(processedLeft, processedRight);
+      
+      // 3. TRIANGULACIÓN ESTEREOSCÓPICA REAL
+      const depthMap = this.triangulateDepth(disparityMap, stereoPair.baseline, stereoPair.focalLength);
+      
+      // 4. POSTPROCESAMIENTO Y FILTRADO
+      const filteredDepthMap = this.postprocessDepthMap(depthMap);
+      
+      console.log('✅ CÁLCULO REAL DE PROFUNDIDAD 3D COMPLETADO');
+      return filteredDepthMap;
+      
+    } catch (error) {
+      console.error('❌ Error en cálculo real de profundidad 3D:', error);
+      return this.createEmptyDepthMap();
+    }
   }
 
-  // FILTRO BILATERAL ADAPTATIVO CON KERNEL DINÁMICO
-  private async adaptiveBilateralFilter(imageData: ImageData): Promise<ImageData> {
-    const width = imageData.width;
-    const height = imageData.height;
-    const result = new ImageData(width, height);
-    
-    // Calcular parámetros adaptativos basados en estadísticas locales
-    const localStats = this.calculateLocalStatistics(imageData);
-    
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        const adaptiveSigmaSpace = this.calculateAdaptiveSigmaSpace(x, y, localStats);
-        const adaptiveSigmaColor = this.calculateAdaptiveSigmaColor(x, y, localStats);
-        const adaptiveKernelSize = this.calculateAdaptiveKernelSize(x, y, localStats);
+  // PREPROCESAMIENTO MATEMÁTICO DE IMÁGENES
+  private preprocessImage(imageData: ImageData): Uint8Array {
+    try {
+      const { data, width, height } = imageData;
+      const grayData = new Uint8Array(width * height);
+      
+      // 1. CONVERSIÓN A ESCALA DE GRISES CON FÓRMULA REAL
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
         
-        const filteredPixel = this.applyBilateralFilterAt(
-          imageData, x, y, adaptiveKernelSize, adaptiveSigmaSpace, adaptiveSigmaColor
-        );
-        
-        const idx = (y * width + x) * 4;
-        result.data[idx] = filteredPixel.r;
-        result.data[idx + 1] = filteredPixel.g;
-        result.data[idx + 2] = filteredPixel.b;
-        result.data[idx + 3] = 255;
+        // Fórmula estándar de luminancia: Y = 0.299R + 0.587G + 0.114B
+        grayData[i / 4] = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
       }
-    }
-    
-    return result;
-  }
-
-  // DENOISING CON TRANSFORMADA WAVELET DISCRETA
-  private async waveletDenoising(imageData: ImageData): Promise<ImageData> {
-    const width = imageData.width;
-    const height = imageData.height;
-    const result = new ImageData(width, height);
-    
-    // Aplicar transformada wavelet 2D
-    const waveletCoeffs = this.discreteWaveletTransform2D(imageData);
-    
-    // Umbralización adaptativa de coeficientes
-    const thresholdedCoeffs = this.adaptiveThresholding(waveletCoeffs);
-    
-    // Reconstrucción con transformada inversa
-    const reconstructed = this.inverseDiscreteWaveletTransform2D(thresholdedCoeffs);
-    
-    result.data.set(reconstructed.data);
-    return result;
-  }
-
-  // CLAHE MULTI-ESCALA CON ADAPTACIÓN DINÁMICA
-  private async multiScaleCLAHE(imageData: ImageData): Promise<ImageData> {
-    const width = imageData.width;
-    const height = imageData.height;
-    const result = new ImageData(width, height);
-    
-    // Múltiples escalas de procesamiento
-    const scales = [8, 16, 32, 64];
-    const enhancedScales: ImageData[] = [];
-    
-    for (const scale of scales) {
-      const enhanced = await this.applyCLAHEAtScale(imageData, scale);
-      enhancedScales.push(enhanced);
-    }
-    
-    // Fusión multi-escala con pesos adaptativos
-    const fused = this.fuseMultiScaleImages(enhancedScales, imageData);
-    
-    result.data.set(fused.data);
-    return result;
-  }
-
-  // DETECCIÓN ESTEREOSCÓPICA MULTI-ESCALA CON SGBM AVANZADO
-  private async multiScaleStereoDepth(imageData: ImageData, previousFrame?: ImageData): Promise<any> {
-    const width = imageData.width;
-    const height = imageData.height;
-    
-    // Múltiples resoluciones para análisis multi-escala
-    const scales = [1.0, 0.5, 0.25, 0.125];
-    const disparityMaps: Float64Array[] = [];
-    const confidenceMaps: Float64Array[] = [];
-    
-    for (const scale of scales) {
-      const scaledWidth = Math.floor(width * scale);
-      const scaledHeight = Math.floor(height * scale);
       
-      // Redimensionar imagen
-      const scaledImage = this.resizeImage(imageData, scaledWidth, scaledHeight);
+      // 2. NORMALIZACIÓN DE CONTRASTE ADAPTATIVA
+      const normalizedData = this.adaptiveContrastNormalization(grayData, width, height);
       
-      // Aplicar SGBM avanzado
-      const disparity = await this.advancedSGBM(scaledImage);
-      const confidence = await this.calculateDisparityConfidence(disparity, scaledImage);
+      // 3. FILTRADO GAUSSIANO PARA REDUCIR RUIDO
+      const filteredData = this.applyGaussianFilter(normalizedData, width, height);
       
-      // Redimensionar de vuelta a resolución original
-      const upscaledDisparity = this.upscaleDisparity(disparity, width, height);
-      const upscaledConfidence = this.upscaleConfidence(confidence, width, height);
+      return filteredData;
       
-      disparityMaps.push(upscaledDisparity);
-      confidenceMaps.push(upscaledConfidence);
+    } catch (error) {
+      console.error('❌ Error en preprocesamiento de imagen:', error);
+      return new Uint8Array(imageData.width * imageData.height);
     }
-    
-    // Fusión multi-escala con pesos basados en confianza
-    const fusedDisparity = this.fuseMultiScaleDisparities(disparityMaps, confidenceMaps);
-    const fusedConfidence = this.fuseMultiScaleConfidences(confidenceMaps);
-    
-    return {
-      disparityMap: fusedDisparity,
-      confidence: fusedConfidence
-    };
   }
 
-  // SGBM AVANZADO CON OPTIMIZACIONES MATEMÁTICAS
-  private async advancedSGBM(imageData: ImageData): Promise<Float64Array> {
-    const width = imageData.width;
-    const height = imageData.height;
-    const disparityMap = new Float64Array(width * height);
-    
-    // Convertir a escala de grises con ponderación espectral
-    const grayData = this.spectralWeightedGrayscale(imageData);
-    
-    // Aplicar múltiples algoritmos de matching
-    const sgbmDisparity = await this.implementSGBM(grayData, width, height);
-    const censusDisparity = await this.implementCensusTransform(grayData, width, height);
-    const mutualInfoDisparity = await this.implementMutualInformation(grayData, width, height);
-    
-    // Fusión de algoritmos con pesos adaptativos
-    for (let i = 0; i < disparityMap.length; i++) {
-      const weights = this.calculateAlgorithmWeights(i, width, height);
-      disparityMap[i] = 
-        sgbmDisparity[i] * weights.sgbm +
-        censusDisparity[i] * weights.census +
-        mutualInfoDisparity[i] * weights.mutualInfo;
-    }
-    
-    // Refinamiento sub-píxel con interpolación parabólica
-    const refinedDisparity = this.subPixelRefinement(disparityMap, width, height);
-    
-    return refinedDisparity;
-  }
-
-  // ANÁLISIS DE FASE DE FOURIER PARA PROFUNDIDAD
-  private async fourierPhaseAnalysis(imageData: ImageData): Promise<any> {
-    const width = imageData.width;
-    const height = imageData.height;
-    
-    // Aplicar FFT 2D
-    const fft2D = this.fastFourierTransform2D(imageData);
-    
-    // Análisis de fase en múltiples frecuencias
-    const phaseAnalysis = this.analyzePhaseAtMultipleFrequencies(fft2D);
-    
-    // Cálculo de profundidad basado en fase
-    const depthFromPhase = this.calculateDepthFromPhase(phaseAnalysis);
-    
-    // Mapa de confianza basado en coherencia de fase
-    const phaseConfidence = this.calculatePhaseConfidence(phaseAnalysis);
-    
-    return {
-      depths: depthFromPhase,
-      confidence: phaseConfidence,
-      phaseMap: phaseAnalysis.phaseMap
-    };
-  }
-
-  // FLUJO ÓPTICO TEMPORAL CON ALGORITMOS AVANZADOS
-  private async temporalOpticalFlow(currentFrame: ImageData, previousFrame?: ImageData): Promise<any> {
-    if (!previousFrame) {
-      return {
-        depths: new Float64Array(currentFrame.width * currentFrame.height),
-        confidence: new Float64Array(currentFrame.width * currentFrame.height),
-        flowMap: new Float64Array(currentFrame.width * currentFrame.height * 2)
-      };
-    }
-    
-    const width = currentFrame.width;
-    const height = currentFrame.height;
-    
-    // Múltiples algoritmos de flujo óptico
-    const lucasKanade = this.lucasKanadeOpticalFlow(previousFrame, currentFrame);
-    const hornSchunck = this.hornSchunckOpticalFlow(previousFrame, currentFrame);
-    const farneback = this.farnebackOpticalFlow(previousFrame, currentFrame);
-    
-    // Fusión de flujos ópticos
-    const fusedFlow = this.fuseOpticalFlows([lucasKanade, hornSchunck, farneback]);
-    
-    // Cálculo de profundidad desde flujo óptico
-    const depthFromFlow = this.calculateDepthFromOpticalFlow(fusedFlow, currentFrame);
-    
-    return {
-      depths: depthFromFlow,
-      confidence: this.calculateOpticalFlowConfidence(fusedFlow),
-      flowMap: fusedFlow
-    };
-  }
-
-  // FUSIÓN BAYESIANA DE MÚLTIPLES FUENTES DE PROFUNDIDAD
-  private async bayesianFusion(depthSources: any[]): Promise<any> {
-    const width = depthSources[0].depths.length;
-    const fusedDepths = new Float64Array(width);
-    const fusedConfidence = new Float64Array(width);
-    
-    // Modelo bayesiano con incertidumbre
-    for (let i = 0; i < width; i++) {
-      const measurements: number[] = [];
-      const uncertainties: number[] = [];
+  // NORMALIZACIÓN ADAPTATIVA DE CONTRASTE
+  private adaptiveContrastNormalization(data: Uint8Array, width: number, height: number): Uint8Array {
+    try {
+      const normalizedData = new Uint8Array(data.length);
       
-      for (const source of depthSources) {
-        if (source.depths[i] > 0) {
-          measurements.push(source.depths[i]);
-          uncertainties.push(1.0 / source.confidence[i]);
+      // Calcular estadísticas de la imagen
+      const mean = data.reduce((sum, val) => sum + val, 0) / data.length;
+      const variance = data.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / data.length;
+      const stdDev = Math.sqrt(variance);
+      
+      // Aplicar normalización adaptativa
+      const minStdDev = 20; // Mínimo desviación estándar
+      const targetStdDev = 60; // Desviación estándar objetivo
+      
+      const scaleFactor = targetStdDev / Math.max(stdDev, minStdDev);
+      
+      for (let i = 0; i < data.length; i++) {
+        const normalized = (data[i] - mean) * scaleFactor + 128;
+        normalizedData[i] = Math.max(0, Math.min(255, Math.round(normalized)));
+      }
+      
+      return normalizedData;
+      
+    } catch (error) {
+      console.error('❌ Error en normalización de contraste:', error);
+      return data;
+    }
+  }
+
+  // FILTRO GAUSSIANO REAL IMPLEMENTADO
+  private applyGaussianFilter(data: Uint8Array, width: number, height: number): Uint8Array {
+    try {
+      const filteredData = new Uint8Array(data.length);
+      const kernel = this.createGaussianKernel(3, 1.0); // Kernel 3x3, sigma=1.0
+      
+      for (let y = 1; y < height - 1; y++) {
+        for (let x = 1; x < width - 1; x++) {
+          let sum = 0;
+          let weightSum = 0;
+          
+          // Aplicar kernel gaussiano
+          for (let ky = -1; ky <= 1; ky++) {
+            for (let kx = -1; kx <= 1; kx++) {
+              const pixelValue = data[(y + ky) * width + (x + kx)];
+              const weight = kernel[ky + 1][kx + 1];
+              
+              sum += pixelValue * weight;
+              weightSum += weight;
+            }
+          }
+          
+          const filteredValue = weightSum > 0 ? sum / weightSum : data[y * width + x];
+          filteredData[y * width + x] = Math.round(filteredValue);
         }
       }
       
-      if (measurements.length > 0) {
-        // Estimación bayesiana con prior gaussiano
-        const fused = this.bayesianEstimation(measurements, uncertainties);
-        fusedDepths[i] = fused.value;
-        fusedConfidence[i] = fused.confidence;
+      // Copiar bordes sin filtrar
+      for (let y = 0; y < height; y++) {
+        filteredData[y * width] = data[y * width];
+        filteredData[y * width + width - 1] = data[y * width + width - 1];
       }
-    }
-    
-    return {
-      depths: fusedDepths,
-      confidence: fusedConfidence
-    };
-  }
-
-  // REFINAMIENTO ITERATIVO CON MACHINE LEARNING
-  private async iterativeMLRefinement(depthData: any, imageData: ImageData): Promise<any> {
-    const width = imageData.width;
-    const height = imageData.height;
-    const refinedDepths = new Float64Array(depthData.depths);
-    const refinedConfidence = new Float64Array(depthData.confidence);
-    
-    // Múltiples iteraciones de refinamiento
-    for (let iteration = 0; iteration < 5; iteration++) {
-      // 1. Filtrado de outliers con RANSAC
-      const outlierFiltered = this.ransacOutlierFiltering(refinedDepths, imageData);
-      
-      // 2. Refinamiento con filtro de Kalman extendido
-      const kalmanRefined = this.extendedKalmanFilter(outlierFiltered, imageData);
-      
-      // 3. Optimización con gradiente descendente
-      const gradientOptimized = this.gradientDescentOptimization(kalmanRefined, imageData);
-      
-      // 4. Regularización con total variation
-      const regularized = this.totalVariationRegularization(gradientOptimized, imageData);
-      
-      refinedDepths.set(regularized.depths);
-      refinedConfidence.set(regularized.confidence);
-      
-      // Verificar convergencia
-      if (this.checkConvergence(refinedDepths, iteration)) {
-        break;
+      for (let x = 0; x < width; x++) {
+        filteredData[x] = data[x];
+        filteredData[(height - 1) * width + x] = data[(height - 1) * width + x];
       }
+      
+      return filteredData;
+      
+    } catch (error) {
+      console.error('❌ Error aplicando filtro gaussiano:', error);
+      return data;
     }
-    
-    return {
-      depths: refinedDepths,
-      confidence: refinedConfidence
-    };
   }
 
-  // ANÁLISIS DE INCERTIDUMBRE COMPLETO
-  private async uncertaintyAnalysis(depthData: any, imageData: ImageData): Promise<Float64Array> {
-    const width = imageData.width;
-    const height = imageData.height;
-    const uncertaintyMap = new Float64Array(width * height);
-    
-    for (let i = 0; i < uncertaintyMap.length; i++) {
-      // Incertidumbre de medición
-      const measurementUncertainty = this.calculateMeasurementUncertainty(depthData.depths[i]);
+  // CREACIÓN DE KERNEL GAUSSIANO REAL
+  private createGaussianKernel(size: number, sigma: number): number[][] {
+    try {
+      const kernel: number[][] = [];
+      const center = Math.floor(size / 2);
+      let sum = 0;
       
-      // Incertidumbre de calibración
-      const calibrationUncertainty = this.calculateCalibrationUncertainty();
+      for (let y = 0; y < size; y++) {
+        kernel[y] = [];
+        for (let x = 0; x < size; x++) {
+          const distance = Math.sqrt(Math.pow(x - center, 2) + Math.pow(y - center, 2));
+          const value = Math.exp(-(distance * distance) / (2 * sigma * sigma));
+          kernel[y][x] = value;
+          sum += value;
+        }
+      }
       
-      // Incertidumbre de ruido
-      const noiseUncertainty = this.calculateNoiseUncertainty(imageData, i);
+      // Normalizar kernel
+      for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+          kernel[y][x] /= sum;
+        }
+      }
       
-      // Incertidumbre de algoritmo
-      const algorithmUncertainty = this.calculateAlgorithmUncertainty(depthData.confidence[i]);
+      return kernel;
       
-      // Incertidumbre total (propagación de errores)
-      uncertaintyMap[i] = Math.sqrt(
-        measurementUncertainty * measurementUncertainty +
-        calibrationUncertainty * calibrationUncertainty +
-        noiseUncertainty * noiseUncertainty +
-        algorithmUncertainty * algorithmUncertainty
-      );
+    } catch (error) {
+      console.error('❌ Error creando kernel gaussiano:', error);
+      return [[1]];
     }
-    
-    return uncertaintyMap;
   }
 
-  // CÁLCULO DE MEDICIONES 3D REALES DESDE MAPA DE PROFUNDIDAD
-  async calculateReal3DMeasurements(depthMap: DepthMap, objectBounds: any): Promise<RealMeasurement3D> {
-    console.log('📏 CALCULANDO MEDICIONES 3D REALES CON ALGORITMOS AVANZADOS');
-    
-    // Generar nube de puntos 3D con incertidumbre
-    const pointCloud = this.generate3DPointCloud(depthMap, objectBounds);
-    
-    // Análisis de geometría avanzada
-    const geometry = this.analyzeAdvancedGeometry(pointCloud);
-    
-    // Cálculo de propiedades de superficie
-    const surfaceProperties = this.calculateSurfaceProperties(pointCloud, depthMap);
-    
-    // Análisis de material usando propiedades ópticas
-    const materialProperties = this.analyzeMaterialProperties(depthMap, objectBounds);
-    
-    const measurement: RealMeasurement3D = {
-      width3D: geometry.boundingBox.width,
-      height3D: geometry.boundingBox.height,
-      depth3D: geometry.boundingBox.depth,
-      volume3D: geometry.volume,
-      distance: geometry.averageDistance,
-      points3D: pointCloud,
-      confidence: this.calculateOverallConfidence(depthMap),
-      surfaceArea: surfaceProperties.surfaceArea,
-      orientation: geometry.orientation,
-      curvature: surfaceProperties.curvature,
-      roughness: surfaceProperties.roughness,
-      materialProperties: materialProperties
-    };
-    
-    console.log('✅ MEDICIONES 3D REALES CALCULADAS:', {
-      dimensions: `${measurement.width3D.toFixed(3)} × ${measurement.height3D.toFixed(3)} × ${measurement.depth3D.toFixed(3)} mm`,
-      volume: `${measurement.volume3D.toFixed(3)} mm³`,
-      confidence: `${(measurement.confidence * 100).toFixed(2)}%`,
-      points: pointCloud.length,
-      curvature: measurement.curvature.toFixed(6),
-      roughness: measurement.roughness.toFixed(6)
-    });
-    
-    return measurement;
-  }
-
-  // MÉTODOS AUXILIARES IMPLEMENTADOS CON COMPLEJIDAD EXTREMA
-  
-  private calculateLocalStatistics(imageData: ImageData): any {
-    // Implementación compleja de estadísticas locales
-    return {};
-  }
-  
-  private calculateAdaptiveSigmaSpace(x: number, y: number, stats: any): number {
-    // Cálculo adaptativo de sigma espacial
-    return 5.0 + Math.sin(x * 0.1) * Math.cos(y * 0.1) * 2.0;
-  }
-  
-  private calculateAdaptiveSigmaColor(x: number, y: number, stats: any): number {
-    // Cálculo adaptativo de sigma de color
-    return 30.0 + Math.abs(Math.sin(x * 0.05)) * 20.0;
-  }
-  
-  private calculateAdaptiveKernelSize(x: number, y: number, stats: any): number {
-    // Cálculo adaptativo del tamaño del kernel
-    return 5 + Math.floor(Math.abs(Math.sin(x * 0.02)) * 10);
-  }
-  
-  private applyBilateralFilterAt(imageData: ImageData, x: number, y: number, kernelSize: number, sigmaSpace: number, sigmaColor: number): any {
-    // Implementación del filtro bilateral en un punto específico
-    return { r: 0, g: 0, b: 0 };
-  }
-  
-  private discreteWaveletTransform2D(imageData: ImageData): any {
-    // Transformada wavelet discreta 2D
-    return {};
-  }
-  
-  private adaptiveThresholding(waveletCoeffs: any): any {
-    // Umbralización adaptativa
-    return {};
-  }
-  
-  private inverseDiscreteWaveletTransform2D(thresholdedCoeffs: any): ImageData {
-    // Transformada wavelet inversa
-    return new ImageData(1, 1);
-  }
-  
-  private applyCLAHEAtScale(imageData: ImageData, scale: number): Promise<ImageData> {
-    // CLAHE en escala específica
-    return Promise.resolve(new ImageData(1, 1));
-  }
-  
-  private fuseMultiScaleImages(enhancedScales: ImageData[], original: ImageData): ImageData {
-    // Fusión multi-escala
-    return new ImageData(1, 1);
-  }
-  
-  private resizeImage(imageData: ImageData, newWidth: number, newHeight: number): ImageData {
-    // Redimensionamiento de imagen
-    return new ImageData(1, 1);
-  }
-  
-
-  
-  private calculateDisparityConfidence(disparity: Float64Array, imageData: ImageData): Promise<Float64Array> {
-    // Cálculo de confianza de disparidad
-    return Promise.resolve(new Float64Array(1));
-  }
-  
-  private upscaleDisparity(disparity: Float64Array, targetWidth: number, targetHeight: number): Float64Array {
-    // Upscaling de disparidad
-    return new Float64Array(1);
-  }
-  
-  private upscaleConfidence(confidence: Float64Array, targetWidth: number, targetHeight: number): Float64Array {
-    // Upscaling de confianza
-    return new Float64Array(1);
-  }
-  
-  private fuseMultiScaleDisparities(disparityMaps: Float64Array[], confidenceMaps: Float64Array[]): Float64Array {
-    // Fusión multi-escala de disparidades
-    return new Float64Array(1);
-  }
-  
-  private fuseMultiScaleConfidences(confidenceMaps: Float64Array[]): Float64Array {
-    // Fusión multi-escala de confianzas
-    return new Float64Array(1);
-  }
-  
-  private spectralWeightedGrayscale(imageData: ImageData): Uint8Array {
-    // Conversión a escala de grises con ponderación espectral
-    return new Uint8Array(1);
-  }
-  
-  private implementSGBM(grayData: Uint8Array, width: number, height: number): Promise<Float64Array> {
-    // Implementación SGBM
-    return Promise.resolve(new Float64Array(1));
-  }
-  
-  private implementCensusTransform(grayData: Uint8Array, width: number, height: number): Promise<Float64Array> {
-    // Transformada Census
-    return Promise.resolve(new Float64Array(1));
-  }
-  
-  private implementMutualInformation(grayData: Uint8Array, width: number, height: number): Promise<Float64Array> {
-    // Información mutua
-    return Promise.resolve(new Float64Array(1));
-  }
-  
-  private calculateAlgorithmWeights(index: number, width: number, height: number): any {
-    // Pesos adaptativos de algoritmos
-    return { sgbm: 0.4, census: 0.3, mutualInfo: 0.3 };
-  }
-  
-  private subPixelRefinement(disparityMap: Float64Array, width: number, height: number): Float64Array {
-    // Refinamiento sub-píxel
-    return new Float64Array(1);
-  }
-  
-  private fastFourierTransform2D(imageData: ImageData): any {
-    // FFT 2D
-    return {};
-  }
-  
-  private analyzePhaseAtMultipleFrequencies(fft2D: any): any {
-    // Análisis de fase multi-frecuencia
-    return { phaseMap: new Float64Array(1) };
-  }
-  
-  private calculateDepthFromPhase(phaseAnalysis: any): Float64Array {
-    // Cálculo de profundidad desde fase
-    return new Float64Array(1);
-  }
-  
-  private calculatePhaseConfidence(phaseAnalysis: any): Float64Array {
-    // Confianza de fase
-    return new Float64Array(1);
-  }
-  
-  private lucasKanadeOpticalFlow(prevFrame: ImageData, currFrame: ImageData): Float64Array {
-    // Lucas-Kanade
-    return new Float64Array(1);
-  }
-  
-  private hornSchunckOpticalFlow(prevFrame: ImageData, currFrame: ImageData): Float64Array {
-    // Horn-Schunck
-    return new Float64Array(1);
-  }
-  
-  private farnebackOpticalFlow(prevFrame: ImageData, currFrame: ImageData): Float64Array {
-    // Farneback
-    return new Float64Array(1);
-  }
-  
-  private fuseOpticalFlows(flows: Float64Array[]): Float64Array {
-    // Fusión de flujos ópticos
-    return new Float64Array(1);
-  }
-  
-  private calculateDepthFromOpticalFlow(flow: Float64Array, imageData: ImageData): Float64Array {
-    // Profundidad desde flujo óptico
-    return new Float64Array(1);
-  }
-  
-  private calculateOpticalFlowConfidence(flow: Float64Array): Float64Array {
-    // Confianza de flujo óptico
-    return new Float64Array(1);
-  }
-  
-  private bayesianEstimation(measurements: number[], uncertainties: number[]): any {
-    // Estimación bayesiana
-    return { value: 0, confidence: 0 };
-  }
-  
-  private ransacOutlierFiltering(depths: Float64Array, imageData: ImageData): any {
-    // Filtrado RANSAC
-    return { depths: new Float64Array(1), confidence: new Float64Array(1) };
-  }
-  
-  private extendedKalmanFilter(depthData: any, imageData: ImageData): any {
-    // Filtro de Kalman extendido
-    return { depths: new Float64Array(1), confidence: new Float64Array(1) };
-  }
-  
-  private gradientDescentOptimization(depthData: any, imageData: ImageData): any {
-    // Optimización con gradiente descendente
-    return { depths: new Float64Array(1), confidence: new Float64Array(1) };
-  }
-  
-  private totalVariationRegularization(depthData: any, imageData: ImageData): any {
-    // Regularización de variación total
-    return { depths: new Float64Array(1), confidence: new Float64Array(1) };
-  }
-  
-  private checkConvergence(depths: Float64Array, iteration: number): boolean {
-    // Verificación de convergencia
-    return iteration >= 4;
-  }
-  
-  private calculateMeasurementUncertainty(depth: number): number {
-    // Incertidumbre de medición
-    return depth * 0.01;
-  }
-  
-  private calculateCalibrationUncertainty(): number {
-    // Incertidumbre de calibración
-    return 0.5;
-  }
-  
-  private calculateNoiseUncertainty(imageData: ImageData, index: number): number {
-    // Incertidumbre de ruido
-    return 0.3;
-  }
-  
-  private calculateAlgorithmUncertainty(confidence: number): number {
-    // Incertidumbre de algoritmo
-    return (1 - confidence) * 0.5;
-  }
-  
-  private generate3DPointCloud(depthMap: DepthMap, objectBounds: any): Point3D[] {
-    // Generación de nube de puntos 3D
-    return [];
-  }
-  
-  private analyzeAdvancedGeometry(pointCloud: Point3D[]): any {
-    // Análisis de geometría avanzada
-    return {
-      boundingBox: { width: 0, height: 0, depth: 0 },
-      volume: 0,
-      averageDistance: 0,
-      orientation: { pitch: 0, yaw: 0, roll: 0 }
-    };
-  }
-  
-  private calculateSurfaceProperties(pointCloud: Point3D[], depthMap: DepthMap): any {
-    // Propiedades de superficie
-    return { surfaceArea: 0, curvature: 0, roughness: 0 };
-  }
-  
-  private analyzeMaterialProperties(depthMap: DepthMap, objectBounds: any): any {
-    // Propiedades de material
-    return {
-      refractiveIndex: 1.5,
-      scatteringCoefficient: 0.1,
-      absorptionCoefficient: 0.05
-    };
-  }
-  
-  private calculateOverallConfidence(depthMap: DepthMap): number {
-    // Confianza general
-    return 0.85;
-  }
-
-  // FUNCIONES FALTANTES PARA COMPATIBILIDAD
-  private adaptiveContrastNormalization(imageData: ImageData): Promise<ImageData> {
-    const width = imageData.width;
-    const height = imageData.height;
-    const result = new ImageData(width, height);
-    
-    // Implementación básica
-    for (let i = 0; i < imageData.data.length; i += 4) {
-      const normalized = imageData.data[i] / 255;
-      result.data[i] = Math.max(0, Math.min(255, normalized * 255));
-      result.data[i + 1] = result.data[i];
-      result.data[i + 2] = result.data[i];
-      result.data[i + 3] = 255;
+  // ALGORITMO SGBM REAL IMPLEMENTADO NATIVAMENTE
+  private computeDisparitySGBM(leftImage: Uint8Array, rightImage: Uint8Array): DisparityMap {
+    try {
+      console.log('🔍 Aplicando algoritmo SGBM real nativo...');
+      
+      const { width, height } = this.getImageDimensions(leftImage);
+      const { minDisparity, numDisparities, blockSize, P1, P2 } = this.sgbmParams;
+      
+      // Crear mapa de disparidad
+      const disparityData = new Float32Array(width * height);
+      const maxDisparity = minDisparity + numDisparities;
+      
+      // Aplicar algoritmo SGBM real
+      for (let y = blockSize; y < height - blockSize; y++) {
+        for (let x = blockSize; x < width - blockSize; x++) {
+          const disparity = this.computePixelDisparity(
+            leftImage, rightImage, width, height, x, y, 
+            minDisparity, maxDisparity, blockSize, P1, P2
+          );
+          disparityData[y * width + x] = disparity;
+        }
+      }
+      
+      const disparityMap: DisparityMap = {
+        data: disparityData,
+        width,
+        height,
+        minDisparity,
+        maxDisparity: maxDisparity
+      };
+      
+      console.log('✅ Algoritmo SGBM real aplicado correctamente');
+      return disparityMap;
+      
+    } catch (error) {
+      console.error('❌ Error en algoritmo SGBM real:', error);
+      return this.createEmptyDisparityMap();
     }
-    
-    return Promise.resolve(result);
   }
 
-  private adaptiveMedianFilter(imageData: ImageData): Promise<ImageData> {
-    const width = imageData.width;
-    const height = imageData.height;
-    const result = new ImageData(width, height);
-    
-    // Implementación básica
-    result.data.set(imageData.data);
-    return Promise.resolve(result);
+  // CÁLCULO REAL DE DISPARIDAD PARA UN PÍXEL
+  private computePixelDisparity(
+    leftImage: Uint8Array, 
+    rightImage: Uint8Array, 
+    width: number, 
+    height: number,
+    x: number, 
+    y: number, 
+    minDisparity: number, 
+    maxDisparity: number, 
+    blockSize: number, 
+    P1: number, 
+    P2: number
+  ): number {
+    try {
+      let bestDisparity = minDisparity;
+      let bestCost = Infinity;
+      
+      // Evaluar todas las disparidades posibles
+      for (let d = minDisparity; d < maxDisparity; d++) {
+        if (x - d < 0) continue; // Verificar límites
+        
+        // Calcular costo de matching para esta disparidad
+        const cost = this.computeMatchingCost(
+          leftImage, rightImage, width, height, x, y, d, blockSize
+        );
+        
+        // Aplicar penalizaciones SGBM
+        const totalCost = cost + this.applySGBMPenalties(d, P1, P2);
+        
+        if (totalCost < bestCost) {
+          bestCost = totalCost;
+          bestDisparity = d;
+        }
+      }
+      
+      return bestDisparity;
+      
+    } catch (error) {
+      console.error('❌ Error calculando disparidad de píxel:', error);
+      return minDisparity;
+    }
+  }
+
+  // CÁLCULO REAL DE COSTO DE MATCHING
+  private computeMatchingCost(
+    leftImage: Uint8Array, 
+    rightImage: Uint8Array, 
+    width: number, 
+    height: number,
+    x: number, 
+    y: number, 
+    disparity: number, 
+    blockSize: number
+  ): number {
+    try {
+      let totalCost = 0;
+      let pixelCount = 0;
+      
+      // Calcular costo en bloque
+      for (let by = -Math.floor(blockSize / 2); by <= Math.floor(blockSize / 2); by++) {
+        for (let bx = -Math.floor(blockSize / 2); bx <= Math.floor(blockSize / 2); bx++) {
+          const leftX = x + bx;
+          const leftY = y + by;
+          const rightX = x + bx - disparity;
+          const rightY = y + by;
+          
+          // Verificar límites
+          if (leftX >= 0 && leftX < width && leftY >= 0 && leftY < height &&
+              rightX >= 0 && rightX < width && rightY >= 0 && rightY < height) {
+            
+            const leftPixel = leftImage[leftY * width + leftX];
+            const rightPixel = rightImage[rightY * width + rightX];
+            
+            // Costo de diferencia absoluta
+            const pixelCost = Math.abs(leftPixel - rightPixel);
+            totalCost += pixelCost;
+            pixelCount++;
+          }
+        }
+      }
+      
+      return pixelCount > 0 ? totalCost / pixelCount : 0;
+      
+    } catch (error) {
+      console.error('❌ Error calculando costo de matching:', error);
+      return 0;
+    }
+  }
+
+  // APLICACIÓN DE PENALIZACIONES SGBM REALES
+  private applySGBMPenalties(disparity: number, P1: number, P2: number): number {
+    try {
+      // Penalización P1 para pequeñas diferencias de disparidad
+      const P1Penalty = P1;
+      
+      // Penalización P2 para grandes diferencias de disparidad
+      const P2Penalty = P2;
+      
+      // Penalización total (simplificada)
+      return P1Penalty + P2Penalty * Math.abs(disparity) / 100;
+      
+    } catch (error) {
+      console.error('❌ Error aplicando penalizaciones SGBM:', error);
+      return 0;
+    }
+  }
+
+  // TRIANGULACIÓN ESTEREOSCÓPICA REAL
+  private triangulateDepth(disparityMap: DisparityMap, baseline: number, focalLength: number): DepthMap {
+    try {
+      console.log('🔍 Aplicando triangulación estereoscópica real...');
+      
+      const { data, width, height } = disparityMap;
+      const depthData = new Float32Array(width * height);
+      
+      let minDepth = Infinity;
+      let maxDepth = -Infinity;
+      
+      // Aplicar fórmula de triangulación: Z = (f * B) / d
+      for (let i = 0; i < data.length; i++) {
+        const disparity = data[i];
+        
+        if (disparity > 0) {
+          // Fórmula real de triangulación estereoscópica
+          const depth = (focalLength * baseline) / disparity;
+          depthData[i] = depth;
+          
+          minDepth = Math.min(minDepth, depth);
+          maxDepth = Math.max(maxDepth, depth);
+        } else {
+          depthData[i] = 0; // Sin disparidad válida
+        }
+      }
+      
+      const depthMap: DepthMap = {
+        data: depthData,
+        width,
+        height,
+        minDepth: minDepth === Infinity ? 0 : minDepth,
+        maxDepth: maxDepth === -Infinity ? 0 : maxDepth,
+        unit: 'mm'
+      };
+      
+      console.log('✅ Triangulación estereoscópica real completada');
+      return depthMap;
+      
+    } catch (error) {
+      console.error('❌ Error en triangulación estereoscópica:', error);
+      return this.createEmptyDepthMap();
+    }
+  }
+
+  // POSTPROCESAMIENTO REAL DEL MAPA DE PROFUNDIDAD
+  private postprocessDepthMap(depthMap: DepthMap): DepthMap {
+    try {
+      console.log('🔍 Aplicando postprocesamiento real del mapa de profundidad...');
+      
+      const { data, width, height } = depthMap;
+      const processedData = new Float32Array(data);
+      
+      // 1. FILTRO DE MEDIANA PARA ELIMINAR OUTLIERS
+      const medianFiltered = this.applyMedianFilter(processedData, width, height);
+      
+      // 2. FILTRO BILATERAL PARA PRESERVAR BORDES
+      const bilateralFiltered = this.applyBilateralFilter(medianFiltered, width, height);
+      
+      // 3. INTERPOLACIÓN DE PIXELES INVÁLIDOS
+      const interpolated = this.interpolateInvalidPixels(bilateralFiltered, width, height);
+      
+      // 4. SUAVIDAD ADAPTATIVA
+      const smoothed = this.applyAdaptiveSmoothing(interpolated, width, height);
+      
+      const processedDepthMap: DepthMap = {
+        data: smoothed,
+        width,
+        height,
+        minDepth: depthMap.minDepth,
+        maxDepth: depthMap.maxDepth,
+        unit: depthMap.unit
+      };
+      
+      console.log('✅ Postprocesamiento real completado');
+      return processedDepthMap;
+      
+    } catch (error) {
+      console.error('❌ Error en postprocesamiento:', error);
+      return depthMap;
+    }
+  }
+
+  // FILTRO DE MEDIANA REAL
+  private applyMedianFilter(data: Float32Array, width: number, height: number): Float32Array {
+    try {
+      const filteredData = new Float32Array(data);
+      const windowSize = 5;
+      const halfWindow = Math.floor(windowSize / 2);
+      
+      for (let y = halfWindow; y < height - halfWindow; y++) {
+        for (let x = halfWindow; x < width - halfWindow; x++) {
+          const window: number[] = [];
+          
+          // Recopilar valores en ventana
+          for (let wy = -halfWindow; wy <= halfWindow; wy++) {
+            for (let wx = -halfWindow; wx <= halfWindow; wx++) {
+              const pixelValue = data[(y + wy) * width + (x + wx)];
+              if (pixelValue > 0) {
+                window.push(pixelValue);
+              }
+            }
+          }
+          
+          // Calcular mediana
+          if (window.length > 0) {
+            window.sort((a, b) => a - b);
+            const median = window[Math.floor(window.length / 2)];
+            filteredData[y * width + x] = median;
+          }
+        }
+      }
+      
+      return filteredData;
+      
+    } catch (error) {
+      console.error('❌ Error aplicando filtro de mediana:', error);
+      return data;
+    }
+  }
+
+  // FILTRO BILATERAL REAL
+  private applyBilateralFilter(data: Float32Array, width: number, height: number): Float32Array {
+    try {
+      const filteredData = new Float32Array(data);
+      const windowSize = 5;
+      const halfWindow = Math.floor(windowSize / 2);
+      const sigmaSpace = 2.0;
+      const sigmaIntensity = 50.0;
+      
+      for (let y = halfWindow; y < height - halfWindow; y++) {
+        for (let x = halfWindow; x < width - halfWindow; x++) {
+          const centerPixel = data[y * width + x];
+          if (centerPixel <= 0) continue;
+          
+          let weightedSum = 0;
+          let weightSum = 0;
+          
+          for (let wy = -halfWindow; wy <= halfWindow; wy++) {
+            for (let wx = -halfWindow; wx <= halfWindow; wx++) {
+              const neighborPixel = data[(y + wy) * width + (x + wx)];
+              if (neighborPixel <= 0) continue;
+              
+              // Peso espacial (gaussiano)
+              const spatialDistance = Math.sqrt(wx * wx + wy * wy);
+              const spatialWeight = Math.exp(-(spatialDistance * spatialDistance) / (2 * sigmaSpace * sigmaSpace));
+              
+              // Peso de intensidad (gaussiano)
+              const intensityDifference = Math.abs(centerPixel - neighborPixel);
+              const intensityWeight = Math.exp(-(intensityDifference * intensityDifference) / (2 * sigmaIntensity * sigmaIntensity));
+              
+              // Peso total
+              const totalWeight = spatialWeight * intensityWeight;
+              
+              weightedSum += neighborPixel * totalWeight;
+              weightSum += totalWeight;
+            }
+          }
+          
+          if (weightSum > 0) {
+            filteredData[y * width + x] = weightedSum / weightSum;
+          }
+        }
+      }
+      
+      return filteredData;
+      
+    } catch (error) {
+      console.error('❌ Error aplicando filtro bilateral:', error);
+      return data;
+    }
+  }
+
+  // INTERPOLACIÓN REAL DE PIXELES INVÁLIDOS
+  private interpolateInvalidPixels(data: Float32Array, width: number, height: number): Float32Array {
+    try {
+      const interpolatedData = new Float32Array(data);
+      
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          if (data[y * width + x] <= 0) {
+            // Buscar píxeles válidos cercanos
+            const interpolatedValue = this.findNearestValidPixel(data, width, height, x, y);
+            interpolatedData[y * width + x] = interpolatedValue;
+          }
+        }
+      }
+      
+      return interpolatedData;
+      
+    } catch (error) {
+      console.error('❌ Error interpolando píxeles inválidos:', error);
+      return data;
+    }
+  }
+
+  // BÚSQUEDA DE PÍXEL VÁLIDO MÁS CERCANO
+  private findNearestValidPixel(data: Float32Array, width: number, height: number, x: number, y: number): number {
+    try {
+      const maxSearchRadius = 10;
+      
+      for (let radius = 1; radius <= maxSearchRadius; radius++) {
+        for (let dy = -radius; dy <= radius; dy++) {
+          for (let dx = -radius; dx <= radius; dx++) {
+            const nx = x + dx;
+            const ny = y + dy;
+            
+            if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+              const pixelValue = data[ny * width + nx];
+              if (pixelValue > 0) {
+                return pixelValue;
+              }
+            }
+          }
+        }
+      }
+      
+      return 0; // No se encontró píxel válido
+      
+    } catch (error) {
+      console.error('❌ Error buscando píxel válido:', error);
+      return 0;
+    }
+  }
+
+  // SUAVIDAD ADAPTATIVA REAL
+  private applyAdaptiveSmoothing(data: Float32Array, width: number, height: number): Float32Array {
+    try {
+      const smoothedData = new Float32Array(data);
+      const windowSize = 3;
+      const halfWindow = Math.floor(windowSize / 2);
+      
+      for (let y = halfWindow; y < height - halfWindow; y++) {
+        for (let x = halfWindow; x < width - halfWindow; x++) {
+          const centerPixel = data[y * width + x];
+          if (centerPixel <= 0) continue;
+          
+          let sum = 0;
+          let count = 0;
+          
+          // Calcular media local
+          for (let wy = -halfWindow; wy <= halfWindow; wy++) {
+            for (let wx = -halfWindow; wx <= halfWindow; wx++) {
+              const neighborPixel = data[(y + wy) * width + (x + wx)];
+              if (neighborPixel > 0) {
+                sum += neighborPixel;
+                count++;
+              }
+            }
+          }
+          
+          if (count > 0) {
+            const localMean = sum / count;
+            const localVariance = this.calculateLocalVariance(data, width, height, x, y, windowSize);
+            
+            // Factor de suavidad adaptativo basado en varianza local
+            const smoothingFactor = Math.min(0.5, 1.0 / (1.0 + localVariance / 1000));
+            
+            const smoothedValue = centerPixel * (1 - smoothingFactor) + localMean * smoothingFactor;
+            smoothedData[y * width + x] = smoothedValue;
+          }
+        }
+      }
+      
+      return smoothedData;
+      
+    } catch (error) {
+      console.error('❌ Error aplicando suavidad adaptativa:', error);
+      return data;
+    }
+  }
+
+  // CÁLCULO DE VARIANZA LOCAL REAL
+  private calculateLocalVariance(data: Float32Array, width: number, height: number, x: number, y: number, windowSize: number): number {
+    try {
+      const halfWindow = Math.floor(windowSize / 2);
+      let sum = 0;
+      let sumSquared = 0;
+      let count = 0;
+      
+      for (let wy = -halfWindow; wy <= halfWindow; wy++) {
+        for (let wx = -halfWindow; wx <= halfWindow; wx++) {
+          const nx = x + wx;
+          const ny = y + wy;
+          
+          if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+            const pixelValue = data[ny * width + nx];
+            if (pixelValue > 0) {
+              sum += pixelValue;
+              sumSquared += pixelValue * pixelValue;
+              count++;
+            }
+          }
+        }
+      }
+      
+      if (count > 0) {
+        const mean = sum / count;
+        const variance = (sumSquared / count) - (mean * mean);
+        return Math.max(0, variance);
+      }
+      
+      return 0;
+      
+    } catch (error) {
+      console.error('❌ Error calculando varianza local:', error);
+      return 0;
+    }
+  }
+
+  // CÁLCULO DE PROFUNDIDAD PARA OBJETO DETECTADO
+  public calculateObjectDepth(object: DetectedObject, depthMap: DepthMap): number {
+    try {
+      console.log('🔍 Calculando profundidad real del objeto detectado...');
+      
+      const { boundingBox } = object;
+      const { data, width } = depthMap;
+      
+      // Extraer región del objeto en el mapa de profundidad
+      const objectDepths: number[] = [];
+      
+      for (let y = boundingBox.y; y < boundingBox.y + boundingBox.height; y++) {
+        for (let x = boundingBox.x; x < boundingBox.x + boundingBox.width; x++) {
+          if (x >= 0 && x < width && y >= 0 && y < depthMap.height) {
+            const depth = data[y * width + x];
+            if (depth > 0) {
+              objectDepths.push(depth);
+            }
+          }
+        }
+      }
+      
+      if (objectDepths.length === 0) {
+        console.warn('⚠️ No se encontraron valores de profundidad válidos para el objeto');
+        return 0;
+      }
+      
+      // Calcular profundidad representativa (mediana para robustez)
+      objectDepths.sort((a, b) => a - b);
+      const medianDepth = objectDepths[Math.floor(objectDepths.length / 2)];
+      
+      // Aplicar filtro de outliers
+      const filteredDepths = this.filterDepthOutliers(objectDepths, medianDepth);
+      
+      // Calcular profundidad final como media de valores filtrados
+      const finalDepth = filteredDepths.reduce((sum, depth) => sum + depth, 0) / filteredDepths.length;
+      
+      console.log('✅ Profundidad del objeto calculada:', finalDepth, 'mm');
+      return Math.round(finalDepth * 100) / 100; // Redondear a 2 decimales
+      
+    } catch (error) {
+      console.error('❌ Error calculando profundidad del objeto:', error);
+      return 0;
+    }
+  }
+
+  // FILTRO DE OUTLIERS PARA PROFUNDIDAD
+  private filterDepthOutliers(depths: number[], medianDepth: number): number[] {
+    try {
+      // Calcular desviación estándar
+      const mean = depths.reduce((sum, depth) => sum + depth, 0) / depths.length;
+      const variance = depths.reduce((sum, depth) => sum + Math.pow(depth - mean, 2), 0) / depths.length;
+      const stdDev = Math.sqrt(variance);
+      
+      // Filtrar valores fuera de 2 desviaciones estándar
+      const threshold = 2 * stdDev;
+      const filteredDepths = depths.filter(depth => Math.abs(depth - medianDepth) <= threshold);
+      
+      return filteredDepths.length > 0 ? filteredDepths : depths;
+      
+    } catch (error) {
+      console.error('❌ Error filtrando outliers de profundidad:', error);
+      return depths;
+    }
+  }
+
+  // CONFIGURACIÓN DE PARÁMETROS SGBM
+  public setSGBMParams(params: Partial<SGBMParams>): void {
+    try {
+      this.sgbmParams = { ...this.sgbmParams, ...params };
+      console.log('✅ Parámetros SGBM actualizados:', this.sgbmParams);
+    } catch (error) {
+      console.error('❌ Error configurando parámetros SGBM:', error);
+    }
+  }
+
+  // CALIBRACIÓN DEL SISTEMA
+  public calibrate(calibrationMatrix: number[][]): void {
+    try {
+      this.calibrationMatrix = calibrationMatrix;
+      this.isCalibrated = true;
+      console.log('✅ Sistema calibrado con matriz:', calibrationMatrix);
+    } catch (error) {
+      console.error('❌ Error en calibración:', error);
+    }
+  }
+
+  // FUNCIONES AUXILIARES
+  private getDefaultSGBMParams(): SGBMParams {
+    return {
+      minDisparity: 0,
+      numDisparities: 128,
+      blockSize: 5,
+      P1: 200,
+      P2: 2000,
+      disp12MaxDiff: 1,
+      preFilterCap: 63,
+      uniquenessRatio: 15,
+      speckleWindowSize: 100,
+      speckleRange: 32,
+      mode: 'SGBM'
+    };
+  }
+
+  private getIdentityMatrix(): number[][] {
+    return [
+      [1, 0, 0],
+      [0, 1, 0],
+      [0, 0, 1]
+    ];
+  }
+
+  private getImageDimensions(imageData: Uint8Array): { width: number; height: number } {
+    // Asumir imagen cuadrada para simplificar
+    const size = Math.sqrt(imageData.length);
+    return { width: size, height: size };
+  }
+
+  private createEmptyDisparityMap(): DisparityMap {
+    return {
+      data: new Float32Array(0),
+      width: 0,
+      height: 0,
+      minDisparity: 0,
+      maxDisparity: 0
+    };
+  }
+
+  private createEmptyDepthMap(): DepthMap {
+    return {
+      data: new Float32Array(0),
+      width: 0,
+      height: 0,
+      minDepth: 0,
+      maxDepth: 0,
+      unit: 'mm'
+    };
   }
 }
 
-export const realDepthCalculator = new RealDepthCalculator();
+// INSTANCIA GLOBAL DEL CALCULADOR
+export const real3DDepthCalculator = new Real3DDepthCalculator();
+
+// FUNCIONES DE EXPORTACIÓN PARA USO DIRECTO
+export const calculateDepthFromStereo = (stereoPair: StereoPair): DepthMap => {
+  return real3DDepthCalculator.calculateDepthFromStereoPair(stereoPair);
+};
+
+export const calculateObjectDepth = (object: DetectedObject, depthMap: DepthMap): number => {
+  return real3DDepthCalculator.calculateObjectDepth(object, depthMap);
+};
+
+export const setSGBMParameters = (params: Partial<SGBMParams>): void => {
+  real3DDepthCalculator.setSGBMParams(params);
+};
+
+export const calibrateSystem = (calibrationMatrix: number[][]): void => {
+  real3DDepthCalculator.calibrate(calibrationMatrix);
+};

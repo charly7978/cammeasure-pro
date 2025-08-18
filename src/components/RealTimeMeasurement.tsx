@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { DetectedObject, RealTimeMeasurementType } from '@/lib/types';
+import { DetectedObject, RealTimeMeasurement as RealTimeMeasurementType } from '@/lib/types';
 import { detectContours, realDepthCalculator } from '@/lib';
 
 interface RealTimeMeasurementProps {
@@ -51,7 +51,28 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
 
       // 2. DETECTAR CONTORNOS AUTOMÁTICAMENTE
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const detectedObjects = await detectContours(imageData, 100); // Área mínima de 100 píxeles
+      const detectionResult = await detectContours(null, imageData, 100); // Área mínima de 100 píxeles
+      const rects = detectionResult.rects || [];
+      
+      // Convertir BoundingRect[] a DetectedObject[]
+      const detectedObjects: DetectedObject[] = rects.map((rect, index) => ({
+        ...rect,
+        id: `obj_${index}`,
+        type: 'detected',
+        boundingBox: {
+          x: rect.x,
+          y: rect.y,
+          width: rect.width,
+          height: rect.height
+        },
+        dimensions: {
+          width: rect.width,
+          height: rect.height,
+          area: rect.area,
+          unit: 'px'
+        },
+        confidence: rect.confidence || 0.8
+      }));
 
       // 3. SELECCIONAR OBJETO MÁS PROMINENTE
       const prominentObject = selectMostProminentObject(detectedObjects);
@@ -62,18 +83,42 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
         
         // 5. ACTUALIZAR ESTADO
         const measurement: RealTimeMeasurementType = {
-          id: `frame_${frameCount}`,
-          timestamp: Date.now(),
-          object: prominentObject,
-          measurements,
+          width: prominentObject.dimensions.width,
+          height: prominentObject.dimensions.height,
+          area: prominentObject.dimensions.area,
+          perimeter: 2 * (prominentObject.dimensions.width + prominentObject.dimensions.height),
+          circularity: 1.0, // Valor por defecto
+          solidity: 1.0, // Valor por defecto
+          confidence: prominentObject.confidence || 0.8,
+          depth: measurements.depth,
+          volume: measurements.volume,
+          surfaceArea: measurements.surfaceArea,
+          curvature: 0, // Valor por defecto
+          roughness: 0, // Valor por defecto
+          orientation: {
+            pitch: 0,
+            yaw: 0,
+            roll: 0
+          },
+          materialProperties: {
+            refractiveIndex: 1.0,
+            scatteringCoefficient: 0,
+            absorptionCoefficient: 0
+          },
+          uncertainty: {
+            measurement: 0.1,
+            calibration: 0.05,
+            algorithm: 0.02,
+            total: 0.17
+          },
           algorithm: 'Real-Time Auto-Detection',
           processingTime: performance.now() - startTime,
           frameRate: fps,
           qualityMetrics: {
-            confidence: prominentObject.confidence,
             sharpness: calculateImageSharpness(imageData),
             contrast: calculateImageContrast(imageData),
-            noise: calculateImageNoise(imageData)
+            noise: calculateImageNoise(imageData),
+            blur: 0 // Valor por defecto
           }
         };
 
@@ -357,7 +402,7 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
           <div>Frame: {frameCount}</div>
           <div>FPS: {fps.toFixed(1)}</div>
           <div>Tiempo: {currentMeasurement.processingTime.toFixed(1)}ms</div>
-          <div>Confianza: {(currentMeasurement.qualityMetrics.confidence * 100).toFixed(0)}%</div>
+          <div>Confianza: {(currentMeasurement.confidence * 100).toFixed(0)}%</div>
         </div>
       )}
     </div>

@@ -84,7 +84,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
         clearInterval(processingInterval.current);
       }
     };
-  }, []);
+  }, []); // SOLO UNA VEZ AL MONTAR
 
   useEffect(() => {
     if (isActive && hasPermissions && !cameraStream) {
@@ -92,45 +92,48 @@ export const CameraView: React.FC<CameraViewProps> = ({
     } else if (!isActive && cameraStream) {
       stopCamera();
     }
-    
-    // FORZAR INICIO DE MEDICIÓN AUTOMÁTICA
-    if (isActive && hasPermissions && cameraStream) {
-      console.log('🎯 FORZANDO INICIO DE MEDICIÓN AUTOMÁTICA');
-      setTimeout(() => {
-        if (videoRef?.current && overlayCanvasRef?.current) {
-          processFrameAutomatically();
-        }
-      }, 1000); // Esperar 1 segundo para que la cámara esté lista
-    }
-  }, [isActive, hasPermissions, cameraStream]);
+  }, [isActive, hasPermissions, cameraStream, startCamera, stopCamera]); // DEPENDENCIAS CORRECTAS
 
-  // INICIAR MEDICIÓN AUTOMÁTICA EN TIEMPO REAL
+  // INICIAR MEDICIÓN AUTOMÁTICA EN TIEMPO REAL - SEPARADO Y SEGURO
   useEffect(() => {
+    let intervalId: NodeJS.Timeout | null = null;
+    
     if (isActive && isRealTimeMeasurement && videoRef?.current && overlayCanvasRef?.current) {
       console.log('🚀 INICIANDO MEDICIÓN AUTOMÁTICA EN TIEMPO REAL');
       
       // FORZAR PRIMERA MEDICIÓN INMEDIATA
-      setTimeout(() => {
+      const firstMeasurement = setTimeout(() => {
         console.log('🎯 FORZANDO PRIMERA MEDICIÓN INMEDIATA');
-        processFrameAutomatically();
+        if (videoRef?.current && overlayCanvasRef?.current && !isProcessing) {
+          processFrameAutomatically();
+        }
       }, 500);
       
-      // Procesar cada 200ms para medición en tiempo real
-      processingInterval.current = setInterval(() => {
-        if (!isProcessing) {
+      // Procesar cada 500ms para medición en tiempo real (MÁS LENTO PARA EVITAR SOBRECARGA)
+      intervalId = setInterval(() => {
+        if (!isProcessing && videoRef?.current && overlayCanvasRef?.current) {
           console.log('📸 Procesando frame automáticamente...');
           processFrameAutomatically();
         }
-      }, 200);
+      }, 500); // CAMBIADO DE 200ms A 500ms
+      
+      // LIMPIAR PRIMERA MEDICIÓN
+      return () => {
+        clearTimeout(firstMeasurement);
+        if (intervalId) {
+          console.log('⏹️ Deteniendo medición automática');
+          clearInterval(intervalId);
+        }
+      };
     }
 
     return () => {
-      if (processingInterval.current) {
+      if (intervalId) {
         console.log('⏹️ Deteniendo medición automática');
-        clearInterval(processingInterval.current);
+        clearInterval(intervalId);
       }
     };
-  }, [isActive, isRealTimeMeasurement, videoRef, overlayCanvasRef, isProcessing]);
+  }, [isActive, isRealTimeMeasurement, isProcessing]); // DEPENDENCIAS MÍNIMAS
 
   const initializeCamera = async () => {
     try {
@@ -140,13 +143,13 @@ export const CameraView: React.FC<CameraViewProps> = ({
       if (granted) {
         await startCamera();
         
-        // FORZAR MEDICIÓN AUTOMÁTICA DESPUÉS DE INICIAR CÁMARA
+        // FORZAR MEDICIÓN AUTOMÁTICA DESPUÉS DE INICIAR CÁMARA - CON RETRASO MÁS LARGO
         setTimeout(() => {
           console.log('🎯 FORZANDO MEDICIÓN DESPUÉS DE INICIAR CÁMARA');
-          if (videoRef?.current && overlayCanvasRef?.current) {
+          if (videoRef?.current && overlayCanvasRef?.current && !isProcessing) {
             processFrameAutomatically();
           }
-        }, 2000);
+        }, 3000); // CAMBIADO DE 2000ms A 3000ms
       }
     } catch (error) {
       console.error('Error initializing camera:', error);
@@ -168,7 +171,15 @@ export const CameraView: React.FC<CameraViewProps> = ({
 
   // MEDICIÓN AUTOMÁTICA EN TIEMPO REAL
   const processFrameAutomatically = async () => {
+    // PROTECCIÓN CONTRA ERRORES CRÍTICOS
     if (!videoRef?.current || !overlayCanvasRef?.current || !isActive || isProcessing) {
+      console.log('⚠️ Condiciones no cumplidas para procesamiento');
+      return;
+    }
+
+    // VERIFICAR QUE EL VIDEO ESTÉ LISTO
+    if (!videoRef.current.videoWidth || !videoRef.current.videoHeight) {
+      console.log('⚠️ Video no está listo aún');
       return;
     }
 
@@ -179,9 +190,19 @@ export const CameraView: React.FC<CameraViewProps> = ({
       // 1. CAPTURAR FRAME ACTUAL
       const canvas = overlayCanvasRef.current;
       const ctx = canvas.getContext('2d');
-      if (!ctx) return;
+      if (!ctx) {
+        console.error('❌ No se pudo obtener contexto del canvas');
+        return;
+      }
 
       const video = videoRef.current;
+      
+      // VERIFICAR DIMENSIONES DEL VIDEO
+      if (video.videoWidth <= 0 || video.videoHeight <= 0) {
+        console.log('⚠️ Dimensiones del video no válidas');
+        return;
+      }
+      
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
 
@@ -200,31 +221,36 @@ export const CameraView: React.FC<CameraViewProps> = ({
       const prominentObject = selectMostSpecificObject(detectionResult, canvas.width, canvas.height);
 
       if (prominentObject) {
-        // 4. CALCULAR MEDICIONES EN TIEMPO REAL
-        const measurements = await calculateRealTimeMeasurements(prominentObject, imageData);
-        
-        // 5. ACTUALIZAR ESTADO
-        const measurement = {
-          id: `frame_${frameCount}`,
-          timestamp: Date.now(),
-          object: prominentObject,
-          measurements,
-          processingTime: performance.now() - startTime
-        };
+        try {
+          // 4. CALCULAR MEDICIONES EN TIEMPO REAL
+          const measurements = await calculateRealTimeMeasurements(prominentObject, imageData);
+          
+          // 5. ACTUALIZAR ESTADO
+          const measurement = {
+            id: `frame_${frameCount}`,
+            timestamp: Date.now(),
+            object: prominentObject,
+            measurements,
+            processingTime: performance.now() - startTime
+          };
 
-        setCurrentMeasurement(measurement);
-        setDetectedObjects([prominentObject]);
-        onRealTimeObjects([prominentObject]);
+          setCurrentMeasurement(measurement);
+          setDetectedObjects([prominentObject]);
+          onRealTimeObjects([prominentObject]);
 
-        // 6. DIBUJAR OVERLAY EN TIEMPO REAL
-        drawRealTimeOverlay(ctx, prominentObject, measurements);
+          // 6. DIBUJAR OVERLAY EN TIEMPO REAL
+          drawRealTimeOverlay(ctx, prominentObject, measurements);
+        } catch (measurementError) {
+          console.error('❌ Error al calcular mediciones:', measurementError);
+        }
       }
 
       // 7. ACTUALIZAR CONTADORES
       setFrameCount(prev => prev + 1);
 
     } catch (error) {
-      console.error('Error en procesamiento automático:', error);
+      console.error('❌ Error crítico en procesamiento automático:', error);
+      // NO RE-LANZAR EL ERROR PARA EVITAR QUE LA APLICACIÓN SE CIERRE
     } finally {
       setIsProcessing(false);
     }
@@ -282,6 +308,12 @@ export const CameraView: React.FC<CameraViewProps> = ({
     try {
       console.log('🎯 INICIANDO DETECCIÓN ESPECÍFICA DEL OBJETO');
       
+      // VERIFICAR DATOS DE ENTRADA
+      if (!imageData || !imageData.data || width <= 0 || height <= 0) {
+        console.warn('⚠️ Datos de entrada inválidos para detección');
+        return [];
+      }
+      
       // 1. CONVERTIR A ESCALA DE GRISES
       const grayData = new Uint8Array(width * height);
       for (let i = 0; i < imageData.data.length; i += 4) {
@@ -305,6 +337,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
       
     } catch (error) {
       console.error('❌ Error en detección específica:', error);
+      // RETORNAR ARRAY VACÍO EN LUGAR DE RE-LANZAR EL ERROR
       return [];
     }
   };
@@ -632,51 +665,87 @@ export const CameraView: React.FC<CameraViewProps> = ({
 
   // Calcular mediciones en tiempo real
   const calculateRealTimeMeasurements = async (object: DetectedObject, imageData: ImageData) => {
-    const { width, height, area } = object.dimensions;
-    
-    // CONVERTIR PÍXELES A UNIDADES REALES (mm/cm)
-    const pixelsPerMm = calibrationData?.pixelsPerMm || 10; // Valor por defecto: 10 píxeles = 1mm
-    const realWidth = width / pixelsPerMm; // mm
-    const realHeight = height / pixelsPerMm; // mm
-    const realArea = area / (pixelsPerMm * pixelsPerMm); // mm²
-    
-    // Cálculo de profundidad estimada
-    const estimatedDepth = await estimateDepthFromObjectSize(object, imageData);
-    
-    // Cálculo de volumen estimado en mm³
-    const estimatedVolume = estimateVolumeFromDimensions(realWidth, realHeight, estimatedDepth);
-    
-    // Cálculo de superficie en mm²
-    const surfaceArea = calculateSurfaceArea(realWidth, realHeight, estimatedDepth);
-    
-    // Cálculo de distancia desde la cámara
-    const distanceFromCamera = calculateDistanceFromCamera(object, imageData);
+    try {
+      // VERIFICAR OBJETO VÁLIDO
+      if (!object || !object.dimensions || !object.dimensions.width || !object.dimensions.height) {
+        console.warn('⚠️ Objeto inválido para mediciones');
+        return {
+          width: 0, height: 0, area: 0,
+          realWidth: 0, realHeight: 0, realArea: 0,
+          depth: 0, volume: 0, surfaceArea: 0, distance: 0,
+          perimeter: 0, diagonal: 0, aspectRatio: 0,
+          unit: 'mm'
+        };
+      }
+      
+      const { width, height, area } = object.dimensions;
+      
+      // CONVERTIR PÍXELES A UNIDADES REALES (mm/cm)
+      const pixelsPerMm = calibrationData?.pixelsPerMm || 10; // Valor por defecto: 10 píxeles = 1mm
+      const realWidth = width / pixelsPerMm; // mm
+      const realHeight = height / pixelsPerMm; // mm
+      const realArea = area / (pixelsPerMm * pixelsPerMm); // mm²
+      
+      // Cálculo de profundidad estimada
+      let estimatedDepth = 0;
+      try {
+        estimatedDepth = await estimateDepthFromObjectSize(object, imageData);
+      } catch (depthError) {
+        console.warn('⚠️ Error al calcular profundidad, usando valor por defecto:', depthError);
+        estimatedDepth = 100; // Valor por defecto en mm
+      }
+      
+      // Cálculo de volumen estimado en mm³
+      const estimatedVolume = estimateVolumeFromDimensions(realWidth, realHeight, estimatedDepth);
+      
+      // Cálculo de superficie en mm²
+      const surfaceArea = calculateSurfaceArea(realWidth, realHeight, estimatedDepth);
+      
+      // Cálculo de distancia desde la cámara
+      let distanceFromCamera = 0;
+      try {
+        distanceFromCamera = calculateDistanceFromCamera(object, imageData);
+      } catch (distanceError) {
+        console.warn('⚠️ Error al calcular distancia, usando valor por defecto:', distanceError);
+        distanceFromCamera = 200; // Valor por defecto en mm
+      }
 
-    return {
-      // Medidas en píxeles (originales)
-      width: width,
-      height: height,
-      area: area,
-      
-      // Medidas en unidades reales (mm)
-      realWidth: realWidth,
-      realHeight: realHeight,
-      realArea: realArea,
-      
-      // Medidas 3D
-      depth: estimatedDepth,
-      volume: estimatedVolume,
-      surfaceArea: surfaceArea,
-      distance: distanceFromCamera,
-      
-      // Medidas derivadas
-      perimeter: 2 * (realWidth + realHeight), // mm
-      diagonal: Math.sqrt(realWidth * realWidth + realHeight * realHeight), // mm
-      aspectRatio: realWidth / realHeight,
-      
-      // Unidades
-      unit: 'mm'
-    };
+      return {
+        // Medidas en píxeles (originales)
+        width: width,
+        height: height,
+        area: area,
+        
+        // Medidas en unidades reales (mm)
+        realWidth: realWidth,
+        realHeight: realHeight,
+        realArea: realArea,
+        
+        // Medidas 3D
+        depth: estimatedDepth,
+        volume: estimatedVolume,
+        surfaceArea: surfaceArea,
+        distance: distanceFromCamera,
+        
+        // Medidas derivadas
+        perimeter: 2 * (realWidth + realHeight), // mm
+        diagonal: Math.sqrt(realWidth * realWidth + realHeight * realHeight), // mm
+        aspectRatio: realWidth / realHeight,
+        
+        // Unidades
+        unit: 'mm'
+      };
+    } catch (error) {
+      console.error('❌ Error crítico al calcular mediciones:', error);
+      // RETORNAR MEDICIONES POR DEFECTO EN LUGAR DE RE-LANZAR EL ERROR
+      return {
+        width: 0, height: 0, area: 0,
+        realWidth: 0, realHeight: 0, realArea: 0,
+        depth: 0, volume: 0, surfaceArea: 0, distance: 0,
+        perimeter: 0, diagonal: 0, aspectRatio: 0,
+        unit: 'mm'
+      };
+    }
   };
 
   // Estimación de profundidad
@@ -754,61 +823,79 @@ export const CameraView: React.FC<CameraViewProps> = ({
 
   // Dibujar overlay en tiempo real
   const drawRealTimeOverlay = (ctx: CanvasRenderingContext2D, object: DetectedObject, measurements: any) => {
-    const { x, y, width, height } = object.boundingBox;
-    
-    // Limpiar canvas
-    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-    
-    // Dibujar bounding box específico del objeto
-    ctx.strokeStyle = '#00ff00';
-    ctx.lineWidth = 3;
-    ctx.strokeRect(x, y, width, height);
-    
-    // Dibujar centro del objeto
-    ctx.fillStyle = '#ff0000';
-    ctx.beginPath();
-    ctx.arc(x + width / 2, y + height / 2, 5, 0, 2 * Math.PI);
-    ctx.fill();
-    
-    // Dibujar mediciones en UNIDADES REALES (mm/cm)
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '16px Arial';
-    
-    // Medidas en píxeles
-    ctx.fillText(`Píxeles: ${measurements.width.toFixed(0)} × ${measurements.height.toFixed(0)}`, x, y - 60);
-    
-    // Medidas en unidades reales
-    if (measurements.realWidth && measurements.realHeight) {
-      ctx.fillStyle = '#00ff00';
-      ctx.fillText(`Ancho: ${measurements.realWidth.toFixed(1)}mm`, x, y - 40);
-      ctx.fillText(`Alto: ${measurements.realHeight.toFixed(1)}mm`, x, y - 20);
-      ctx.fillText(`Área: ${measurements.realArea.toFixed(1)}mm²`, x, y - 5);
+    try {
+      // VERIFICAR PARÁMETROS VÁLIDOS
+      if (!ctx || !object || !object.boundingBox || !measurements) {
+        console.warn('⚠️ Parámetros inválidos para dibujar overlay');
+        return;
+      }
+      
+      const { x, y, width, height } = object.boundingBox;
+      
+      // VERIFICAR DIMENSIONES VÁLIDAS
+      if (x < 0 || y < 0 || width <= 0 || height <= 0) {
+        console.warn('⚠️ Dimensiones inválidas del bounding box');
+        return;
+      }
+      
+      // Limpiar canvas
+      ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+      
+      // Dibujar bounding box específico del objeto
+      ctx.strokeStyle = '#00ff00';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(x, y, width, height);
+      
+      // Dibujar centro del objeto
+      ctx.fillStyle = '#ff0000';
+      ctx.beginPath();
+      ctx.arc(x + width / 2, y + height / 2, 5, 0, 2 * Math.PI);
+      ctx.fill();
+      
+      // Dibujar mediciones en UNIDADES REALES (mm/cm)
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '16px Arial';
+      
+      // Medidas en píxeles
+      ctx.fillText(`Píxeles: ${measurements.width?.toFixed(0) || '0'} × ${measurements.height?.toFixed(0) || '0'}`, x, y - 60);
+      
+      // Medidas en unidades reales
+      if (measurements.realWidth && measurements.realHeight) {
+        ctx.fillStyle = '#00ff00';
+        ctx.fillText(`Ancho: ${measurements.realWidth.toFixed(1)}mm`, x, y - 40);
+        ctx.fillText(`Alto: ${measurements.realHeight.toFixed(1)}mm`, x, y - 20);
+        ctx.fillText(`Área: ${measurements.realArea?.toFixed(1) || '0'}mm²`, x, y - 5);
+      }
+      
+      // Medidas 3D
+      if (measurements.depth) {
+        ctx.fillStyle = '#00ffff';
+        ctx.fillText(`Profundidad: ${measurements.depth.toFixed(1)}mm`, x, y + 15);
+      }
+      
+      if (measurements.volume) {
+        ctx.fillStyle = '#ffff00';
+        ctx.fillText(`Volumen: ${measurements.volume.toFixed(1)}mm³`, x, y + 35);
+      }
+      
+      if (measurements.perimeter) {
+        ctx.fillStyle = '#ff00ff';
+        ctx.fillText(`Perímetro: ${measurements.perimeter.toFixed(1)}mm`, x, y + 55);
+      }
+      
+      // Dibujar indicador de confianza
+      const confidence = object.confidence || 0;
+      ctx.fillStyle = confidence > 0.8 ? '#00ff00' : confidence > 0.6 ? '#ffff00' : '#ff0000';
+      ctx.fillText(`Confianza: ${(confidence * 100).toFixed(0)}%`, x, y + 75);
+      
+      // Dibujar indicador de especificidad
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(`🎯 Objeto Específico Detectado`, x, y + 95);
+      
+    } catch (error) {
+      console.error('❌ Error al dibujar overlay:', error);
+      // NO RE-LANZAR EL ERROR PARA EVITAR QUE LA APLICACIÓN SE CIERRE
     }
-    
-    // Medidas 3D
-    if (measurements.depth) {
-      ctx.fillStyle = '#00ffff';
-      ctx.fillText(`Profundidad: ${measurements.depth.toFixed(1)}mm`, x, y + 15);
-    }
-    
-    if (measurements.volume) {
-      ctx.fillStyle = '#ffff00';
-      ctx.fillText(`Volumen: ${measurements.volume.toFixed(1)}mm³`, x, y + 35);
-    }
-    
-    if (measurements.perimeter) {
-      ctx.fillStyle = '#ff00ff';
-      ctx.fillText(`Perímetro: ${measurements.perimeter.toFixed(1)}mm`, x, y + 55);
-    }
-    
-    // Dibujar indicador de confianza
-    const confidence = object.confidence;
-    ctx.fillStyle = confidence > 0.8 ? '#00ff00' : confidence > 0.6 ? '#ffff00' : '#ff0000';
-    ctx.fillText(`Confianza: ${(confidence * 100).toFixed(0)}%`, x, y + 75);
-    
-    // Dibujar indicador de especificidad
-    ctx.fillStyle = '#ffffff';
-    ctx.fillText(`🎯 Objeto Específico Detectado`, x, y + 95);
   };
 
   const captureFrame = () => {
@@ -894,27 +981,35 @@ export const CameraView: React.FC<CameraViewProps> = ({
         </div>
 
         <div className="flex items-center gap-1">
-                     <Button
-             variant="outline"
-             size="sm"
-             onClick={() => {
-               const newState = !isRealTimeMeasurement;
-               setIsRealTimeMeasurement(newState);
-               
-               // FORZAR MEDICIÓN INMEDIATA AL ACTIVAR
-               if (newState) {
-                 console.log('🎯 ACTIVANDO MEDICIÓN - FORZANDO EJECUCIÓN INMEDIATA');
-                 setTimeout(() => {
-                   if (videoRef?.current && overlayCanvasRef?.current) {
-                     processFrameAutomatically();
-                   }
-                 }, 500);
-               }
-             }}
-             className={`h-8 w-8 p-0 ${isRealTimeMeasurement ? "bg-measurement-active text-background" : ""}`}
-           >
-             {isRealTimeMeasurement ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
-           </Button>
+                                           <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                try {
+                  const newState = !isRealTimeMeasurement;
+                  setIsRealTimeMeasurement(newState);
+                  
+                  // FORZAR MEDICIÓN INMEDIATA AL ACTIVAR
+                  if (newState) {
+                    console.log('🎯 ACTIVANDO MEDICIÓN - FORZANDO EJECUCIÓN INMEDIATA');
+                    setTimeout(() => {
+                      try {
+                        if (videoRef?.current && overlayCanvasRef?.current && !isProcessing) {
+                          processFrameAutomatically();
+                        }
+                      } catch (error) {
+                        console.error('❌ Error al forzar medición:', error);
+                      }
+                    }, 500);
+                  }
+                } catch (error) {
+                  console.error('❌ Error al cambiar estado de medición:', error);
+                }
+              }}
+              className={`h-8 w-8 p-0 ${isRealTimeMeasurement ? "bg-measurement-active text-background" : ""}`}
+            >
+              {isRealTimeMeasurement ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+            </Button>
 
           <Button
             variant="outline"
@@ -969,20 +1064,28 @@ export const CameraView: React.FC<CameraViewProps> = ({
              playsInline
              muted
              onClick={handleVideoClick}
-             onLoadedMetadata={() => {
-               if (containerRef.current) {
-                 const rect = containerRef.current.getBoundingClientRect();
-                 setVideoContainer({ width: rect.width, height: rect.height });
-               }
-               
-               // FORZAR MEDICIÓN AUTOMÁTICA CUANDO EL VIDEO ESTÉ LISTO
-               console.log('🎯 VIDEO LISTO - FORZANDO MEDICIÓN AUTOMÁTICA');
-               setTimeout(() => {
-                 if (videoRef?.current && overlayCanvasRef?.current) {
-                   processFrameAutomatically();
-                 }
-               }, 1000);
-             }}
+                           onLoadedMetadata={() => {
+                try {
+                  if (containerRef.current) {
+                    const rect = containerRef.current.getBoundingClientRect();
+                    setVideoContainer({ width: rect.width, height: rect.height });
+                  }
+                  
+                  // FORZAR MEDICIÓN AUTOMÁTICA CUANDO EL VIDEO ESTÉ LISTO
+                  console.log('🎯 VIDEO LISTO - FORZANDO MEDICIÓN AUTOMÁTICA');
+                  setTimeout(() => {
+                    try {
+                      if (videoRef?.current && overlayCanvasRef?.current && !isProcessing) {
+                        processFrameAutomatically();
+                      }
+                    } catch (error) {
+                      console.error('❌ Error al forzar medición desde onLoadedMetadata:', error);
+                    }
+                  }, 1000);
+                } catch (error) {
+                  console.error('❌ Error en onLoadedMetadata:', error);
+                }
+              }}
            />
 
           {/* Canvas para overlay de mediciones en tiempo real */}

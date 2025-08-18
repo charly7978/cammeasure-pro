@@ -617,12 +617,9 @@ function fuseMultiScaleImages(enhancedScales: ImageData[], original: ImageData):
   return new ImageData(1, 1);
 }
 
+// FUNCIONES AUXILIARES NECESARIAS
 function resizeImage(imageData: ImageData, newWidth: number, newHeight: number): ImageData {
   return new ImageData(1, 1);
-}
-
-function detectObjectsAtScale(imageData: ImageData, minArea: number): Promise<DetectedObject[]> {
-  return Promise.resolve([]);
 }
 
 function scaleObjectToOriginal(obj: DetectedObject, scale: number): DetectedObject {
@@ -631,18 +628,6 @@ function scaleObjectToOriginal(obj: DetectedObject, scale: number): DetectedObje
 
 function mergeMultiScaleObjects(objects: DetectedObject[]): DetectedObject[] {
   return objects;
-}
-
-function advancedEdgeDetection(imageData: ImageData): Promise<Uint8Array> {
-  return Promise.resolve(new Uint8Array(1));
-}
-
-function regionBasedSegmentation(edges: Uint8Array, imageData: ImageData): Promise<any[]> {
-  return Promise.resolve([]);
-}
-
-function advancedContourAnalysis(regions: any[]): Promise<any[]> {
-  return Promise.resolve([]);
 }
 
 function convertContourToObject(contour: any, imageData: ImageData): DetectedObject {

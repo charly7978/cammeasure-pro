@@ -131,10 +131,16 @@ const Index = () => {
       
       const result: MeasurementResult = {
         distance2D: Math.max(bestObject.dimensions.width, bestObject.dimensions.height),
-        area: bestObject.dimensions.area,
+        measurements: {
+          width: bestObject.dimensions.width,
+          height: bestObject.dimensions.height,
+          area: bestObject.dimensions.area
+        },
         unit: bestObject.dimensions.unit,
         confidence: bestObject.confidence,
-        mode: measurementMode
+        mode: measurementMode,
+        points: [],
+        timestamp: Date.now()
       };
       
       setMeasurementResult(result);
@@ -515,10 +521,22 @@ const Index = () => {
                     <h4 className="font-medium mb-3">Análisis - {measurementMode.toUpperCase()}</h4>
                     <MeasurementEngine
                       imageData={capturedImage}
+                      isActive={true}
+                      measurementMode={measurementMode}
                       calibrationData={calibration}
                       onMeasurementResult={handleMeasurementResult}
                       onDetectedEdges={handleDetectedEdges}
-                      measurementMode={measurementMode}
+                      onMeasurementComplete={(measurement) => {
+                        console.log('Medición completada:', measurement);
+                      }}
+                      onError={(error) => {
+                        console.error('Error en medición:', error);
+                        toast({
+                          title: "Error",
+                          description: error,
+                          variant: "destructive"
+                        });
+                      }}
                     />
                   </Card>
                 )}

@@ -1,182 +1,311 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
+import { BoundingRect } from '@/lib/imageProcessing';
 
-interface DetectionMessage {
-  type: 'DETECT';
-  taskId: string;
+interface DetectOptions {
+  imageData: ImageData;
+  minArea?: number;
+  onDetect: (rects: BoundingRect[]) => void;
+  onError?: (error: Error) => void;
+  onTimeout?: () => void;
+}
+
+interface Task {
+  id: string;
   imageData: ImageData;
   minArea: number;
-  onDetect: (rects: any[]) => void;
-}
-
-interface DetectedObject {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  area: number;
-  confidence: number;
-  circularity: number;
-  solidity: number;
-  extent: number;
-  aspectRatio: number;
-  compactness: number;
-  perimeter: number;
-  contourPoints: number;
-  centerX: number;
-  centerY: number;
-  huMoments: number[];
-  isConvex: boolean;
-  boundingCircleRadius: number;
-  depth?: number;
-  realWidth?: number;
-  realHeight?: number;
-}
-
-interface DetectionResult {
-  taskId: string;
-  objects: DetectedObject[];
-  processingTime: number;
-  algorithm: 'opencv' | 'native';
-  isOpenCVReady: boolean;
+  onDetect: (rects: BoundingRect[]) => void;
+  onError?: (error: Error) => void;
+  onTimeout?: () => void;
+  timeoutId?: NodeJS.Timeout;
 }
 
 export const useMeasurementWorker = () => {
-  const workerRef = useRef<Worker | null>(null);
-  const [isInitialized, setIsInitialized] = useState(false);
-  const [isOpenCVReady, setIsOpenCVReady] = useState(false);
+  const workerRef = useRef<Worker>();
+  const readyRef = useRef(false);
+  const isProcessingRef = useRef(false);
+  const taskQueueRef = useRef<Task[]>([]);
+  const currentTaskRef = useRef<Task | null>(null);
+  const [isReady, setIsReady] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<Error | null>(null);
 
-  // Inicializar el worker
+  // Inicialización del worker con manejo de errores
   useEffect(() => {
     try {
-      // Crear el worker
-      const worker = new Worker(new URL('../workers/measurementWorker.ts', import.meta.url), {
+      workerRef.current = new Worker(new URL('../workers/measurementWorker.ts', import.meta.url), {
         type: 'module'
       });
-
-      workerRef.current = worker;
-
-      // Manejar mensajes del worker
-      worker.onmessage = (event: MessageEvent) => {
-        const { type, taskId, data, error: workerError, message } = event.data;
-
+      
+      const w = workerRef.current;
+      
+      // Manejador de mensajes único y persistente
+      w.onmessage = (e: MessageEvent<any>) => {
+        const { type, data } = e.data;
+        
         switch (type) {
+          case 'READY':
+            readyRef.current = true;
+            setIsReady(true);
+            setError(null);
+            break;
+            
           case 'SUCCESS':
-            if (data?.objects) {
-              // Encontrar el callback correspondiente por taskId
-              const pendingRequest = pendingRequests.current.get(taskId);
-              if (pendingRequest) {
-                pendingRequest.onDetect(data.objects);
-                pendingRequests.current.delete(taskId);
-              }
-            }
-            if (data?.isOpenCVReady !== undefined) {
-              setIsOpenCVReady(data.isOpenCVReady);
-            }
+            handleDetectionResult(data.taskId, data.data.objects);
             break;
-
+            
           case 'ERROR':
-            if (workerError) {
-              setError(workerError);
-              console.error('Worker error:', workerError);
-            }
+            handleTaskError(data.taskId, new Error(data.error));
             break;
-
-          case 'STATUS':
-            if (message) {
-              console.log('Worker status:', message);
-            }
+            
+          case 'PROGRESS':
+            // Manejar progreso si es necesario
             break;
         }
-
-        setIsProcessing(false);
       };
 
-      worker.onerror = (error) => {
-        console.error('Worker error:', error);
-        setError('Error en el worker de detección');
-        setIsProcessing(false);
+      // Manejador de errores del worker
+      w.onerror = (err) => {
+        console.error('Worker error:', err);
+        setError(new Error('Error en el worker de medición'));
+        if (currentTaskRef.current) {
+          handleTaskError(currentTaskRef.current.id, new Error('Error en el worker'));
+        }
       };
 
       // Inicializar el worker
-      const taskId = generateTaskId();
-      worker.postMessage({
-        type: 'INIT',
-        taskId
-      });
-
-      setIsInitialized(true);
-
-      return () => {
-        worker.terminate();
-      };
+      w.postMessage({ type: 'INIT' });
+      
     } catch (err) {
       console.error('Error initializing worker:', err);
-      setError('No se pudo inicializar el worker de detección');
-    }
-  }, []);
-
-  // Almacenar solicitudes pendientes
-  const pendingRequests = useRef<Map<string, { onDetect: (rects: any[]) => void }>>(new Map());
-
-  const generateTaskId = useCallback(() => {
-    return `task_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  }, []);
-
-  const detect = useCallback(async (params: {
-    imageData: ImageData;
-    minArea: number;
-    onDetect: (rects: any[]) => void;
-  }) => {
-    if (!workerRef.current || !isInitialized) {
-      console.warn('Worker no está inicializado');
-      return;
+      setError(err instanceof Error ? err : new Error('Error al inicializar el worker'));
     }
 
-    if (isProcessing) {
-      console.warn('Worker ya está procesando');
-      return;
-    }
-
-    setIsProcessing(true);
-    setError(null);
-
-    const taskId = generateTaskId();
-    
-    // Almacenar el callback
-    pendingRequests.current.set(taskId, {
-      onDetect: params.onDetect
-    });
-
-    try {
-      workerRef.current.postMessage({
-        type: 'DETECT',
-        taskId,
-        imageData: params.imageData,
-        minArea: params.minArea
+    return () => {
+      if (workerRef.current) {
+        workerRef.current.terminate();
+      }
+      // Limpiar timeouts pendientes
+      taskQueueRef.current.forEach(task => {
+        if (task.timeoutId) {
+          clearTimeout(task.timeoutId);
+        }
       });
-    } catch (err) {
-      console.error('Error sending message to worker:', err);
-      setError('Error al enviar datos al worker');
-      setIsProcessing(false);
-      pendingRequests.current.delete(taskId);
-    }
-  }, [isInitialized, isProcessing, generateTaskId]);
+      if (currentTaskRef.current?.timeoutId) {
+        clearTimeout(currentTaskRef.current.timeoutId);
+      }
+    };
+  }, []);
 
-  const getStatus = useCallback(() => {
-    if (!workerRef.current || !isInitialized) {
-      return 'no_inicializado';
+  // Procesar la siguiente tarea en la cola
+  const processNextTask = useCallback(() => {
+    if (isProcessingRef.current || taskQueueRef.current.length === 0) {
+      isProcessingRef.current = false;
+      setIsProcessing(false);
+      return;
     }
-    return isOpenCVReady ? 'opencv_listo' : 'modo_nativo';
-  }, [isInitialized, isOpenCVReady]);
+
+    const task = taskQueueRef.current.shift()!;
+    currentTaskRef.current = task;
+    isProcessingRef.current = true;
+    setIsProcessing(true);
+
+    // Configurar timeout (5 segundos)
+    task.timeoutId = setTimeout(() => {
+      if (task.onTimeout) {
+        task.onTimeout();
+      }
+      handleTaskError(task.id, new Error('Timeout en la detección'));
+    }, 5000);
+
+    // Enviar tarea al worker
+    workerRef.current?.postMessage({
+      type: 'DETECT',
+      taskId: task.id,
+      imageData: task.imageData,
+      minArea: task.minArea
+    });
+  }, []);
+
+  // Transformar objetos del worker al formato BoundingRect
+  const transformToBoundingRect = useCallback((objects: any[]): BoundingRect[] => {
+    return objects.map(obj => ({
+      x: obj.x,
+      y: obj.y,
+      width: obj.width,
+      height: obj.height,
+      area: obj.area || (obj.width * obj.height),
+      confidence: obj.confidence || 0.5
+    }));
+  }, []);
+
+  // Manejar resultado de detección
+  const handleDetectionResult = useCallback((taskId: string, objects: any[]) => {
+    const task = currentTaskRef.current;
+    if (task && task.id === taskId) {
+      // Limpiar timeout
+      if (task.timeoutId) {
+        clearTimeout(task.timeoutId);
+      }
+      
+      // Transformar objetos al formato esperado
+      const rects = transformToBoundingRect(objects);
+      
+      // Ejecutar callback
+      try {
+        task.onDetect(rects);
+      } catch (err) {
+        console.error('Error in detection callback:', err);
+      }
+      
+      // Limpiar tarea actual
+      currentTaskRef.current = null;
+      
+      // Procesar siguiente tarea
+      processNextTask();
+    }
+  }, [processNextTask, transformToBoundingRect]);
+
+  // Manejar error en tarea
+  const handleTaskError = useCallback((taskId: string, error: Error) => {
+    const task = currentTaskRef.current;
+    if (task && task.id === taskId) {
+      // Limpiar timeout
+      if (task.timeoutId) {
+        clearTimeout(task.timeoutId);
+      }
+      
+      // Ejecutar callback de error
+      if (task.onError) {
+        try {
+          task.onError(error);
+        } catch (err) {
+          console.error('Error in error callback:', err);
+        }
+      }
+      
+      // Actualizar estado de error
+      setError(error);
+      
+      // Limpiar tarea actual
+      currentTaskRef.current = null;
+      
+      // Procesar siguiente tarea
+      processNextTask();
+    }
+  }, [processNextTask]);
+
+  // Detectar objetos (versión mejorada)
+  const detect = useCallback((opts: DetectOptions) => {
+    if (!workerRef.current || !readyRef.current) {
+      const error = new Error('Worker no está listo');
+      setError(error);
+      if (opts.onError) {
+        opts.onError(error);
+      }
+      return;
+    }
+
+    const { imageData, minArea = 100, onDetect, onError, onTimeout } = opts;
+    
+    // Crear nueva tarea
+    const task: Task = {
+      id: `task_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      imageData,
+      minArea,
+      onDetect,
+      onError,
+      onTimeout
+    };
+
+    // Agregar a la cola
+    taskQueueRef.current.push(task);
+    
+    // Si no se está procesando, iniciar
+    if (!isProcessingRef.current) {
+      processNextTask();
+    }
+  }, [processNextTask]);
+
+  // Cancelar todas las tareas pendientes
+  const cancelAll = useCallback(() => {
+    // Cancelar tarea actual
+    if (currentTaskRef.current) {
+      if (currentTaskRef.current.timeoutId) {
+        clearTimeout(currentTaskRef.current.timeoutId);
+      }
+      currentTaskRef.current = null;
+    }
+    
+    // Cancelar tareas en cola
+    taskQueueRef.current.forEach(task => {
+      if (task.timeoutId) {
+        clearTimeout(task.timeoutId);
+      }
+    });
+    taskQueueRef.current = [];
+    
+    // Resetear estado
+    isProcessingRef.current = false;
+    setIsProcessing(false);
+  }, []);
+
+  // Reiniciar worker
+  const restart = useCallback(() => {
+    cancelAll();
+    readyRef.current = false;
+    setIsReady(false);
+    setError(null);
+    
+    if (workerRef.current) {
+      workerRef.current.terminate();
+    }
+    
+    // Re-inicializar worker
+    try {
+      workerRef.current = new Worker(new URL('../workers/measurementWorker.ts', import.meta.url), {
+        type: 'module'
+      });
+      
+      const w = workerRef.current;
+      
+      w.onmessage = (e: MessageEvent<any>) => {
+        const { type, data } = e.data;
+        
+        switch (type) {
+          case 'READY':
+            readyRef.current = true;
+            setIsReady(true);
+            setError(null);
+            break;
+            
+          case 'SUCCESS':
+            handleDetectionResult(data.taskId, data.data.objects);
+            break;
+            
+          case 'ERROR':
+            handleTaskError(data.taskId, new Error(data.error));
+            break;
+        }
+      };
+
+      w.onerror = (err) => {
+        console.error('Worker error:', err);
+        setError(new Error('Error en el worker de medición'));
+      };
+
+      w.postMessage({ type: 'INIT' });
+    } catch (err) {
+      console.error('Error restarting worker:', err);
+      setError(err instanceof Error ? err : new Error('Error al reiniciar el worker'));
+    }
+  }, [cancelAll, handleDetectionResult, handleTaskError]);
 
   return {
     detect,
-    isInitialized,
-    isOpenCVReady,
+    cancelAll,
+    restart,
+    isReady,
     isProcessing,
-    error,
-    getStatus
+    error
   };
 };

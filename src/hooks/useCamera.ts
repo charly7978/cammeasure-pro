@@ -16,11 +16,15 @@ export const useCamera = () => {
 
   const requestCameraPermissions = useCallback(async () => {
     try {
+      console.log('🔐 SOLICITANDO PERMISOS DE CÁMARA...');
+      
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        console.error('MediaDevices no disponible');
+        console.error('❌ MediaDevices no disponible');
         return false;
       }
 
+      console.log('✅ MediaDevices disponible, solicitando permisos...');
+      
       // Solicitar permisos de cámara
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: {
@@ -30,11 +34,14 @@ export const useCamera = () => {
         } 
       });
       
+      console.log('✅ Stream de prueba obtenido, deteniendo...');
+      
       // Detener stream de prueba inmediatamente
       stream.getTracks().forEach(track => track.stop());
+      console.log('✅ Permisos de cámara concedidos');
       return true;
     } catch (error) {
-      console.error('Error solicitando permisos de cámara:', error);
+      console.error('❌ Error solicitando permisos de cámara:', error);
       return false;
     }
   }, []);
@@ -47,25 +54,37 @@ export const useCamera = () => {
     }
   }) => {
     try {
+      console.log('📹 INICIANDO CÁMARA CON RESTRICCIONES:', constraints);
+      
       // Detener stream anterior si existe
       if (streamRef.current) {
+        console.log('🔄 Deteniendo stream anterior...');
         streamRef.current.getTracks().forEach(track => track.stop());
         streamRef.current = null;
       }
 
+      console.log('🎬 Solicitando stream de cámara...');
+      
       // Iniciar nuevo stream
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      console.log('✅ Stream de cámara obtenido:', stream);
+      
       streamRef.current = stream;
       setCameraStream(stream);
       
       if (videoRef.current) {
+        console.log('🎥 Asignando stream al video...');
         videoRef.current.srcObject = stream;
+        console.log('▶️ Reproduciendo video...');
         await videoRef.current.play();
+        console.log('✅ Video reproduciéndose correctamente');
+      } else {
+        console.warn('⚠️ videoRef no disponible');
       }
       
       return stream;
     } catch (error) {
-      console.error('Error iniciando cámara:', error);
+      console.error('❌ Error iniciando cámara:', error);
       throw error;
     }
   }, []);

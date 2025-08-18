@@ -62,7 +62,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
   const [frameCount, setFrameCount] = useState(0);
   const processingInterval = useRef<NodeJS.Timeout | null>(null);
 
-  // UN SOLO useEffect PARA MANEJAR TODO - EVITAR CONFLICTOS
+  // INICIALIZACIÓN INMEDIATA DE CÁMARA - SIN DEPENDER DE isActive
   useEffect(() => {
     let isMounted = true;
     let intervalId: NodeJS.Timeout | null = null;
@@ -70,15 +70,20 @@ export const CameraView: React.FC<CameraViewProps> = ({
     
     const initialize = async () => {
       try {
-        // 1. SOLICITAR PERMISOS
+        console.log('🚀 INICIANDO INICIALIZACIÓN DE CÁMARA');
+        
+        // 1. SOLICITAR PERMISOS INMEDIATAMENTE
         const granted = await requestCameraPermissions();
         if (!isMounted) return;
         
+        console.log('📱 Permisos de cámara:', granted ? 'CONCEDIDOS' : 'DENEGADOS');
         setHasPermissions(granted);
         
-        if (granted && isActive) {
-          // 2. INICIAR CÁMARA
+        if (granted) {
+          // 2. INICIAR CÁMARA INMEDIATAMENTE
+          console.log('📹 INICIANDO CÁMARA...');
           await startCamera();
+          console.log('✅ CÁMARA INICIADA EXITOSAMENTE');
           
           // 3. ACTUALIZAR DIMENSIONES
           if (containerRef.current) {
@@ -103,9 +108,11 @@ export const CameraView: React.FC<CameraViewProps> = ({
               }
             }, 1000); // MUY LENTO PARA ESTABILIDAD
           }, 2000);
+        } else {
+          console.error('❌ PERMISOS DE CÁMARA DENEGADOS');
         }
       } catch (error) {
-        console.error('Error en inicialización:', error);
+        console.error('❌ Error en inicialización de cámara:', error);
       }
     };
     
@@ -119,11 +126,13 @@ export const CameraView: React.FC<CameraViewProps> = ({
     
     window.addEventListener('resize', resizeHandler);
     
-    // INICIAR TODO
+    // INICIAR TODO INMEDIATAMENTE
+    console.log('🎬 EJECUTANDO INICIALIZACIÓN INMEDIATA');
     initialize();
     
     // LIMPIEZA COMPLETA
     return () => {
+      console.log('🧹 LIMPIANDO RECURSOS DE CÁMARA');
       isMounted = false;
       
       // Detener cámara
@@ -139,7 +148,16 @@ export const CameraView: React.FC<CameraViewProps> = ({
         window.removeEventListener('resize', resizeHandler);
       }
     };
-  }, [isActive, requestCameraPermissions, startCamera, stopCamera, isProcessing]); // DEPENDENCIAS MÍNIMAS
+  }, []); // SIN DEPENDENCIAS - SOLO UNA VEZ AL MONTAR
+
+  // MANEJAR CAMBIOS DE isActive SEPARADAMENTE
+  useEffect(() => {
+    if (isActive && hasPermissions && cameraStream) {
+      console.log('🎯 TAB ACTIVO - CÁMARA YA INICIADA');
+    } else if (!isActive && cameraStream) {
+      console.log('⏸️ TAB INACTIVO - MANTENIENDO CÁMARA');
+    }
+  }, [isActive, hasPermissions, cameraStream]);
 
   // FUNCIÓN ELIMINADA - AHORA MANEJADA EN useEffect
 
@@ -925,10 +943,32 @@ export const CameraView: React.FC<CameraViewProps> = ({
             Se necesita acceso a la cámara para realizar mediciones
           </p>
         </div>
-        <Button onClick={() => requestCameraPermissions()} className="bg-gradient-primary">
-          <Camera className="w-4 h-4 mr-2" />
-          Conceder Permisos
-        </Button>
+        <div className="space-y-2">
+          <Button onClick={() => requestCameraPermissions()} className="bg-gradient-primary">
+            <Camera className="w-4 h-4 mr-2" />
+            Conceder Permisos
+          </Button>
+          
+          <Button 
+            onClick={async () => {
+              try {
+                console.log('🔄 FORZANDO REINICIALIZACIÓN DE CÁMARA...');
+                const granted = await requestCameraPermissions();
+                if (granted) {
+                  await startCamera();
+                  console.log('✅ CÁMARA REINICIADA MANUALMENTE');
+                }
+              } catch (error) {
+                console.error('❌ Error al reinicializar cámara:', error);
+              }
+            }} 
+            variant="outline"
+            className="w-full"
+          >
+            <Camera className="w-4 h-4 mr-2" />
+            Forzar Reinicialización
+          </Button>
+        </div>
       </Card>
     );
   }

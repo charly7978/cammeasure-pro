@@ -2,10 +2,10 @@ import { createRoot } from 'react-dom/client'
 import App from './App.tsx'
 import './index.css'
 
-import { CalibrationProvider } from './lib/calibrationContext';
+import { RealCalibrationProvider } from './lib/calibrationContext';
 
 createRoot(document.getElementById("root")!).render(
-  <CalibrationProvider>
+  <RealCalibrationProvider>
     <App />
-  </CalibrationProvider>
+  </RealCalibrationProvider>
 );

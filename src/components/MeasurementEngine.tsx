@@ -5,7 +5,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useMeasurementWorker } from '@/hooks/useMeasurementWorker';
 import { useOpenCV } from '@/hooks/useOpenCV';
-import { detectContours, realDepthCalculator } from '@/lib';
+import { detectContoursReal, real3DDepthCalculator } from '@/lib';
 import { 
   AdvancedMeasurementResult, 
   MeasurementMode 
@@ -186,7 +186,7 @@ export const MeasurementEngine: React.FC<MeasurementEngineProps> = ({
     }
     
     // 1. DETECCIÓN CON ALGORITMO NATIVO
-    const nativeDetection = detectContours(cv, preprocessedData.preprocessed, 100);
+    const nativeDetection = detectContoursReal(preprocessedData.preprocessed, preprocessedData.width, preprocessedData.height);
     
     // 2. DETECCIÓN CON WORKER AVANZADO
     const workerDetection = await measurementWorker.startMeasurement(preprocessedData.preprocessed);
@@ -219,16 +219,17 @@ export const MeasurementEngine: React.FC<MeasurementEngineProps> = ({
   const real3DDepthEstimation = async (preprocessedData: any, objectDetection: any): Promise<any> => {
     try {
       // Usar calculador de profundidad real
-      const depthMap = await realDepthCalculator.calculateRealDepth(
-        preprocessedData.preprocessed,
-        objectDetection.prominentObject || { width: 100, height: 100 },
-        frameBufferRef.current[frameBufferRef.current.length - 1]
-      );
+      const depthMap = await real3DDepthCalculator.calculateDepthFromStereoPair({
+        leftImage: preprocessedData.preprocessed,
+        rightImage: frameBufferRef.current[frameBufferRef.current.length - 1] || preprocessedData.preprocessed,
+        baseline: 100,
+        focalLength: 1000
+      });
       
       // Calcular mediciones 3D reales
-      const measurements3D = await realDepthCalculator.calculateReal3DMeasurements(
-        depthMap,
-        objectDetection.prominentObject || { width: 100, height: 100 }
+      const measurements3D = await real3DDepthCalculator.calculateObjectDepth(
+        objectDetection.prominentObject || { width: 100, height: 100 },
+        depthMap
       );
       
       return {

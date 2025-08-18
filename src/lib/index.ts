@@ -9,8 +9,8 @@ export * from './types';
 // ============================================================================
 // EXPORTACIÓN DE ALGORITMOS
 // ============================================================================
-export { detectContours, detectContoursSimple } from './imageProcessing';
-export { realDepthCalculator } from './realDepthCalculation';
+export { detectContoursReal, detectEdgesSobel, analyzeTextureReal, applyFilter } from './imageProcessing';
+export { real3DDepthCalculator, calculateDepthFromStereo, calculateObjectDepth, setSGBMParameters, calibrateSystem } from './realDepthCalculation';
 
 // ============================================================================
 // EXPORTACIÓN DE CONTEXTO

@@ -776,7 +776,7 @@ class NativeOpenCV {
   }
 
   // VERIFICACIÓN DE ESTADO
-  isInitialized(): boolean {
+  getInitializationStatus(): boolean {
     return this.isInitialized;
   }
 

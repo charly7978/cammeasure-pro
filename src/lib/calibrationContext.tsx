@@ -1,7 +1,7 @@
 // CONTEXTO REAL DE CALIBRACIÓN DE CÁMARA - ALGORITMOS MATEMÁTICOS COMPLETOS
 // Implementación real de calibración de cámara con parámetros intrínsecos y extrínsecos
 
-import React, { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef, ReactNode } from 'react';
 import { CalibrationData } from './types';
 
 // INTERFACES PARA CALIBRACIÓN REAL

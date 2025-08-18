@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { DetectedObject, RealTimeMeasurement as RealTimeMeasurementType } from '@/lib/types';
-import { detectContours, realDepthCalculator } from '@/lib';
+import { detectContoursReal, applyFilter, real3DDepthCalculator } from '@/lib';
 
 interface RealTimeMeasurementProps {
   videoRef?: React.RefObject<HTMLVideoElement>;
@@ -49,10 +49,10 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
       // Dibujar frame actual
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-      // 2. DETECTAR CONTORNOS AUTOMÁTICAMENTE
+      // 2. DETECTAR CONTORNOS AUTOMÁTICAMENTE (Canny + Contornos reales)
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const detectionResult = await detectContours(null, imageData, 100); // Área mínima de 100 píxeles
-      const rects = detectionResult.rects || [];
+      const edges = applyFilter(imageData, 'canny');
+      const rects = detectContoursReal(edges, canvas.width, canvas.height) || [];
       
       // Convertir BoundingRect[] a DetectedObject[]
       const detectedObjects: DetectedObject[] = rects.map((rect, index) => ({
@@ -219,16 +219,13 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
   // Estimación de profundidad basada en el tamaño del objeto
   const estimateDepthFromObjectSize = async (object: DetectedObject, imageData: ImageData): Promise<number> => {
     try {
-      // Usar el calculador de profundidad real
-      const depthMap = await realDepthCalculator.calculateRealDepth(
-        imageData, 
-        { 
-          width: object.dimensions.width, 
-          height: object.dimensions.height,
-          x: object.boundingBox.x,
-          y: object.boundingBox.y
-        }
-      );
+      // Usar el calculador de profundidad 3D real (modo estereoscópico simulado si no hay par)
+      const depthMap = await real3DDepthCalculator.calculateDepthFromStereoPair({
+        leftImage: imageData,
+        rightImage: imageData,
+        baseline: 100,
+        focalLength: 1000
+      });
       
       // Obtener profundidad promedio del objeto
       const objectDepths = extractObjectDepths(depthMap, object.boundingBox);

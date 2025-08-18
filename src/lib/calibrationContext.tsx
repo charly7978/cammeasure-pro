@@ -1,20 +1,6 @@
 
 import React, { createContext, useState, useContext, ReactNode } from 'react';
-
-export interface CalibrationData {
-  focalLength: number;
-  sensorSize: number;
-  pixelsPerMm: number;
-  referenceObjectSize: number;
-  isCalibrated: boolean;
-  calibrationMethod: 'manual' | 'reference' | 'auto';
-  lastCalibrationDate?: string;
-  // Parámetros avanzados reales
-  cameraMatrix: number[][];
-  distortionCoefficients: number[];
-  imageSize: { width: number; height: number };
-  realWorldScale: number;
-}
+import { CalibrationData } from './types';
 
 interface CalibrationContextType {
   calibration: CalibrationData | null;

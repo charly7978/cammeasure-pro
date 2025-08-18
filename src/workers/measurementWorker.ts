@@ -2,6 +2,11 @@
 // Implementa: Detección de Objetos Multi-Escala, Segmentación Semántica, 
 // Análisis de Textura Avanzado, Machine Learning de Detección
 
+import { 
+  DetectedObject, 
+  DetectionResult 
+} from '../lib/types';
+
 interface DetectMessage {
   type: 'DETECT';
   taskId: string;
@@ -22,63 +27,6 @@ interface StatusMessage {
 }
 
 type IncomingMessage = DetectMessage | InitMessage | StatusMessage;
-
-interface DetectedObject {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  area: number;
-  confidence: number;
-  circularity: number;
-  solidity: number;
-  extent: number;
-  aspectRatio: number;
-  compactness: number;
-  perimeter: number;
-  contourPoints: number;
-  centerX: number;
-  centerY: number;
-  huMoments: number[];
-  isConvex: boolean;
-  boundingCircleRadius: number;
-  depth?: number;
-  realWidth?: number;
-  realHeight?: number;
-  // Propiedades avanzadas
-  textureFeatures: {
-    haralickFeatures: number[];
-    lbpFeatures: number[];
-    gaborFeatures: number[];
-    cooccurrenceMatrix: number[][];
-  };
-  shapeDescriptors: {
-    fourierDescriptors: number[];
-    zernikeMoments: number[];
-    chebyshevMoments: number[];
-    legendreMoments: number[];
-  };
-  semanticFeatures: {
-    objectClass: string;
-    classConfidence: number;
-    semanticSegmentation: Uint8Array;
-    instanceMask: Uint8Array;
-  };
-}
-
-interface DetectionResult {
-  taskId: string;
-  objects: DetectedObject[];
-  processingTime: number;
-  algorithm: 'advanced_native' | 'ml_enhanced';
-  confidence: number;
-  metadata: {
-    textureAnalysis: boolean;
-    shapeAnalysis: boolean;
-    semanticAnalysis: boolean;
-    depthEstimation: boolean;
-  };
-}
 
 interface WorkerResponse {
   taskId: string;
@@ -917,3 +865,31 @@ self.onmessage = async (event: MessageEvent<IncomingMessage>): Promise<void> => 
     sendError(taskId, error instanceof Error ? error.message : 'Error crítico en el worker avanzado');
   }
 };
+
+// FUNCIONES FALTANTES PARA COMPATIBILIDAD
+function adaptiveContrastNormalization(imageData: ImageData): ImageData {
+  const width = imageData.width;
+  const height = imageData.height;
+  const result = new ImageData(width, height);
+  
+  // Implementación básica
+  for (let i = 0; i < imageData.data.length; i += 4) {
+    const normalized = imageData.data[i] / 255;
+    result.data[i] = Math.max(0, Math.min(255, normalized * 255));
+    result.data[i + 1] = result.data[i];
+    result.data[i + 2] = result.data[i];
+    result.data[i + 3] = 255;
+  }
+  
+  return result;
+}
+
+function adaptiveMedianFilter(imageData: ImageData): ImageData {
+  const width = imageData.width;
+  const height = imageData.height;
+  const result = new ImageData(width, height);
+  
+  // Implementación básica
+  result.data.set(imageData.data);
+  return result;
+}

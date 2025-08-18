@@ -3,79 +3,16 @@
 // Análisis de Geometría Avanzada, Machine Learning de Reconstrucción 3D
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { realDepthCalculator } from '@/lib/realDepthCalculation';
+import { realDepthCalculator } from '@/lib';
 import { useOpenCV } from '@/hooks/useOpenCV';
+import { Advanced3DMeasurement } from '@/lib/types';
 
 interface Real3DMeasurementProps {
   imageData: ImageData | null;
   stereoImageData?: ImageData | null;
   isActive: boolean;
-  onMeasurementUpdate: (measurement: any) => void;
+  onMeasurementUpdate: (measurement: Advanced3DMeasurement) => void;
   onError: (error: string) => void;
-}
-
-interface Advanced3DMeasurement {
-  // Mediciones 3D básicas
-  width3D: number;
-  height3D: number;
-  depth3D: number;
-  volume3D: number;
-  distance3D: number;
-  surfaceArea3D: number;
-  
-  // Propiedades geométricas avanzadas
-  curvature: number;
-  roughness: number;
-  orientation: {
-    pitch: number;
-    yaw: number;
-    roll: number;
-  };
-  
-  // Propiedades de material
-  materialProperties: {
-    refractiveIndex: number;
-    scatteringCoefficient: number;
-    absorptionCoefficient: number;
-    density: number;
-    elasticity: number;
-  };
-  
-  // Análisis de incertidumbre 3D
-  uncertainty3D: {
-    measurement: number;
-    calibration: number;
-    algorithm: number;
-    stereo: number;
-    total: number;
-  };
-  
-  // Metadatos del algoritmo
-  algorithm: string;
-  processingTime: number;
-  confidence: number;
-  qualityMetrics: {
-    stereoQuality: number;
-    depthAccuracy: number;
-    reconstructionQuality: number;
-    pointCloudDensity: number;
-  };
-  
-  // Nube de puntos 3D
-  pointCloud: {
-    points: number[][];
-    colors: number[][];
-    normals: number[][];
-    confidence: number[];
-  };
-  
-  // Malla 3D reconstruida
-  mesh3D: {
-    vertices: number[][];
-    faces: number[][];
-    uvs: number[][];
-    normals: number[][];
-  };
 }
 
 export const Real3DMeasurement: React.FC<Real3DMeasurementProps> = ({

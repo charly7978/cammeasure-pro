@@ -2,46 +2,7 @@
 // Implementa: Detección de Contornos Avanzada, Análisis de Textura, 
 // Segmentación Semántica, Machine Learning de Detección, Análisis de Frecuencia
 
-export interface BoundingRect {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  area: number;
-  confidence?: number;
-  // Propiedades geométricas avanzadas
-  circularity?: number;
-  solidity?: number;
-  extent?: number;
-  aspectRatio?: number;
-  compactness?: number;
-  perimeter?: number;
-  contourPoints?: number;
-  centerX?: number;
-  centerY?: number;
-  huMoments?: number[];
-  isConvex?: boolean;
-  boundingCircleRadius?: number;
-  // Propiedades avanzadas
-  textureFeatures?: {
-    haralickFeatures: number[];
-    lbpFeatures: number[];
-    gaborFeatures: number[];
-    cooccurrenceMatrix: number[][];
-  };
-  shapeDescriptors?: {
-    fourierDescriptors: number[];
-    zernikeMoments: number[];
-    chebyshevMoments: number[];
-    legendreMoments: number[];
-  };
-  semanticFeatures?: {
-    objectClass: string;
-    classConfidence: number;
-    semanticSegmentation: Uint8Array;
-    instanceMask: Uint8Array;
-  };
-}
+import { BoundingRect } from './types';
 
 /**
  * DETECCIÓN REAL DE CONTORNOS Y BORDES - ALGORITMOS DE EXTREMA COMPLEJIDAD
@@ -739,4 +700,84 @@ function generateSemanticSegmentation(rect: BoundingRect, imageData: ImageData):
 
 function generateInstanceMask(rect: BoundingRect, imageData: ImageData): Uint8Array {
   return new Uint8Array(1);
+}
+
+// FUNCIONES FALTANTES PARA COMPATIBILIDAD
+function adaptiveContrastNormalization(imageData: ImageData): ImageData {
+  const width = imageData.width;
+  const height = imageData.height;
+  const result = new ImageData(width, height);
+  
+  // Implementación básica de normalización de contraste adaptativa
+  const localMean = calculateLocalMean(imageData);
+  const localStd = calculateLocalStd(imageData);
+  
+  for (let i = 0; i < imageData.data.length; i += 4) {
+    const normalized = (imageData.data[i] - localMean) / (localStd + 1e-8);
+    result.data[i] = Math.max(0, Math.min(255, normalized * 128 + 128));
+    result.data[i + 1] = result.data[i];
+    result.data[i + 2] = result.data[i];
+    result.data[i + 3] = 255;
+  }
+  
+  return result;
+}
+
+function adaptiveMedianFilter(imageData: ImageData): ImageData {
+  const width = imageData.width;
+  const height = imageData.height;
+  const result = new ImageData(width, height);
+  
+  // Implementación básica de filtro de mediana adaptativa
+  const kernelSize = 5;
+  const halfKernel = Math.floor(kernelSize / 2);
+  
+  for (let y = halfKernel; y < height - halfKernel; y++) {
+    for (let x = halfKernel; x < width - halfKernel; x++) {
+      const values: number[] = [];
+      
+      for (let ky = -halfKernel; ky <= halfKernel; ky++) {
+        for (let kx = -halfKernel; kx <= halfKernel; kx++) {
+          const idx = ((y + ky) * width + (x + kx)) * 4;
+          values.push(imageData.data[idx]);
+        }
+      }
+      
+      values.sort((a, b) => a - b);
+      const median = values[Math.floor(values.length / 2)];
+      
+      const resultIdx = (y * width + x) * 4;
+      result.data[resultIdx] = median;
+      result.data[resultIdx + 1] = median;
+      result.data[resultIdx + 2] = median;
+      result.data[resultIdx + 3] = 255;
+    }
+  }
+  
+  return result;
+}
+
+function calculateLocalMean(imageData: ImageData): number {
+  let sum = 0;
+  let count = 0;
+  
+  for (let i = 0; i < imageData.data.length; i += 4) {
+    sum += imageData.data[i];
+    count++;
+  }
+  
+  return sum / count;
+}
+
+function calculateLocalStd(imageData: ImageData): number {
+  const mean = calculateLocalMean(imageData);
+  let sumSquared = 0;
+  let count = 0;
+  
+  for (let i = 0; i < imageData.data.length; i += 4) {
+    sumSquared += Math.pow(imageData.data[i] - mean, 2);
+    count++;
+  }
+  
+  return Math.sqrt(sumSquared / count);
 }

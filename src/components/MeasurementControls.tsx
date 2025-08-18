@@ -14,9 +14,7 @@ import {
   Download,
   Target
 } from 'lucide-react';
-import type { MeasurementResult } from './MeasurementEngine';
-
-export type MeasurementMode = '2d' | '3d' | 'depth' | 'area' | 'volume';
+import type { MeasurementResult, MeasurementMode } from '@/lib/types';
 
 interface MeasurementControlsProps {
   measurementMode: MeasurementMode;

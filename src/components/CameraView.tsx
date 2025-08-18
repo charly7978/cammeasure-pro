@@ -16,7 +16,8 @@ import {
 } from 'lucide-react';
 import { useCamera } from '@/hooks/useCamera';
 import { CameraDirection } from '@capacitor/camera';
-import { RealTimeMeasurement, type DetectedObject } from './RealTimeMeasurement';
+import { RealTimeMeasurement } from './RealTimeMeasurement';
+import { DetectedObject } from '@/lib/types';
 
 interface CameraViewProps {
   onImageCapture?: (imageData: ImageData) => void;

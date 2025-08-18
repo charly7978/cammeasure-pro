@@ -3,77 +3,12 @@
 // Estimación de Profundidad en Tiempo Real, Análisis de Incertidumbre
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-
-interface MeasurementWorkerMessage {
-  type: 'INIT' | 'DETECT' | 'MEASURE' | 'ANALYZE' | 'CALIBRATE';
-  taskId: string;
-  data: any;
-  timestamp: number;
-}
-
-interface MeasurementWorkerResponse {
-  type: 'SUCCESS' | 'ERROR' | 'PROGRESS';
-  taskId: string;
-  data?: any;
-  error?: string;
-  progress?: number;
-  timestamp: number;
-}
-
-interface RealTimeMeasurement {
-  width: number;
-  height: number;
-  area: number;
-  perimeter: number;
-  circularity: number;
-  solidity: number;
-  confidence: number;
-  // Propiedades avanzadas
-  depth?: number;
-  volume?: number;
-  surfaceArea?: number;
-  curvature?: number;
-  roughness?: number;
-  orientation?: {
-    pitch: number;
-    yaw: number;
-    roll: number;
-  };
-  // Análisis de material
-  materialProperties?: {
-    refractiveIndex: number;
-    scatteringCoefficient: number;
-    absorptionCoefficient: number;
-  };
-  // Incertidumbre
-  uncertainty: {
-    measurement: number;
-    calibration: number;
-    algorithm: number;
-    total: number;
-  };
-}
-
-interface AdvancedMeasurementConfig {
-  // Configuración de algoritmos
-  enableMultiScale: boolean;
-  enableTextureAnalysis: boolean;
-  enableShapeAnalysis: boolean;
-  enableSemanticSegmentation: boolean;
-  enableDepthEstimation: boolean;
-  enableMLEnhancement: boolean;
-  
-  // Parámetros de procesamiento
-  processingQuality: 'low' | 'medium' | 'high' | 'ultra';
-  temporalBufferSize: number;
-  confidenceThreshold: number;
-  uncertaintyThreshold: number;
-  
-  // Configuración de ML
-  mlModelPath?: string;
-  enableRealTimeLearning: boolean;
-  adaptiveThresholds: boolean;
-}
+import { 
+  MeasurementWorkerMessage,
+  MeasurementWorkerResponse,
+  RealTimeMeasurement,
+  AdvancedMeasurementConfig
+} from '@/lib/types';
 
 export const useMeasurementWorker = (config: AdvancedMeasurementConfig = {
   enableMultiScale: true,

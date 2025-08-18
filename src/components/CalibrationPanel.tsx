@@ -5,21 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Ruler, Target, CheckCircle, AlertCircle, Camera, Info } from 'lucide-react';
-
-export interface CalibrationData {
-  focalLength: number;
-  sensorSize: number;
-  pixelsPerMm: number;
-  referenceObjectSize: number;
-  isCalibrated: boolean;
-  calibrationMethod: 'manual' | 'reference' | 'auto';
-  lastCalibrationDate?: string;
-  // Parámetros avanzados reales
-  cameraMatrix: number[][];
-  distortionCoefficients: number[];
-  imageSize: { width: number; height: number };
-  realWorldScale: number;
-}
+import { CalibrationData } from '@/lib/types';
 
 interface CalibrationPanelProps {
   onCalibrationChange: (data: CalibrationData) => void;

@@ -1,32 +1,6 @@
 
 import React from 'react';
-
-export interface DetectedObject {
-  id: string;
-  type: string;
-  confidence: number;
-  boundingBox: {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  };
-  dimensions: {
-    width: number;
-    height: number;
-    area: number;
-    unit: string;
-  };
-  isReal3D?: boolean;
-  measurements3D?: {
-    width3D: number;
-    height3D: number;
-    depth3D: number;
-    volume3D: number;
-    distance: number;
-    confidence: number;
-  };
-}
+import { DetectedObject } from '@/lib/types';
 
 interface MeasurementOverlayProps {
   objects: DetectedObject[];

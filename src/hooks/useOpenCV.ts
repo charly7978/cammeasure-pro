@@ -3,41 +3,7 @@
 // Detección de Bordes Avanzada, Procesamiento de Imagen en Tiempo Real
 
 import { useEffect, useState } from 'react';
-
-// Implementación REAL de algoritmos de visión por computadora
-export interface OpenCVFunctions {
-  // Funciones de procesamiento de imagen
-  cvtColor: (src: ImageData, dst: ImageData, code: number) => void;
-  GaussianBlur: (src: ImageData, dst: ImageData, ksize: number[], sigma: number) => void;
-  Canny: (src: ImageData, dst: ImageData, threshold1: number, threshold2: number) => void;
-  findContours: (src: ImageData, contours: any[], hierarchy: any[], mode: number, method: number) => void;
-  contourArea: (contour: any) => number;
-  boundingRect: (contour: any) => { x: number; y: number; width: number; height: number };
-  arcLength: (contour: any, closed: boolean) => number;
-  moments: (contour: any) => { m00: number; m10: number; m01: number };
-  isContourConvex: (contour: any) => boolean;
-  minEnclosingCircle: (contour: any) => { center: { x: number; y: number }; radius: number };
-  convexHull: (contour: any, hull: any, clockwise: boolean, returnPoints: boolean) => void;
-  HuMoments: (moments: any) => Float32Array;
-  
-  // Constantes
-  COLOR_RGBA2GRAY: number;
-  RETR_EXTERNAL: number;
-  CHAIN_APPROX_SIMPLE: number;
-  MORPH_RECT: number;
-  MORPH_CLOSE: number;
-  MORPH_ELLIPSE: number;
-  
-  // Funciones de estructura
-  getStructuringElement: (shape: number, size: number[]) => any;
-  morphologyEx: (src: ImageData, dst: ImageData, op: number, kernel: any) => void;
-  dilate: (src: ImageData, dst: ImageData, kernel: any, anchor: any, iterations: number) => void;
-  equalizeHist: (src: ImageData, dst: ImageData) => void;
-  
-  // Funciones de filtrado
-  bilateralFilter: (src: ImageData, dst: ImageData, d: number, sigmaColor: number, sigmaSpace: number) => void;
-  CLAHE: (clipLimit: number, tileGridSize: number[]) => any;
-}
+import { OpenCVFunctions } from '@/lib/types';
 
 export const useOpenCV = () => {
   const [isLoaded, setIsLoaded] = useState(false);

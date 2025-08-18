@@ -16,14 +16,20 @@ import {
 } from 'lucide-react';
 
 import { CameraView } from '@/components/CameraView';
-import { CalibrationPanel, type CalibrationData } from '@/components/CalibrationPanel';
-import { MeasurementControls, type MeasurementMode } from '@/components/MeasurementControls';
-import { MeasurementEngine, type MeasurementResult, type MeasurementPoint } from '@/components/MeasurementEngine';
-import { type DetectedObject } from '@/components/RealTimeMeasurement';
+import { CalibrationPanel } from '@/components/CalibrationPanel';
+import { MeasurementControls } from '@/components/MeasurementControls';
+import { MeasurementEngine } from '@/components/MeasurementEngine';
 import { useDeviceSensors } from '@/hooks/useDeviceSensors';
 import { useOpenCV } from '@/hooks/useOpenCV';
 import { useCalibration } from '@/hooks/useCalibration';
 import { ImmersiveMode } from '@/components/ImmersiveMode';
+import { 
+  CalibrationData, 
+  MeasurementMode, 
+  MeasurementResult, 
+  MeasurementPoint,
+  DetectedObject 
+} from '@/lib/types';
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState<'camera' | 'calibration' | 'measurements'>('camera');

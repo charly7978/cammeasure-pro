@@ -5,91 +5,21 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useMeasurementWorker } from '@/hooks/useMeasurementWorker';
 import { useOpenCV } from '@/hooks/useOpenCV';
-import { detectContours } from '@/lib/imageProcessing';
-import { realDepthCalculator } from '@/lib/realDepthCalculation';
+import { detectContours, realDepthCalculator } from '@/lib';
+import { 
+  AdvancedMeasurementResult, 
+  MeasurementMode 
+} from '@/lib/types';
 
 interface MeasurementEngineProps {
   imageData: ImageData | null;
   isActive: boolean;
-  measurementMode: '2D' | '3D' | 'HYBRID';
-  onMeasurementComplete: (measurement: any) => void;
+  measurementMode: MeasurementMode;
+  calibrationData?: any;
+  onMeasurementResult?: (result: any) => void;
+  onDetectedEdges?: (edges: any[]) => void;
+  onMeasurementComplete: (measurement: AdvancedMeasurementResult) => void;
   onError: (error: string) => void;
-}
-
-interface AdvancedMeasurementResult {
-  // Identificación del objeto
-  objectId: string;
-  timestamp: number;
-  
-  // Mediciones 2D
-  measurements2D: {
-    width: number;
-    height: number;
-    area: number;
-    perimeter: number;
-    circularity: number;
-    solidity: number;
-    aspectRatio: number;
-    compactness: number;
-    confidence: number;
-  };
-  
-  // Mediciones 3D
-  measurements3D: {
-    width3D: number;
-    height3D: number;
-    depth3D: number;
-    volume3D: number;
-    distance3D: number;
-    surfaceArea3D: number;
-    confidence: number;
-  };
-  
-  // Propiedades avanzadas
-  advancedProperties: {
-    curvature: number;
-    roughness: number;
-    orientation: {
-      pitch: number;
-      yaw: number;
-      roll: number;
-    };
-    materialProperties: {
-      refractiveIndex: number;
-      scatteringCoefficient: number;
-      absorptionCoefficient: number;
-      density: number;
-      elasticity: number;
-    };
-  };
-  
-  // Análisis de incertidumbre
-  uncertainty: {
-    measurement: number;
-    calibration: number;
-    algorithm: number;
-    stereo: number;
-    total: number;
-  };
-  
-  // Metadatos del algoritmo
-  algorithm: string;
-  processingTime: number;
-  frameRate: number;
-  qualityMetrics: {
-    imageQuality: number;
-    detectionQuality: number;
-    depthQuality: number;
-    reconstructionQuality: number;
-  };
-  
-  // Datos de calibración
-  calibration: {
-    isCalibrated: boolean;
-    calibrationQuality: number;
-    lastCalibration: number;
-    calibrationUncertainty: number;
-  };
 }
 
 export const MeasurementEngine: React.FC<MeasurementEngineProps> = ({
@@ -373,7 +303,7 @@ export const MeasurementEngine: React.FC<MeasurementEngineProps> = ({
       confidence: confidenceEnhancement,
       properties: propertyPrediction,
       quality: qualityEnhancement,
-      confidence: 0.93
+      enhancedConfidence: 0.93
     };
   };
 
@@ -718,7 +648,7 @@ export const MeasurementEngine: React.FC<MeasurementEngineProps> = ({
           </div>
           
           <div className={`indicator ${measurementMode}`}>
-            Modo: {measurementMode === '2D' ? '📏 2D' : measurementMode === '3D' ? '📐 3D' : '🔗 HÍBRIDO'}
+            Modo: {measurementMode === '2d' ? '📏 2D' : measurementMode === '3d' ? '📐 3D' : '🔗 HÍBRIDO'}
           </div>
         </div>
         

@@ -5,66 +5,17 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useMeasurementWorker } from '@/hooks/useMeasurementWorker';
 import { useOpenCV } from '@/hooks/useOpenCV';
-import { detectContours } from '@/lib/imageProcessing';
-import { realDepthCalculator } from '@/lib/realDepthCalculation';
+import { detectContours, realDepthCalculator } from '@/lib';
+import { RealTimeMeasurement as RealTimeMeasurementType } from '@/lib/types';
 
 interface RealTimeMeasurementProps {
-  imageData: ImageData | null;
+  imageData?: ImageData | null;
+  videoRef?: React.RefObject<HTMLVideoElement>;
+  onObjectsDetected?: (objects: any[]) => void;
   isActive: boolean;
-  onMeasurementUpdate: (measurement: any) => void;
+  overlayCanvasRef?: React.RefObject<HTMLCanvasElement>;
+  onMeasurementUpdate: (measurement: RealTimeMeasurementType) => void;
   onError: (error: string) => void;
-}
-
-interface AdvancedMeasurementResult {
-  // Mediciones básicas
-  width: number;
-  height: number;
-  area: number;
-  perimeter: number;
-  circularity: number;
-  solidity: number;
-  confidence: number;
-  
-  // Mediciones 3D avanzadas
-  depth3D: number;
-  volume3D: number;
-  surfaceArea3D: number;
-  distance3D: number;
-  
-  // Propiedades de forma avanzadas
-  curvature: number;
-  roughness: number;
-  orientation: {
-    pitch: number;
-    yaw: number;
-    roll: number;
-  };
-  
-  // Propiedades de material
-  materialProperties: {
-    refractiveIndex: number;
-    scatteringCoefficient: number;
-    absorptionCoefficient: number;
-  };
-  
-  // Análisis de incertidumbre
-  uncertainty: {
-    measurement: number;
-    calibration: number;
-    algorithm: number;
-    total: number;
-  };
-  
-  // Metadatos del algoritmo
-  algorithm: string;
-  processingTime: number;
-  frameRate: number;
-  qualityMetrics: {
-    sharpness: number;
-    contrast: number;
-    noise: number;
-    blur: number;
-  };
 }
 
 export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
@@ -89,7 +40,7 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
     adaptiveThresholds: true
   });
 
-  const [currentMeasurement, setCurrentMeasurement] = useState<AdvancedMeasurementResult | null>(null);
+  const [currentMeasurement, setCurrentMeasurement] = useState<RealTimeMeasurementType | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStats, setProcessingStats] = useState({
     totalFrames: 0,
@@ -104,7 +55,7 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
   const qualityMetricsRef = useRef<any>(null);
 
   // PROCESAMIENTO EN TIEMPO REAL CON ALGORITMOS AVANZADOS
-  const processFrameAdvanced = useCallback(async (frame: ImageData): Promise<AdvancedMeasurementResult> => {
+  const processFrameAdvanced = useCallback(async (frame: ImageData): Promise<RealTimeMeasurementType> => {
     const startTime = performance.now();
     
     try {
@@ -167,7 +118,7 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
       }
       lastFrameTimeRef.current = currentTime;
       
-      const result: AdvancedMeasurementResult = {
+      const result: RealTimeMeasurementType = {
         ...finalMeasurement,
         algorithm: 'Advanced Multi-Algorithm Real-Time',
         processingTime,
@@ -640,10 +591,10 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
               
               <div className="measurement-section">
                 <h5>Medidas 3D Avanzadas</h5>
-                <div>Profundidad: {currentMeasurement.depth3D.toFixed(2)} mm</div>
-                <div>Volumen: {currentMeasurement.volume3D.toFixed(2)} mm³</div>
-                <div>Área Superficial: {currentMeasurement.surfaceArea3D.toFixed(2)} mm²</div>
-                <div>Distancia: {currentMeasurement.distance3D.toFixed(2)} mm</div>
+                <div>Profundidad: {currentMeasurement.depth?.toFixed(2) || 'N/A'} mm</div>
+                <div>Volumen: {currentMeasurement.volume?.toFixed(2) || 'N/A'} mm³</div>
+                <div>Área Superficial: {currentMeasurement.surfaceArea?.toFixed(2) || 'N/A'} mm²</div>
+                <div>Distancia: {currentMeasurement.depth?.toFixed(2) || 'N/A'} mm</div>
               </div>
               
               <div className="measurement-section">

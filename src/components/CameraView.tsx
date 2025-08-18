@@ -16,8 +16,8 @@ import {
 } from 'lucide-react';
 import { useCamera } from '@/hooks/useCamera';
 import { CameraDirection } from '@capacitor/camera';
-import { RealTimeMeasurement } from './RealTimeMeasurement';
 import { DetectedObject } from '@/lib/types';
+import { detectContoursSimple, realDepthCalculator } from '@/lib';
 
 interface CameraViewProps {
   onImageCapture?: (imageData: ImageData) => void;
@@ -56,6 +56,12 @@ export const CameraView: React.FC<CameraViewProps> = ({
   const [detectedObjects, setDetectedObjects] = useState<DetectedObject[]>([]);
   const [isRealTimeMeasurement, setIsRealTimeMeasurement] = useState(true);
   const [videoContainer, setVideoContainer] = useState({ width: 0, height: 0 });
+  
+  // ESTADOS PARA MEDICIÓN AUTOMÁTICA
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [currentMeasurement, setCurrentMeasurement] = useState<any>(null);
+  const [frameCount, setFrameCount] = useState(0);
+  const processingInterval = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     initializeCamera();
@@ -74,6 +80,9 @@ export const CameraView: React.FC<CameraViewProps> = ({
     return () => {
       stopCamera();
       window.removeEventListener('resize', updateDimensions);
+      if (processingInterval.current) {
+        clearInterval(processingInterval.current);
+      }
     };
   }, []);
 
@@ -84,6 +93,24 @@ export const CameraView: React.FC<CameraViewProps> = ({
       stopCamera();
     }
   }, [isActive, hasPermissions]);
+
+  // INICIAR MEDICIÓN AUTOMÁTICA EN TIEMPO REAL
+  useEffect(() => {
+    if (isActive && isRealTimeMeasurement && videoRef?.current && overlayCanvasRef?.current) {
+      // Procesar cada 200ms para medición en tiempo real
+      processingInterval.current = setInterval(() => {
+        if (!isProcessing) {
+          processFrameAutomatically();
+        }
+      }, 200);
+    }
+
+    return () => {
+      if (processingInterval.current) {
+        clearInterval(processingInterval.current);
+      }
+    };
+  }, [isActive, isRealTimeMeasurement, videoRef, overlayCanvasRef, isProcessing]);
 
   const initializeCamera = async () => {
     try {
@@ -111,6 +138,255 @@ export const CameraView: React.FC<CameraViewProps> = ({
     }
   };
 
+  // MEDICIÓN AUTOMÁTICA EN TIEMPO REAL
+  const processFrameAutomatically = async () => {
+    if (!videoRef?.current || !overlayCanvasRef?.current || !isActive || isProcessing) {
+      return;
+    }
+
+    try {
+      setIsProcessing(true);
+      const startTime = performance.now();
+
+      // 1. CAPTURAR FRAME ACTUAL
+      const canvas = overlayCanvasRef.current;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      const video = videoRef.current;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+
+      // Dibujar frame actual
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      // 2. DETECTAR CONTORNOS AUTOMÁTICAMENTE
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const detectionResult = await detectContoursSimple(imageData, 200); // Área mínima de 200 píxeles
+
+      // 3. SELECCIONAR OBJETO MÁS PROMINENTE
+      const prominentObject = selectMostProminentObject(detectionResult.rects);
+
+      if (prominentObject) {
+        // 4. CALCULAR MEDICIONES EN TIEMPO REAL
+        const measurements = await calculateRealTimeMeasurements(prominentObject, imageData);
+        
+        // 5. ACTUALIZAR ESTADO
+        const measurement = {
+          id: `frame_${frameCount}`,
+          timestamp: Date.now(),
+          object: prominentObject,
+          measurements,
+          processingTime: performance.now() - startTime
+        };
+
+        setCurrentMeasurement(measurement);
+        setDetectedObjects([prominentObject]);
+        onRealTimeObjects([prominentObject]);
+
+        // 6. DIBUJAR OVERLAY EN TIEMPO REAL
+        drawRealTimeOverlay(ctx, prominentObject, measurements);
+      }
+
+      // 7. ACTUALIZAR CONTADORES
+      setFrameCount(prev => prev + 1);
+
+    } catch (error) {
+      console.error('Error en procesamiento automático:', error);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Seleccionar objeto más prominente
+  const selectMostProminentObject = (rects: any[]): DetectedObject | null => {
+    if (rects.length === 0) return null;
+
+    // Convertir BoundingRect a DetectedObject
+    const detectedObjects: DetectedObject[] = rects.map((rect, index) => ({
+      // Propiedades de BoundingRect
+      x: rect.x,
+      y: rect.y,
+      width: rect.width,
+      height: rect.height,
+      area: rect.width * rect.height,
+      
+      // Propiedades de DetectedObject
+      id: `obj_${index}`,
+      type: 'detected',
+      boundingBox: {
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height
+      },
+      dimensions: {
+        width: rect.width,
+        height: rect.height,
+        area: rect.width * rect.height,
+        unit: 'px'
+      },
+      confidence: 0.8, // Confianza por defecto
+      depth: undefined,
+      realWidth: undefined,
+      realHeight: undefined,
+      volume: undefined,
+      surfaceArea: undefined,
+      curvature: undefined,
+      roughness: undefined,
+      orientation: undefined,
+      materialProperties: undefined
+    }));
+
+    return detectedObjects.reduce((mostProminent, current) => {
+      const currentScore = current.dimensions.area * current.confidence;
+      const prominentScore = mostProminent.dimensions.area * mostProminent.confidence;
+      return currentScore > prominentScore ? current : mostProminent;
+    });
+  };
+
+  // Calcular mediciones en tiempo real
+  const calculateRealTimeMeasurements = async (object: DetectedObject, imageData: ImageData) => {
+    const { width, height, area } = object.dimensions;
+    
+    // Cálculo de profundidad estimada
+    const estimatedDepth = await estimateDepthFromObjectSize(object, imageData);
+    
+    // Cálculo de volumen estimado
+    const estimatedVolume = estimateVolumeFromDimensions(width, height, estimatedDepth);
+    
+    // Cálculo de superficie
+    const surfaceArea = calculateSurfaceArea(width, height, estimatedDepth);
+    
+    // Cálculo de distancia desde la cámara
+    const distanceFromCamera = calculateDistanceFromCamera(object, imageData);
+
+    return {
+      width: width,
+      height: height,
+      depth: estimatedDepth,
+      area: area,
+      volume: estimatedVolume,
+      surfaceArea: surfaceArea,
+      distance: distanceFromCamera,
+      perimeter: 2 * (width + height),
+      diagonal: Math.sqrt(width * width + height * height),
+      aspectRatio: width / height
+    };
+  };
+
+  // Estimación de profundidad
+  const estimateDepthFromObjectSize = async (object: DetectedObject, imageData: ImageData): Promise<number> => {
+    try {
+      const depthMap = await realDepthCalculator.calculateRealDepth(
+        imageData, 
+        { 
+          width: object.dimensions.width, 
+          height: object.dimensions.height,
+          x: object.boundingBox.x,
+          y: object.boundingBox.y
+        }
+      );
+      
+      // Obtener profundidad promedio del objeto
+      const objectDepths = extractObjectDepths(depthMap, object.boundingBox);
+      return objectDepths.reduce((sum, depth) => sum + depth, 0) / objectDepths.length;
+    } catch (error) {
+      // Fallback: estimación basada en perspectiva
+      return estimateDepthFromPerspective(object, imageData);
+    }
+  };
+
+  // Extraer profundidades del objeto
+  const extractObjectDepths = (depthMap: any, boundingBox: any): number[] => {
+    const depths: number[] = [];
+    const { x, y, width, height } = boundingBox;
+    
+    for (let i = y; i < y + height; i += 5) {
+      for (let j = x; j < x + width; j += 5) {
+        const index = i * depthMap.width + j;
+        if (depthMap.depths && depthMap.depths[index] > 0) {
+          depths.push(depthMap.depths[index]);
+        }
+      }
+    }
+    
+    return depths.length > 0 ? depths : [100]; // Valor por defecto
+  };
+
+  // Estimación de profundidad por perspectiva
+  const estimateDepthFromPerspective = (object: DetectedObject, imageData: ImageData): number => {
+    const { width, height } = imageData;
+    const centerY = object.boundingBox.y + object.boundingBox.height / 2;
+    
+    // Objetos más abajo en la imagen están más cerca
+    const normalizedY = centerY / height;
+    const perspectiveDepth = 50 + (normalizedY * 200); // 50mm a 250mm
+    
+    return perspectiveDepth;
+  };
+
+  // Estimación de volumen
+  const estimateVolumeFromDimensions = (width: number, height: number, depth: number): number => {
+    return width * height * depth;
+  };
+
+  // Cálculo de superficie
+  const calculateSurfaceArea = (width: number, height: number, depth: number): number => {
+    return 2 * (width * height + width * depth + height * depth);
+  };
+
+  // Distancia desde la cámara
+  const calculateDistanceFromCamera = (object: DetectedObject, imageData: ImageData): number => {
+    const { height } = imageData;
+    const objectCenterY = object.boundingBox.y + object.boundingBox.height / 2;
+    
+    // Fórmula de perspectiva: objetos más grandes están más cerca
+    const normalizedSize = object.dimensions.area / (height * height);
+    const estimatedDistance = 100 + (normalizedSize * 400); // 100mm a 500mm
+    
+    return estimatedDistance;
+  };
+
+  // Dibujar overlay en tiempo real
+  const drawRealTimeOverlay = (ctx: CanvasRenderingContext2D, object: DetectedObject, measurements: any) => {
+    const { x, y, width, height } = object.boundingBox;
+    
+    // Limpiar canvas
+    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    
+    // Dibujar bounding box
+    ctx.strokeStyle = '#00ff00';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(x, y, width, height);
+    
+    // Dibujar centro del objeto
+    ctx.fillStyle = '#ff0000';
+    ctx.beginPath();
+    ctx.arc(x + width / 2, y + height / 2, 5, 0, 2 * Math.PI);
+    ctx.fill();
+    
+    // Dibujar mediciones
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '16px Arial';
+    ctx.fillText(`Ancho: ${measurements.width.toFixed(1)}px`, x, y - 40);
+    ctx.fillText(`Alto: ${measurements.height.toFixed(1)}px`, x, y - 20);
+    ctx.fillText(`Área: ${measurements.area.toFixed(0)}px²`, x, y - 5);
+    
+    if (measurements.depth) {
+      ctx.fillText(`Profundidad: ${measurements.depth.toFixed(1)}mm`, x, y + 15);
+    }
+    
+    if (measurements.volume) {
+      ctx.fillText(`Volumen: ${measurements.volume.toFixed(0)}mm³`, x, y + 35);
+    }
+    
+    // Dibujar indicador de confianza
+    const confidence = object.confidence;
+    ctx.fillStyle = confidence > 0.8 ? '#00ff00' : confidence > 0.6 ? '#ffff00' : '#ff0000';
+    ctx.fillText(`Confianza: ${(confidence * 100).toFixed(0)}%`, x, y + 55);
+  };
+
   const captureFrame = () => {
     if (!videoRef.current || !canvasRef.current || !onImageCapture) return;
 
@@ -130,11 +406,6 @@ export const CameraView: React.FC<CameraViewProps> = ({
     // Get ImageData from canvas
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     onImageCapture(imageData);
-  };
-
-  const handleObjectsDetected = (objects: DetectedObject[]) => {
-    setDetectedObjects(objects);
-    onRealTimeObjects(objects);
   };
 
   const handleVideoClick = (e: React.MouseEvent<HTMLVideoElement>) => {
@@ -187,6 +458,13 @@ export const CameraView: React.FC<CameraViewProps> = ({
             <Badge variant="outline" className="border-measurement-active text-measurement-active text-xs">
               <Target className="w-3 h-3 mr-1" />
               🎯 Detectado
+            </Badge>
+          )}
+
+          {isProcessing && (
+            <Badge variant="outline" className="border-yellow-500 text-yellow-500 text-xs animate-pulse">
+              <div className="w-2 h-2 bg-yellow-500 rounded-full mr-1"></div>
+              Procesando
             </Badge>
           )}
         </div>
@@ -324,20 +602,63 @@ export const CameraView: React.FC<CameraViewProps> = ({
             </div>
           )}
         </div>
-
-          {/* Real-time Processing Component */}
-        {isRealTimeMeasurement && (
-          <RealTimeMeasurement
-            videoRef={videoRef}
-            onObjectsDetected={handleObjectsDetected}
-            isActive={isActive && isRealTimeMeasurement}
-            overlayCanvasRef={overlayCanvasRef}
-          />
-        )}
       </Card>
 
       {/* Hidden canvas for image capture */}
       <canvas ref={canvasRef} className="hidden" />
+
+      {/* Estado de medición en tiempo real */}
+      {isRealTimeMeasurement && currentMeasurement && (
+        <Card className="p-4 bg-green-900/20 border-green-500/30">
+          <div className="flex items-center gap-2 mb-3">
+            <Target className="w-5 h-5 text-green-400" />
+            <h3 className="font-semibold text-green-400">Medición en Tiempo Real</h3>
+          </div>
+          
+          <div className="grid grid-cols-3 gap-4 text-sm">
+            <div>
+              <p className="text-gray-300">Ancho</p>
+              <p className="font-mono text-green-400 font-bold">
+                {currentMeasurement.measurements.width.toFixed(1)}px
+              </p>
+            </div>
+            <div>
+              <p className="text-gray-300">Alto</p>
+              <p className="font-mono text-cyan-400 font-bold">
+                {currentMeasurement.measurements.height.toFixed(1)}px
+              </p>
+            </div>
+            <div>
+              <p className="text-gray-300">Área</p>
+              <p className="font-mono text-blue-400 font-bold">
+                {currentMeasurement.measurements.area.toFixed(0)}px²
+              </p>
+            </div>
+            {currentMeasurement.measurements.depth && (
+              <div>
+                <p className="text-gray-300">Profundidad</p>
+                <p className="font-mono text-orange-400 font-bold">
+                  {currentMeasurement.measurements.depth.toFixed(1)}mm
+                </p>
+              </div>
+            )}
+            {currentMeasurement.measurements.volume && (
+              <div>
+                <p className="text-gray-300">Volumen</p>
+                <p className="font-mono text-yellow-400 font-bold">
+                  {currentMeasurement.measurements.volume.toFixed(0)}mm³
+                </p>
+              </div>
+            )}
+            <div>
+              <p className="text-gray-300">Frame</p>
+              <p className="font-mono text-white font-bold">
+                {frameCount}
+              </p>
+            </div>
+          </div>
+        </Card>
+      )}
     </div>
   );
 };

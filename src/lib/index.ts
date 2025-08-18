@@ -9,7 +9,7 @@ export * from './types';
 // ============================================================================
 // EXPORTACIÓN DE ALGORITMOS
 // ============================================================================
-export { detectContours } from './imageProcessing';
+export { detectContours, detectContoursSimple } from './imageProcessing';
 export { realDepthCalculator } from './realDepthCalculation';
 
 // ============================================================================

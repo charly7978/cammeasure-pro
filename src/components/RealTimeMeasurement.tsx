@@ -1,17 +1,10 @@
-// COMPONENTE REAL DE MEDICIÓN EN TIEMPO REAL - ALGORITMOS DE EXTREMA COMPLEJIDAD MATEMÁTICA
-// Implementa: Procesamiento de Video en Tiempo Real, Análisis Multi-Frame, 
-// Estimación de Profundidad Avanzada, Machine Learning de Detección
-
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { useMeasurementWorker } from '@/hooks/useMeasurementWorker';
-import { useOpenCV } from '@/hooks/useOpenCV';
+import { DetectedObject, RealTimeMeasurementType } from '@/lib/types';
 import { detectContours, realDepthCalculator } from '@/lib';
-import { RealTimeMeasurement as RealTimeMeasurementType } from '@/lib/types';
 
 interface RealTimeMeasurementProps {
-  imageData?: ImageData | null;
   videoRef?: React.RefObject<HTMLVideoElement>;
-  onObjectsDetected?: (objects: any[]) => void;
+  onObjectsDetected?: (objects: DetectedObject[]) => void;
   isActive: boolean;
   overlayCanvasRef?: React.RefObject<HTMLCanvasElement>;
   onMeasurementUpdate: (measurement: RealTimeMeasurementType) => void;
@@ -19,620 +12,354 @@ interface RealTimeMeasurementProps {
 }
 
 export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
-  imageData,
+  videoRef,
+  onObjectsDetected,
   isActive,
+  overlayCanvasRef,
   onMeasurementUpdate,
   onError
 }) => {
-  const { cv, isLoaded: opencvLoaded } = useOpenCV();
-  const measurementWorker = useMeasurementWorker({
-    enableMultiScale: true,
-    enableTextureAnalysis: true,
-    enableShapeAnalysis: true,
-    enableSemanticSegmentation: true,
-    enableDepthEstimation: true,
-    enableMLEnhancement: true,
-    processingQuality: 'ultra',
-    temporalBufferSize: 15,
-    confidenceThreshold: 0.8,
-    uncertaintyThreshold: 0.2,
-    enableRealTimeLearning: true,
-    adaptiveThresholds: true
-  });
-
   const [currentMeasurement, setCurrentMeasurement] = useState<RealTimeMeasurementType | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [processingStats, setProcessingStats] = useState({
-    totalFrames: 0,
-    averageFrameTime: 0,
-    successRate: 0,
-    lastError: null as string | null
-  });
-  
-  const frameBufferRef = useRef<ImageData[]>([]);
-  const lastFrameTimeRef = useRef<number>(0);
-  const frameRateRef = useRef<number>(0);
-  const qualityMetricsRef = useRef<any>(null);
+  const [frameCount, setFrameCount] = useState(0);
+  const [fps, setFps] = useState(0);
+  const lastFrameTime = useRef<number>(0);
+  const animationFrameId = useRef<number>(0);
+  const processingInterval = useRef<NodeJS.Timeout | null>(null);
 
-  // PROCESAMIENTO EN TIEMPO REAL CON ALGORITMOS AVANZADOS
-  const processFrameAdvanced = useCallback(async (frame: ImageData): Promise<RealTimeMeasurementType> => {
-    const startTime = performance.now();
-    
-    try {
-      console.log('🚀 PROCESANDO FRAME EN TIEMPO REAL - ALGORITMOS AVANZADOS');
-      
-      // 1. ANÁLISIS DE CALIDAD DE FRAME
-      const qualityAnalysis = await analyzeFrameQuality(frame);
-      
-      // 2. PREPROCESAMIENTO AVANZADO
-      const preprocessedFrame = await advancedFramePreprocessing(frame, qualityAnalysis);
-      
-      // 3. DETECCIÓN DE CONTORNOS MULTI-ESCALA
-      const contourResults = await detectContoursAdvanced(preprocessedFrame);
-      
-      // 4. ANÁLISIS DE PROFUNDIDAD 3D REAL
-      const depthResults = await analyzeRealDepth3D(preprocessedFrame, contourResults);
-      
-      // 5. ANÁLISIS DE TEXTURA Y MATERIAL
-      const textureResults = await analyzeTextureAndMaterial(preprocessedFrame, contourResults);
-      
-      // 6. ANÁLISIS DE FORMA AVANZADO
-      const shapeResults = await analyzeAdvancedShape(preprocessedFrame, contourResults);
-      
-      // 7. SEGMENTACIÓN SEMÁNTICA
-      const semanticResults = await performSemanticSegmentation(preprocessedFrame, contourResults);
-      
-      // 8. ENHANCEMENT CON MACHINE LEARNING
-      const mlResults = await enhanceWithMachineLearning({
-        contour: contourResults,
-        depth: depthResults,
-        texture: textureResults,
-        shape: shapeResults,
-        semantic: semanticResults,
-        quality: qualityAnalysis
-      });
-      
-      // 9. FUSIÓN BAYESIANA DE RESULTADOS
-      const fusedResults = fuseBayesianResults({
-        contour: contourResults,
-        depth: depthResults,
-        texture: textureResults,
-        shape: shapeResults,
-        semantic: semanticResults,
-        ml: mlResults
-      });
-      
-      // 10. ANÁLISIS DE INCERTIDUMBRE COMPLETO
-      const uncertaintyAnalysis = await analyzeCompleteUncertainty(fusedResults, frame);
-      
-      // 11. GENERACIÓN DE MEDICIÓN FINAL
-      const finalMeasurement = generateFinalMeasurement(fusedResults, uncertaintyAnalysis, qualityAnalysis);
-      
-      const processingTime = performance.now() - startTime;
-      
-      // Calcular frame rate
-      const currentTime = performance.now();
-      if (lastFrameTimeRef.current > 0) {
-        const frameInterval = currentTime - lastFrameTimeRef.current;
-        frameRateRef.current = 1000 / frameInterval;
-      }
-      lastFrameTimeRef.current = currentTime;
-      
-      const result: RealTimeMeasurementType = {
-        ...finalMeasurement,
-        algorithm: 'Advanced Multi-Algorithm Real-Time',
-        processingTime,
-        frameRate: frameRateRef.current,
-        qualityMetrics: qualityAnalysis
-      };
-      
-      console.log('✅ FRAME PROCESADO EN TIEMPO REAL:', {
-        processingTime: `${processingTime.toFixed(2)}ms`,
-        frameRate: `${frameRateRef.current.toFixed(1)} FPS`,
-        confidence: `${(result.confidence * 100).toFixed(2)}%`,
-        uncertainty: `${(result.uncertainty.total * 100).toFixed(2)}%`
-      });
-      
-      return result;
-      
-    } catch (error) {
-      console.error('❌ Error procesando frame en tiempo real:', error);
-      throw error;
-    }
-  }, [cv, opencvLoaded]);
-
-  // ANÁLISIS DE CALIDAD DE FRAME AVANZADO
-  const analyzeFrameQuality = async (frame: ImageData): Promise<any> => {
-    const width = frame.width;
-    const height = frame.height;
-    
-    // 1. ANÁLISIS DE NITIDEZ (Sharpness)
-    const sharpness = calculateFrameSharpness(frame);
-    
-    // 2. ANÁLISIS DE CONTRASTE
-    const contrast = calculateFrameContrast(frame);
-    
-    // 3. ANÁLISIS DE RUIDO
-    const noise = calculateFrameNoise(frame);
-    
-    // 4. ANÁLISIS DE DESENFOQUE
-    const blur = calculateFrameBlur(frame);
-    
-    // 5. SCORE DE CALIDAD COMBINADO
-    const qualityScore = calculateQualityScore(sharpness, contrast, noise, blur);
-    
-    return {
-      sharpness,
-      contrast,
-      noise,
-      blur,
-      qualityScore,
-      isHighQuality: qualityScore > 0.7
-    };
-  };
-
-  // PREPROCESAMIENTO AVANZADO DE FRAME
-  const advancedFramePreprocessing = async (frame: ImageData, qualityAnalysis: any): Promise<ImageData> => {
-    const width = frame.width;
-    const height = frame.height;
-    const processed = new ImageData(width, height);
-    
-    // 1. FILTRO BILATERAL ADAPTATIVO CON PARÁMETROS DINÁMICOS
-    const bilateralFiltered = await adaptiveBilateralFilter(frame, qualityAnalysis);
-    
-    // 2. DENOISING CON WAVELETS MULTI-ESCALA
-    const waveletDenoised = await multiScaleWaveletDenoising(bilateralFiltered, qualityAnalysis);
-    
-    // 3. ENHANCEMENT CON CLAHE ADAPTATIVO
-    const claheEnhanced = await adaptiveCLAHE(waveletDenoised, qualityAnalysis);
-    
-    // 4. NORMALIZACIÓN DE CONTRASTE INTELIGENTE
-    const contrastNormalized = await intelligentContrastNormalization(claheEnhanced, qualityAnalysis);
-    
-    // 5. FILTRO DE MEDIANA ADAPTIVA
-    const medianFiltered = await adaptiveMedianFilter(contrastNormalized, qualityAnalysis);
-    
-    // 6. ENHANCEMENT DE BORDES ADAPTATIVO
-    const edgeEnhanced = await adaptiveEdgeEnhancement(medianFiltered, qualityAnalysis);
-    
-    processed.data.set(edgeEnhanced.data);
-    return processed;
-  };
-
-  // DETECCIÓN DE CONTORNOS AVANZADA
-  const detectContoursAdvanced = async (frame: ImageData): Promise<any> => {
-    if (!cv || !opencvLoaded) {
-      throw new Error('OpenCV no disponible');
-    }
-    
-    // Usar algoritmo avanzado de detección
-    const results = detectContours(cv, frame, 100);
-    
-    // Enriquecer con análisis adicional
-    const enrichedResults = await enrichContourResults(results, frame);
-    
-    return enrichedResults;
-  };
-
-  // ANÁLISIS DE PROFUNDIDAD 3D REAL
-  const analyzeRealDepth3D = async (frame: ImageData, contourResults: any): Promise<any> => {
-    try {
-      // Usar calculador de profundidad real
-      const depthMap = await realDepthCalculator.calculateRealDepth(
-        frame, 
-        contourResults.prominentObject || { width: 100, height: 100 },
-        frameBufferRef.current[frameBufferRef.current.length - 1]
-      );
-      
-      // Calcular mediciones 3D reales
-      const measurements3D = await realDepthCalculator.calculateReal3DMeasurements(
-        depthMap,
-        contourResults.prominentObject || { width: 100, height: 100 }
-      );
-      
-      return {
-        depthMap,
-        measurements3D,
-        confidence: depthMap.confidence.reduce((a: number, b: number) => a + b, 0) / depthMap.confidence.length
-      };
-      
-    } catch (error) {
-      console.error('Error en análisis de profundidad 3D:', error);
-      return {
-        depthMap: null,
-        measurements3D: null,
-        confidence: 0.5
-      };
-    }
-  };
-
-  // ANÁLISIS DE TEXTURA Y MATERIAL
-  const analyzeTextureAndMaterial = async (frame: ImageData, contourResults: any): Promise<any> => {
-    // Implementar análisis avanzado de textura
-    const textureFeatures = await extractAdvancedTextureFeatures(frame, contourResults);
-    const materialProperties = await analyzeMaterialProperties(textureFeatures);
-    
-    return {
-      textureFeatures,
-      materialProperties,
-      confidence: 0.85
-    };
-  };
-
-  // ANÁLISIS DE FORMA AVANZADO
-  const analyzeAdvancedShape = async (frame: ImageData, contourResults: any): Promise<any> => {
-    // Implementar análisis avanzado de forma
-    const shapeDescriptors = await extractShapeDescriptors(frame, contourResults);
-    const geometricProperties = await analyzeGeometricProperties(shapeDescriptors);
-    
-    return {
-      shapeDescriptors,
-      geometricProperties,
-      confidence: 0.88
-    };
-  };
-
-  // SEGMENTACIÓN SEMÁNTICA
-  const performSemanticSegmentation = async (frame: ImageData, contourResults: any): Promise<any> => {
-    // Implementar segmentación semántica
-    const semanticMap = await generateSemanticMap(frame, contourResults);
-    const objectClassification = await classifyObjects(semanticMap);
-    
-    return {
-      semanticMap,
-      objectClassification,
-      confidence: 0.82
-    };
-  };
-
-  // ENHANCEMENT CON MACHINE LEARNING
-  const enhanceWithMachineLearning = async (allResults: any): Promise<any> => {
-    // Implementar enhancement con ML
-    const enhancedConfidence = await calculateEnhancedConfidence(allResults);
-    const predictedProperties = await predictObjectProperties(allResults);
-    
-    return {
-      enhancedConfidence,
-      predictedProperties,
-      confidence: 0.92
-    };
-  };
-
-  // FUSIÓN BAYESIANA DE RESULTADOS
-  const fuseBayesianResults = (allResults: any): any => {
-    // Implementar fusión bayesiana
-    const fusedConfidence = fuseConfidenceValues(allResults);
-    const fusedProperties = fuseObjectProperties(allResults);
-    
-    return {
-      confidence: fusedConfidence,
-      properties: fusedProperties
-    };
-  };
-
-  // ANÁLISIS DE INCERTIDUMBRE COMPLETO
-  const analyzeCompleteUncertainty = async (fusedResults: any, frame: ImageData): Promise<any> => {
-    // Implementar análisis completo de incertidumbre
-    const measurementUncertainty = calculateMeasurementUncertainty(fusedResults);
-    const calibrationUncertainty = calculateCalibrationUncertainty();
-    const algorithmUncertainty = calculateAlgorithmUncertainty(fusedResults);
-    
-    const totalUncertainty = Math.sqrt(
-      measurementUncertainty * measurementUncertainty +
-      calibrationUncertainty * calibrationUncertainty +
-      algorithmUncertainty * algorithmUncertainty
-    );
-    
-    return {
-      measurement: measurementUncertainty,
-      calibration: calibrationUncertainty,
-      algorithm: algorithmUncertainty,
-      total: totalUncertainty
-    };
-  };
-
-  // GENERACIÓN DE MEDICIÓN FINAL
-  const generateFinalMeasurement = (fusedResults: any, uncertainty: any, quality: any): any => {
-    const primaryObject = fusedResults.properties.primaryObject || {
-      width: 100,
-      height: 100,
-      area: 10000,
-      perimeter: 400,
-      circularity: 0.8,
-      solidity: 0.9
-    };
-    
-    return {
-      width: primaryObject.width,
-      height: primaryObject.height,
-      area: primaryObject.area,
-      perimeter: primaryObject.perimeter,
-      circularity: primaryObject.circularity,
-      solidity: primaryObject.solidity,
-      confidence: fusedResults.confidence,
-      depth3D: fusedResults.properties.depth3D || 150,
-      volume3D: fusedResults.properties.volume3D || 1500000,
-      surfaceArea3D: fusedResults.properties.surfaceArea3D || 60000,
-      distance3D: fusedResults.properties.distance3D || 200,
-      curvature: fusedResults.properties.curvature || 0.02,
-      roughness: fusedResults.properties.roughness || 0.3,
-      orientation: fusedResults.properties.orientation || { pitch: 0, yaw: 0, roll: 0 },
-      materialProperties: fusedResults.properties.materialProperties || {
-        refractiveIndex: 1.5,
-        scatteringCoefficient: 0.1,
-        absorptionCoefficient: 0.05
-      },
-      uncertainty
-    };
-  };
-
-  // PROCESAMIENTO PRINCIPAL EN BUCLE
-  useEffect(() => {
-    if (!isActive || !imageData || !opencvLoaded || !measurementWorker.isInitialized) {
+  // MEDICIÓN AUTOMÁTICA EN TIEMPO REAL
+  const processFrameAutomatically = useCallback(async () => {
+    if (!videoRef?.current || !overlayCanvasRef?.current || !isActive || isProcessing) {
       return;
     }
 
-    const processFrame = async () => {
-      if (isProcessing) return;
-      
+    try {
       setIsProcessing(true);
-      
-      try {
-        // Agregar frame al buffer temporal
-        frameBufferRef.current.push(imageData);
-        if (frameBufferRef.current.length > 15) {
-          frameBufferRef.current.shift();
-        }
+      const startTime = performance.now();
+
+      // 1. CAPTURAR FRAME ACTUAL
+      const canvas = overlayCanvasRef.current;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      const video = videoRef.current;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+
+      // Dibujar frame actual
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      // 2. DETECTAR CONTORNOS AUTOMÁTICAMENTE
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const detectedObjects = await detectContours(imageData, 100); // Área mínima de 100 píxeles
+
+      // 3. SELECCIONAR OBJETO MÁS PROMINENTE
+      const prominentObject = selectMostProminentObject(detectedObjects);
+
+      if (prominentObject) {
+        // 4. CALCULAR MEDICIONES EN TIEMPO REAL
+        const measurements = await calculateRealTimeMeasurements(prominentObject, imageData);
         
-        // Procesar frame con algoritmos avanzados
-        const measurement = await processFrameAdvanced(imageData);
-        
-        // Actualizar estado
+        // 5. ACTUALIZAR ESTADO
+        const measurement: RealTimeMeasurementType = {
+          id: `frame_${frameCount}`,
+          timestamp: Date.now(),
+          object: prominentObject,
+          measurements,
+          algorithm: 'Real-Time Auto-Detection',
+          processingTime: performance.now() - startTime,
+          frameRate: fps,
+          qualityMetrics: {
+            confidence: prominentObject.confidence,
+            sharpness: calculateImageSharpness(imageData),
+            contrast: calculateImageContrast(imageData),
+            noise: calculateImageNoise(imageData)
+          }
+        };
+
         setCurrentMeasurement(measurement);
         onMeasurementUpdate(measurement);
-        
-        // Actualizar estadísticas
-        setProcessingStats(prev => ({
-          totalFrames: prev.totalFrames + 1,
-          averageFrameTime: (prev.averageFrameTime * prev.totalFrames + measurement.processingTime) / (prev.totalFrames + 1),
-          successRate: (prev.successRate * prev.totalFrames + 1) / (prev.totalFrames + 1),
-          lastError: null
-        }));
-        
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
-        console.error('Error en procesamiento de frame:', errorMessage);
-        onError(errorMessage);
-        
-        setProcessingStats(prev => ({
-          ...prev,
-          lastError: errorMessage
-        }));
-      } finally {
-        setIsProcessing(false);
-      }
-    };
 
-    // Procesar frame inmediatamente
-    processFrame();
+        // 6. DIBUJAR OVERLAY EN TIEMPO REAL
+        drawRealTimeOverlay(ctx, prominentObject, measurements);
+
+        // 7. NOTIFICAR OBJETOS DETECTADOS
+        if (onObjectsDetected) {
+          onObjectsDetected([prominentObject]);
+        }
+      }
+
+      // 8. ACTUALIZAR CONTADORES
+      setFrameCount(prev => prev + 1);
+      const currentTime = performance.now();
+      if (lastFrameTime.current > 0) {
+        const frameTime = currentTime - lastFrameTime.current;
+        setFps(1000 / frameTime);
+      }
+      lastFrameTime.current = currentTime;
+
+    } catch (error) {
+      console.error('Error en procesamiento automático:', error);
+      onError(`Error de procesamiento: ${error instanceof Error ? error.message : 'Desconocido'}`);
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [videoRef, overlayCanvasRef, isActive, isProcessing, frameCount, fps, onMeasurementUpdate, onObjectsDetected, onError]);
+
+  // INICIAR PROCESAMIENTO AUTOMÁTICO
+  useEffect(() => {
+    if (isActive && videoRef?.current && overlayCanvasRef?.current) {
+      // Procesar cada 100ms para medición en tiempo real
+      processingInterval.current = setInterval(() => {
+        if (!isProcessing) {
+          processFrameAutomatically();
+        }
+      }, 100);
+
+      // Limpiar al desmontar
+      return () => {
+        if (processingInterval.current) {
+          clearInterval(processingInterval.current);
+        }
+        if (animationFrameId.current) {
+          cancelAnimationFrame(animationFrameId.current);
+        }
+      };
+    }
+  }, [isActive, videoRef, overlayCanvasRef, processFrameAutomatically, isProcessing]);
+
+  // FUNCIONES AUXILIARES PARA MEDICIÓN AUTOMÁTICA
+
+  // Seleccionar objeto más prominente basado en área y confianza
+  const selectMostProminentObject = (objects: DetectedObject[]): DetectedObject | null => {
+    if (objects.length === 0) return null;
+
+    return objects.reduce((mostProminent, current) => {
+      const currentScore = current.dimensions.area * current.confidence;
+      const prominentScore = mostProminent.dimensions.area * mostProminent.confidence;
+      return currentScore > prominentScore ? current : mostProminent;
+    });
+  };
+
+  // Calcular mediciones en tiempo real
+  const calculateRealTimeMeasurements = async (object: DetectedObject, imageData: ImageData) => {
+    const { width, height, area } = object.dimensions;
     
-    // Configurar procesamiento continuo si está activo
-    let intervalId: NodeJS.Timeout;
-    if (isActive) {
-      intervalId = setInterval(processFrame, 100); // 10 FPS máximo
+    // Cálculo de profundidad estimada usando el objeto como referencia
+    const estimatedDepth = await estimateDepthFromObjectSize(object, imageData);
+    
+    // Cálculo de volumen estimado
+    const estimatedVolume = estimateVolumeFromDimensions(width, height, estimatedDepth);
+    
+    // Cálculo de superficie
+    const surfaceArea = calculateSurfaceArea(width, height, estimatedDepth);
+    
+    // Cálculo de distancia desde la cámara
+    const distanceFromCamera = calculateDistanceFromCamera(object, imageData);
+
+    return {
+      width: width,
+      height: height,
+      depth: estimatedDepth,
+      area: area,
+      volume: estimatedVolume,
+      surfaceArea: surfaceArea,
+      distance: distanceFromCamera,
+      perimeter: 2 * (width + height),
+      diagonal: Math.sqrt(width * width + height * height),
+      aspectRatio: width / height
+    };
+  };
+
+  // Estimación de profundidad basada en el tamaño del objeto
+  const estimateDepthFromObjectSize = async (object: DetectedObject, imageData: ImageData): Promise<number> => {
+    try {
+      // Usar el calculador de profundidad real
+      const depthMap = await realDepthCalculator.calculateRealDepth(
+        imageData, 
+        { 
+          width: object.dimensions.width, 
+          height: object.dimensions.height,
+          x: object.boundingBox.x,
+          y: object.boundingBox.y
+        }
+      );
+      
+      // Obtener profundidad promedio del objeto
+      const objectDepths = extractObjectDepths(depthMap, object.boundingBox);
+      return objectDepths.reduce((sum, depth) => sum + depth, 0) / objectDepths.length;
+    } catch (error) {
+      // Fallback: estimación basada en perspectiva
+      return estimateDepthFromPerspective(object, imageData);
+    }
+  };
+
+  // Extraer profundidades del objeto desde el mapa de profundidad
+  const extractObjectDepths = (depthMap: any, boundingBox: any): number[] => {
+    const depths: number[] = [];
+    const { x, y, width, height } = boundingBox;
+    
+    for (let i = y; i < y + height; i += 5) {
+      for (let j = x; j < x + width; j += 5) {
+        const index = i * depthMap.width + j;
+        if (depthMap.depths && depthMap.depths[index] > 0) {
+          depths.push(depthMap.depths[index]);
+        }
+      }
     }
     
-    return () => {
-      if (intervalId) {
-        clearInterval(intervalId);
+    return depths.length > 0 ? depths : [100]; // Valor por defecto
+  };
+
+  // Estimación de profundidad por perspectiva
+  const estimateDepthFromPerspective = (object: DetectedObject, imageData: ImageData): number => {
+    const { width, height } = imageData;
+    const centerY = object.boundingBox.y + object.boundingBox.height / 2;
+    
+    // Objetos más abajo en la imagen están más cerca
+    const normalizedY = centerY / height;
+    const perspectiveDepth = 50 + (normalizedY * 200); // 50mm a 250mm
+    
+    return perspectiveDepth;
+  };
+
+  // Estimación de volumen
+  const estimateVolumeFromDimensions = (width: number, height: number, depth: number): number => {
+    // Asumir forma rectangular para estimación rápida
+    return width * height * depth;
+  };
+
+  // Cálculo de superficie
+  const calculateSurfaceArea = (width: number, height: number, depth: number): number => {
+    return 2 * (width * height + width * depth + height * depth);
+  };
+
+  // Distancia desde la cámara
+  const calculateDistanceFromCamera = (object: DetectedObject, imageData: ImageData): number => {
+    const { height } = imageData;
+    const objectCenterY = object.boundingBox.y + object.boundingBox.height / 2;
+    
+    // Fórmula de perspectiva: objetos más grandes están más cerca
+    const normalizedSize = object.dimensions.area / (height * height);
+    const estimatedDistance = 100 + (normalizedSize * 400); // 100mm a 500mm
+    
+    return estimatedDistance;
+  };
+
+  // Métricas de calidad de imagen
+  const calculateImageSharpness = (imageData: ImageData): number => {
+    // Cálculo de nitidez usando gradientes
+    let totalGradient = 0;
+    const { width, height, data } = imageData;
+    
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        const idx = (y * width + x) * 4;
+        const current = data[idx];
+        const right = data[idx + 4];
+        const bottom = data[(y + 1) * width * 4 + x * 4];
+        
+        const gradientX = Math.abs(current - right);
+        const gradientY = Math.abs(current - bottom);
+        totalGradient += gradientX + gradientY;
       }
-    };
-  }, [imageData, isActive, opencvLoaded, measurementWorker.isInitialized, processFrameAdvanced, onMeasurementUpdate, onError, isProcessing]);
-
-  // MÉTODOS AUXILIARES IMPLEMENTADOS
-  const calculateFrameSharpness = (frame: ImageData): number => {
-    // Implementar cálculo de nitidez
-    return 0.8;
+    }
+    
+    return Math.min(1, totalGradient / (width * height * 255));
   };
 
-  const calculateFrameContrast = (frame: ImageData): number => {
-    // Implementar cálculo de contraste
-    return 0.7;
+  const calculateImageContrast = (imageData: ImageData): number => {
+    const { data } = imageData;
+    let min = 255, max = 0;
+    
+    for (let i = 0; i < data.length; i += 4) {
+      const gray = data[i];
+      min = Math.min(min, gray);
+      max = Math.max(max, gray);
+    }
+    
+    return (max - min) / 255;
   };
 
-  const calculateFrameNoise = (frame: ImageData): number => {
-    // Implementar cálculo de ruido
-    return 0.2;
-  };
-
-  const calculateFrameBlur = (frame: ImageData): number => {
-    // Implementar cálculo de desenfoque
-    return 0.1;
-  };
-
-  const calculateQualityScore = (sharpness: number, contrast: number, noise: number, blur: number): number => {
-    return (sharpness + contrast + (1 - noise) + (1 - blur)) / 4;
-  };
-
-  const adaptiveBilateralFilter = async (frame: ImageData, quality: any): Promise<ImageData> => {
-    return frame;
-  };
-
-  const multiScaleWaveletDenoising = async (frame: ImageData, quality: any): Promise<ImageData> => {
-    return frame;
-  };
-
-  const adaptiveCLAHE = async (frame: ImageData, quality: any): Promise<ImageData> => {
-    return frame;
-  };
-
-  const intelligentContrastNormalization = async (frame: ImageData, quality: any): Promise<ImageData> => {
-    return frame;
-  };
-
-  const adaptiveMedianFilter = async (frame: ImageData, quality: any): Promise<ImageData> => {
-    return frame;
-  };
-
-  const adaptiveEdgeEnhancement = async (frame: ImageData, quality: any): Promise<ImageData> => {
-    return frame;
-  };
-
-  const enrichContourResults = async (results: any, frame: ImageData): Promise<any> => {
-    return results;
-  };
-
-  const extractAdvancedTextureFeatures = async (frame: ImageData, contourResults: any): Promise<any> => {
-    return {};
-  };
-
-  const analyzeMaterialProperties = async (textureFeatures: any): Promise<any> => {
-    return {
-      refractiveIndex: 1.5,
-      scatteringCoefficient: 0.1,
-      absorptionCoefficient: 0.05
-    };
-  };
-
-  const extractShapeDescriptors = async (frame: ImageData, contourResults: any): Promise<any> => {
-    return {};
-  };
-
-  const analyzeGeometricProperties = async (shapeDescriptors: any): Promise<any> => {
-    return {
-      curvature: 0.02,
-      orientation: { pitch: 0, yaw: 0, roll: 0 }
-    };
-  };
-
-  const generateSemanticMap = async (frame: ImageData, contourResults: any): Promise<any> => {
-    return {};
-  };
-
-  const classifyObjects = async (semanticMap: any): Promise<any> => {
-    return { objectClass: 'measurement_object', classConfidence: 0.85 };
-  };
-
-  const calculateEnhancedConfidence = async (allResults: any): Promise<number> => {
-    return 0.92;
-  };
-
-  const predictObjectProperties = async (allResults: any): Promise<any> => {
-    return {};
-  };
-
-  const fuseConfidenceValues = (allResults: any): number => {
-    return 0.88;
-  };
-
-  const fuseObjectProperties = (allResults: any): any => {
-    return {
-      primaryObject: { width: 100, height: 100, area: 10000, perimeter: 400, circularity: 0.8, solidity: 0.9 },
-      depth3D: 150,
-      volume3D: 1500000,
-      surfaceArea3D: 60000,
-      distance3D: 200,
-      curvature: 0.02,
-      roughness: 0.3,
-      orientation: { pitch: 0, yaw: 0, roll: 0 },
-      materialProperties: {
-        refractiveIndex: 1.5,
-        scatteringCoefficient: 0.1,
-        absorptionCoefficient: 0.05
+  const calculateImageNoise = (imageData: ImageData): number => {
+    // Estimación de ruido usando diferencias entre píxeles vecinos
+    const { width, height, data } = imageData;
+    let totalDifference = 0;
+    let count = 0;
+    
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        const idx = (y * width + x) * 4;
+        const current = data[idx];
+        const neighbors = [
+          data[idx - 4], data[idx + 4], // Izquierda, derecha
+          data[idx - width * 4], data[idx + width * 4] // Arriba, abajo
+        ];
+        
+        const avgNeighbor = neighbors.reduce((sum, val) => sum + val, 0) / neighbors.length;
+        totalDifference += Math.abs(current - avgNeighbor);
+        count++;
       }
-    };
+    }
+    
+    return Math.min(1, totalDifference / (count * 255));
   };
 
-  const calculateMeasurementUncertainty = (fusedResults: any): number => {
-    return 0.02;
+  // Dibujar overlay en tiempo real
+  const drawRealTimeOverlay = (ctx: CanvasRenderingContext2D, object: DetectedObject, measurements: any) => {
+    const { x, y, width, height } = object.boundingBox;
+    
+    // Limpiar canvas
+    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    
+    // Dibujar bounding box
+    ctx.strokeStyle = '#00ff00';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(x, y, width, height);
+    
+    // Dibujar centro del objeto
+    ctx.fillStyle = '#ff0000';
+    ctx.beginPath();
+    ctx.arc(x + width / 2, y + height / 2, 5, 0, 2 * Math.PI);
+    ctx.fill();
+    
+    // Dibujar mediciones
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '16px Arial';
+    ctx.fillText(`Ancho: ${measurements.width.toFixed(1)}px`, x, y - 40);
+    ctx.fillText(`Alto: ${measurements.height.toFixed(1)}px`, x, y - 20);
+    ctx.fillText(`Área: ${measurements.area.toFixed(0)}px²`, x, y - 5);
+    
+    if (measurements.depth) {
+      ctx.fillText(`Profundidad: ${measurements.depth.toFixed(1)}mm`, x, y + 15);
+    }
+    
+    if (measurements.volume) {
+      ctx.fillText(`Volumen: ${measurements.volume.toFixed(0)}mm³`, x, y + 35);
+    }
+    
+    // Dibujar indicador de confianza
+    const confidence = object.confidence;
+    ctx.fillStyle = confidence > 0.8 ? '#00ff00' : confidence > 0.6 ? '#ffff00' : '#ff0000';
+    ctx.fillText(`Confianza: ${(confidence * 100).toFixed(0)}%`, x, y + 55);
   };
 
-  const calculateCalibrationUncertainty = (): number => {
-    return 0.01;
-  };
-
-  const calculateAlgorithmUncertainty = (fusedResults: any): number => {
-    return 0.03;
-  };
-
+  // RENDERIZAR ESTADO DE PROCESAMIENTO
   return (
-    <div className="real-time-measurement">
-      <div className="measurement-status">
-        <h3>🚀 MEDICIÓN EN TIEMPO REAL - ALGORITMOS AVANZADOS</h3>
-        
-        <div className="status-indicators">
-          <div className={`indicator ${opencvLoaded ? 'success' : 'error'}`}>
-            OpenCV: {opencvLoaded ? '✅ Cargado' : '❌ No disponible'}
-          </div>
-          
-          <div className={`indicator ${measurementWorker.isInitialized ? 'success' : 'error'}`}>
-            Worker: {measurementWorker.isInitialized ? '✅ Inicializado' : '❌ No inicializado'}
-          </div>
-          
-          <div className={`indicator ${isProcessing ? 'processing' : 'idle'}`}>
-            Estado: {isProcessing ? '🔄 Procesando' : '⏸️ En espera'}
-          </div>
-        </div>
-        
-        {currentMeasurement && (
-          <div className="measurement-results">
-            <h4>📏 RESULTADOS DE MEDICIÓN AVANZADA</h4>
-            
-            <div className="measurement-grid">
-              <div className="measurement-section">
-                <h5>Medidas Básicas</h5>
-                <div>Ancho: {currentMeasurement.width.toFixed(2)} px</div>
-                <div>Alto: {currentMeasurement.height.toFixed(2)} px</div>
-                <div>Área: {currentMeasurement.area.toFixed(2)} px²</div>
-                <div>Perímetro: {currentMeasurement.perimeter.toFixed(2)} px</div>
-                <div>Circularidad: {currentMeasurement.circularity.toFixed(4)}</div>
-                <div>Solidez: {currentMeasurement.solidity.toFixed(4)}</div>
-              </div>
-              
-              <div className="measurement-section">
-                <h5>Medidas 3D Avanzadas</h5>
-                <div>Profundidad: {currentMeasurement.depth?.toFixed(2) || 'N/A'} mm</div>
-                <div>Volumen: {currentMeasurement.volume?.toFixed(2) || 'N/A'} mm³</div>
-                <div>Área Superficial: {currentMeasurement.surfaceArea?.toFixed(2) || 'N/A'} mm²</div>
-                <div>Distancia: {currentMeasurement.depth?.toFixed(2) || 'N/A'} mm</div>
-              </div>
-              
-              <div className="measurement-section">
-                <h5>Propiedades Avanzadas</h5>
-                <div>Curvatura: {currentMeasurement.curvature.toFixed(6)}</div>
-                <div>Rugosidad: {currentMeasurement.roughness.toFixed(4)}</div>
-                <div>Confianza: {(currentMeasurement.confidence * 100).toFixed(2)}%</div>
-                <div>Incertidumbre: {(currentMeasurement.uncertainty.total * 100).toFixed(2)}%</div>
-              </div>
-              
-              <div className="measurement-section">
-                <h5>Métricas de Calidad</h5>
-                <div>Nitidez: {(currentMeasurement.qualityMetrics.sharpness * 100).toFixed(1)}%</div>
-                <div>Contraste: {(currentMeasurement.qualityMetrics.contrast * 100).toFixed(1)}%</div>
-                <div>Ruid: {(currentMeasurement.qualityMetrics.noise * 100).toFixed(1)}%</div>
-                <div>Desenfoque: {(currentMeasurement.qualityMetrics.blur * 100).toFixed(1)}%</div>
-              </div>
-            </div>
-            
-            <div className="performance-metrics">
-              <h5>⚡ MÉTRICAS DE RENDIMIENTO</h5>
-              <div>Tiempo de Procesamiento: {currentMeasurement.processingTime.toFixed(2)} ms</div>
-              <div>Frame Rate: {currentMeasurement.frameRate.toFixed(1)} FPS</div>
-              <div>Algoritmo: {currentMeasurement.algorithm}</div>
-            </div>
-          </div>
-        )}
-        
-        <div className="processing-stats">
-          <h5>📊 ESTADÍSTICAS DE PROCESAMIENTO</h5>
-          <div>Frames Procesados: {processingStats.totalFrames}</div>
-          <div>Tiempo Promedio: {processingStats.averageFrameTime.toFixed(2)} ms</div>
-          <div>Tasa de Éxito: {(processingStats.successRate * 100).toFixed(1)}%</div>
-          {processingStats.lastError && (
-            <div className="error">Último Error: {processingStats.lastError}</div>
-          )}
-        </div>
+    <div className="absolute bottom-4 left-4 bg-black/80 text-white p-3 rounded-lg text-sm">
+      <div className="flex items-center gap-2 mb-2">
+        <div className={`w-3 h-3 rounded-full ${isProcessing ? 'bg-yellow-400 animate-pulse' : 'bg-green-400'}`}></div>
+        <span>{isProcessing ? 'Procesando...' : 'Activo'}</span>
       </div>
+      
+      {currentMeasurement && (
+        <div className="space-y-1">
+          <div>Frame: {frameCount}</div>
+          <div>FPS: {fps.toFixed(1)}</div>
+          <div>Tiempo: {currentMeasurement.processingTime.toFixed(1)}ms</div>
+          <div>Confianza: {(currentMeasurement.qualityMetrics.confidence * 100).toFixed(0)}%</div>
+        </div>
+      )}
     </div>
   );
 };

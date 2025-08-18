@@ -781,3 +781,172 @@ function calculateLocalStd(imageData: ImageData): number {
   
   return Math.sqrt(sumSquared / count);
 }
+
+// FUNCIÓN SIMPLIFICADA PARA MEDICIÓN AUTOMÁTICA EN TIEMPO REAL (SIN OPENCV)
+export function detectContoursSimple(
+  imageData: ImageData,
+  minArea: number = 500
+): { rects: BoundingRect[]; prominentObject: BoundingRect | null; edges: any } {
+  try {
+    console.log('🚀 INICIANDO DETECCIÓN SIMPLIFICADA PARA TIEMPO REAL');
+    
+    const { width, height, data } = imageData;
+    const rects: BoundingRect[] = [];
+    
+    // 1. CONVERTIR A ESCALA DE GRISES
+    const grayData = new Uint8Array(width * height);
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      grayData[i / 4] = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+    }
+    
+    // 2. DETECCIÓN DE BORDES SIMPLE (Sobel)
+    const edges = detectEdgesSimple(grayData, width, height);
+    
+    // 3. DETECCIÓN DE CONTORNOS POR CONECTIVIDAD
+    const contours = findContoursByConnectivity(edges, width, height);
+    
+    // 4. FILTRAR POR ÁREA MÍNIMA
+    for (const contour of contours) {
+      if (contour.area >= minArea) {
+        rects.push({
+          x: contour.boundingBox.x,
+          y: contour.boundingBox.y,
+          width: contour.boundingBox.width,
+          height: contour.boundingBox.height,
+          area: contour.area
+        });
+      }
+    }
+    
+    // 5. SELECCIONAR OBJETO MÁS PROMINENTE
+    const prominentObject = rects.length > 0 ? rects.reduce((max, current) => 
+      current.area > max.area ? current : max
+    ) : null;
+    
+    console.log('✅ DETECCIÓN SIMPLIFICADA COMPLETADA:', {
+      totalObjects: rects.length,
+      prominentObject: prominentObject ? 'Sí' : 'No',
+      algorithm: 'Sobel + Conectividad'
+    });
+    
+    return { rects, prominentObject, edges };
+    
+  } catch (error) {
+    console.error('❌ Error en detección simplificada:', error);
+    return { rects: [], prominentObject: null, edges: null };
+  }
+}
+
+// DETECCIÓN DE BORDES SIMPLE (OPERADOR SOBEL)
+function detectEdgesSimple(grayData: Uint8Array, width: number, height: number): Uint8Array {
+  const edges = new Uint8Array(width * height);
+  
+  // Kernel Sobel
+  const sobelX = [-1, 0, 1, -2, 0, 2, -1, 0, 1];
+  const sobelY = [-1, -2, -1, 0, 0, 0, 1, 2, 1];
+  
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      let gx = 0, gy = 0;
+      
+      // Aplicar kernels
+      for (let ky = -1; ky <= 1; ky++) {
+        for (let kx = -1; kx <= 1; kx++) {
+          const pixel = grayData[(y + ky) * width + (x + kx)];
+          const kernelIndex = (ky + 1) * 3 + (kx + 1);
+          gx += pixel * sobelX[kernelIndex];
+          gy += pixel * sobelY[kernelIndex];
+        }
+      }
+      
+      // Magnitud del gradiente
+      const magnitude = Math.sqrt(gx * gx + gy * gy);
+      edges[y * width + x] = magnitude > 50 ? 255 : 0;
+    }
+  }
+  
+  return edges;
+}
+
+// ENCONTRAR CONTORNOS POR CONECTIVIDAD
+function findContoursByConnectivity(edges: Uint8Array, width: number, height: number): any[] {
+  const visited = new Set<number>();
+  const contours: any[] = [];
+  
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const index = y * width + x;
+      
+      if (edges[index] === 255 && !visited.has(index)) {
+        // Nuevo contorno encontrado
+        const contour = floodFillContour(edges, width, height, x, y, visited);
+        if (contour.points.length > 10) { // Filtrar contornos muy pequeños
+          contours.push(contour);
+        }
+      }
+    }
+  }
+  
+  return contours;
+}
+
+// FLOOD FILL PARA ENCONTRAR CONTORNOS
+function floodFillContour(
+  edges: Uint8Array, 
+  width: number, 
+  height: number, 
+  startX: number, 
+  startY: number, 
+  visited: Set<number>
+): any {
+  const points: { x: number; y: number }[] = [];
+  const stack: { x: number; y: number }[] = [{ x: startX, y: startY }];
+  
+  let minX = startX, maxX = startX;
+  let minY = startY, maxY = startY;
+  
+  while (stack.length > 0) {
+    const { x, y } = stack.pop()!;
+    const index = y * width + x;
+    
+    if (x < 0 || x >= width || y < 0 || y >= height || 
+        edges[index] !== 255 || visited.has(index)) {
+      continue;
+    }
+    
+    visited.add(index);
+    points.push({ x, y });
+    
+    // Actualizar bounding box
+    minX = Math.min(minX, x);
+    maxX = Math.max(maxX, x);
+    minY = Math.min(minY, y);
+    maxY = Math.max(maxY, y);
+    
+         // Agregar vecinos
+     stack.push(
+       { x: x + 1, y: y },
+       { x: x - 1, y: y },
+       { x: x, y: y + 1 },
+       { x: x, y: y - 1 }
+     );
+  }
+  
+  const boundingBox = {
+    x: minX,
+    y: minY,
+    width: maxX - minX + 1,
+    height: maxY - minY + 1
+  };
+  
+  const area = boundingBox.width * boundingBox.height;
+  
+  return {
+    points,
+    boundingBox,
+    area
+  };
+}

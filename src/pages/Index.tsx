@@ -1,5 +1,6 @@
 
 import React, { useState } from 'react';
+import { View } from 'react-native';
 import { AdvancedCameraView } from '@/components/AdvancedCameraView';
 import { MeasurementControls } from '@/components/MeasurementControls';
 import { CalibrationProvider } from '@/lib/calibrationContext';
@@ -21,18 +22,18 @@ export default function Index() {
 
   return (
     <CalibrationProvider>
-      <div className="flex-1 bg-background">
+      <View className="flex-1 bg-background">
         {/* Vista Principal de Cámara */}
-        <div className="flex-1">
+        <View className="flex-1">
           <AdvancedCameraView
             onMeasurementComplete={handleMeasurementComplete}
             onCalibrationUpdate={handleCalibrationUpdate}
             measurementMode="auto"
           />
-        </div>
+        </View>
 
         {/* Panel de Controles Deslizable */}
-        <div className="absolute bottom-0 left-0 right-0">
+        <View className="absolute bottom-0 left-0 right-0">
           <Card className="m-2 bg-background/95 backdrop-blur-sm">
             <MeasurementControls
               measurementMode={measurementMode}
@@ -53,8 +54,8 @@ export default function Index() {
               }}
             />
           </Card>
-        </div>
-      </div>
+        </View>
+      </View>
     </CalibrationProvider>
   );
 }

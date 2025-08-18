@@ -5,7 +5,8 @@ const config: CapacitorConfig = {
   appName: 'cammeasure-pro',
   webDir: 'dist',
   server: {
-    url: 'https://f976e3b6-c56e-4814-85f8-240003ca6ffe.lovableproject.com?forceHideBadge=true',
+    // Comenta o elimina la URL remota para usar el servidor local
+    // url: 'https://f976e3b6-c56e-4814-85f8-240003ca6ffe.lovableproject.com?forceHideBadge=true',
     cleartext: true
   },
   android: {

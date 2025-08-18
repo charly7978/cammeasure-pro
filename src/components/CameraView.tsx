@@ -1,5 +1,5 @@
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useCamera } from '@/hooks/useCamera';
 import { DetectedObject } from '@/lib/types';
+import { TouchObjectSelector } from './TouchObjectSelector';
 
 interface CameraViewProps {
   onImageCapture?: (imageData: ImageData) => void;
@@ -60,6 +61,33 @@ export const CameraView: React.FC<CameraViewProps> = ({
   const [currentMeasurement, setCurrentMeasurement] = useState<any>(null);
   const [frameCount, setFrameCount] = useState(0);
   const processingInterval = useRef<NodeJS.Timeout | null>(null);
+  
+  // ESTADOS PARA SELECCIÓN MANUAL POR TOQUE
+  const [isManualSelectionMode, setIsManualSelectionMode] = useState(false);
+  const [selectedObject, setSelectedObject] = useState<DetectedObject | null>(null);
+  const [manualMeasurements, setManualMeasurements] = useState<any>(null);
+
+  // MANEJAR OBJETO SELECCIONADO MANUALMENTE
+  const handleManualObjectSelection = useCallback((object: DetectedObject, measurements: any) => {
+    console.log('🎯 OBJETO SELECCIONADO MANUALMENTE:', object);
+    setSelectedObject(object);
+    setManualMeasurements(measurements);
+    
+    // Detener medición automática cuando se selecciona manualmente
+    if (processingInterval.current) {
+      clearInterval(processingInterval.current);
+      processingInterval.current = null;
+    }
+    
+    // Notificar al componente padre
+    onRealTimeObjects([object]);
+  }, [onRealTimeObjects]);
+
+  // MANEJAR ERROR EN SELECCIÓN MANUAL
+  const handleManualSelectionError = useCallback((error: string) => {
+    console.error('❌ Error en selección manual:', error);
+    // Mostrar error al usuario
+  }, []);
 
   // INICIALIZACIÓN INMEDIATA DE CÁMARA - SIN DEPENDER DE isActive
   useEffect(() => {
@@ -1858,6 +1886,13 @@ export const CameraView: React.FC<CameraViewProps> = ({
               Procesando
             </Badge>
           )}
+          
+          {isManualSelectionMode && (
+            <Badge variant="outline" className="border-green-500 text-green-500 text-xs animate-pulse">
+              <Target className="w-3 h-3 mr-1" />
+              👆 Selección Manual
+            </Badge>
+          )}
         </div>
 
         <div className="flex items-center gap-1">
@@ -1926,6 +1961,16 @@ export const CameraView: React.FC<CameraViewProps> = ({
           >
             <Focus className="w-3 h-3" />
           </Button>
+          
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsManualSelectionMode(!isManualSelectionMode)}
+            className={`h-8 w-8 p-0 ${isManualSelectionMode ? "bg-green-500 text-background" : ""}`}
+            title="Modo Selección Manual"
+          >
+            <Target className="w-3 h-3" />
+          </Button>
         </div>
       </div>
 
@@ -1944,6 +1989,15 @@ export const CameraView: React.FC<CameraViewProps> = ({
         <canvas
           ref={overlayCanvasRef}
           className="absolute inset-0 w-full h-full pointer-events-none"
+        />
+        
+        {/* Touch Object Selector - Selección Manual por Toque */}
+        <TouchObjectSelector
+          videoRef={videoRef}
+          overlayCanvasRef={overlayCanvasRef}
+          onObjectSelected={handleManualObjectSelection}
+          onError={handleManualSelectionError}
+          isActive={isManualSelectionMode}
         />
         
         {/* Grid Overlay */}

@@ -17,7 +17,6 @@ import {
 import { useCamera } from '@/hooks/useCamera';
 import { CameraDirection } from '@capacitor/camera';
 import { RealTimeMeasurement, type DetectedObject } from './RealTimeMeasurement';
-import { MeasurementOverlay } from './MeasurementOverlay';
 
 interface CameraViewProps {
   onImageCapture?: (imageData: ImageData) => void;
@@ -47,6 +46,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
   const [currentCamera, setCurrentCamera] = useState<CameraDirection>(CameraDirection.Rear);
   const [showGrid, setShowGrid] = useState(true);
   const [flashEnabled, setFlashEnabled] = useState(false);
@@ -261,14 +261,16 @@ export const CameraView: React.FC<CameraViewProps> = ({
             }}
           />
 
-          {/* Real-time Measurement Overlay - MÁS TRANSPARENTE Y FIJO */}
+          {/* Canvas para overlay de mediciones en tiempo real */}
           {isRealTimeMeasurement && (
-            <MeasurementOverlay
-              objects={detectedObjects}
-              videoWidth={videoRef.current?.videoWidth || 1}
-              videoHeight={videoRef.current?.videoHeight || 1}
-              containerWidth={videoContainer.width}
-              containerHeight={videoContainer.height}
+            <canvas
+              ref={overlayCanvasRef}
+              className="absolute inset-0 pointer-events-none"
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover'
+              }}
             />
           )}
           
@@ -322,12 +324,13 @@ export const CameraView: React.FC<CameraViewProps> = ({
           )}
         </div>
 
-        {/* Real-time Processing Component */}
+          {/* Real-time Processing Component */}
         {isRealTimeMeasurement && (
           <RealTimeMeasurement
             videoRef={videoRef}
             onObjectsDetected={handleObjectsDetected}
             isActive={isActive && isRealTimeMeasurement}
+            overlayCanvasRef={overlayCanvasRef}
           />
         )}
       </Card>

@@ -65,7 +65,7 @@ class OptimizedMeasurementScheduler {
     this.tasks.set(id, task);
     this.stats.totalTasks = this.tasks.size;
 
-    console.log(`📅 Tarea programada: ${id} (${component}) - ${frequency}ms`);
+    // Sin logging para mejor rendimiento
   }
 
   // REMOVER TAREA
@@ -73,7 +73,7 @@ class OptimizedMeasurementScheduler {
     if (this.tasks.has(id)) {
       this.tasks.delete(id);
       this.stats.totalTasks = this.tasks.size;
-      console.log(`🗑️ Tarea removida: ${id}`);
+      // Sin logging para mejor rendimiento
     }
   }
 
@@ -85,9 +85,9 @@ class OptimizedMeasurementScheduler {
     this.intervalId = setInterval(() => {
       this.runScheduledTasks();
       this.performPeriodicCleanup();
-    }, this.UNIFIED_FREQUENCY);
+    }, 1000); // Aumentar a 1 segundo para mejor fluidez
 
-    console.log('🚀 Scheduler optimizado iniciado');
+    // Sin logging para mejor rendimiento
   }
 
   // DETENER SCHEDULER
@@ -100,7 +100,7 @@ class OptimizedMeasurementScheduler {
       this.intervalId = null;
     }
 
-    console.log('⏹️ Scheduler optimizado detenido');
+    // Sin logging para mejor rendimiento
   }
 
   // EJECUTAR TAREAS PROGRAMADAS

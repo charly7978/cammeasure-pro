@@ -49,21 +49,26 @@ const Index = () => {
   const { sensorData, isListening, startListening, stopListening } = useDeviceSensors();
   const { isReady: isOpenCVLoaded, error: openCVError } = useOpenCV();
 
-  // INICIALIZAR SISTEMA DE OPTIMIZACIÓN
+  // INICIALIZAR SISTEMA (SIMPLIFICADO PARA MEJOR RENDIMIENTO)
   useEffect(() => {
     const initOptimization = async () => {
       try {
         await optimization.initialize();
-        console.log('🎉 SISTEMA DE OPTIMIZACIÓN COMPLETAMENTE ACTIVADO');
-        console.log(optimization.generateReport());
+        // Solo reportes en desarrollo, muy poco frecuentes
+        if (process.env.NODE_ENV === 'development') {
+          setTimeout(() => {
+            console.info('Sistema de optimización activo');
+          }, 5000);
+        }
       } catch (error) {
-        console.error('❌ Error inicializando optimización:', error);
+        if (process.env.NODE_ENV === 'development') {
+          console.error('Error inicializando optimización:', error);
+        }
       }
     };
     
     initOptimization();
     
-    // Cleanup al desmontar
     return () => {
       optimization.shutdown();
     };

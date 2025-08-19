@@ -18,18 +18,16 @@ class SmartLogger {
   private readonly IS_DEVELOPMENT = process.env.NODE_ENV === 'development';
 
   constructor() {
-    // Solo mantener logs en desarrollo
-    if (this.IS_PRODUCTION) {
-      this.disableAllLogs();
-    }
+    // Configuración más restrictiva para evitar spam
+    this.disableAllLogs();
   }
 
-  // DESABILITAR TODOS LOS LOGS EN PRODUCCIÓN
+  // DESABILITAR TODOS LOS LOGS (MEJORAR RENDIMIENTO)
   private disableAllLogs(): void {
     this.debug = () => {};
     this.info = () => {};
-    this.warn = this.IS_PRODUCTION ? () => {} : console.warn;
-    this.error = console.error; // Mantener errores siempre
+    this.warn = () => {};
+    this.error = this.IS_PRODUCTION ? () => {} : console.error; // Solo errores en desarrollo
   }
 
   // LOG DE DEBUG (Solo desarrollo)

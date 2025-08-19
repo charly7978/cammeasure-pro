@@ -83,30 +83,30 @@ class UnifiedOptimizationSystem {
 
   // PROGRAMAR TAREAS DE MANTENIMIENTO
   private scheduleMaintenanceTasks(): void {
-    // Limpieza de cache cada 60 segundos
+    // Limpieza de cache cada 2 minutos
     optimizedScheduler.scheduleTask(
       'cache_cleanup',
       'UnifiedSystem',
       () => this.performCacheCleanup(),
-      60000,
+      120000,
       'low'
     );
 
-    // Limpieza de precisión cada 30 segundos
+    // Limpieza de precisión cada minuto
     optimizedScheduler.scheduleTask(
       'precision_cleanup',
       'UnifiedSystem', 
       () => precisionMeasurement.cleanup(),
-      30000,
+      60000,
       'medium'
     );
 
-    // Recolección de estadísticas cada 5 segundos
+    // Recolección de estadísticas cada 30 segundos
     optimizedScheduler.scheduleTask(
       'stats_collection',
       'UnifiedSystem',
       () => this.collectPerformanceStats(),
-      5000,
+      30000,
       'low'
     );
   }

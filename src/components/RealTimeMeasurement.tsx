@@ -154,12 +154,12 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
   // INICIAR PROCESAMIENTO AUTOMÁTICO
   useEffect(() => {
     if (isActive && videoRef?.current && overlayCanvasRef?.current) {
-      // Procesar cada 100ms para medición en tiempo real
+      // Procesar cada 300ms para mejor fluidez
       processingInterval.current = setInterval(() => {
         if (!isProcessing) {
           processFrameAutomatically();
         }
-      }, 100);
+      }, 300);
 
       // Limpiar al desmontar
       return () => {

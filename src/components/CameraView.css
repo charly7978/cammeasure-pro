@@ -5,28 +5,59 @@
    ============================================================================ */
 
 .camera-view {
-  @apply w-full max-w-6xl mx-auto p-4;
+  @apply w-full;
+  padding: 0;
+  margin: 0;
+  max-width: none;
 }
 
 .camera-main-view {
-  @apply relative bg-black rounded-lg overflow-hidden mb-4;
-  aspect-ratio: 4/3;
+  @apply relative bg-black overflow-hidden mb-4;
+  width: 100vw;
+  height: 100vh;
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 10;
 }
 
 .camera-video {
   @apply w-full h-full object-cover;
+  width: 100vw;
+  height: 100vh;
+  position: absolute;
+  top: 0;
+  left: 0;
 }
 
 .camera-canvas {
   @apply absolute inset-0;
+  width: 100vw;
+  height: 100vh;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 15;
 }
 
 .camera-overlay {
   @apply absolute inset-0 pointer-events-none;
+  width: 100vw;
+  height: 100vh;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 20;
 }
 
 .touch-selector {
   @apply absolute inset-0 z-10;
+  width: 100vw;
+  height: 100vh;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 25;
 }
 
 /* ============================================================================
@@ -35,6 +66,15 @@
 
 .camera-controls {
   @apply bg-gradient-to-r from-gray-800 to-gray-900;
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  right: 20px;
+  z-index: 50;
+  background: rgba(0, 0, 0, 0.8);
+  border-radius: 12px;
+  padding: 16px;
+  backdrop-filter: blur(10px);
 }
 
 .camera-controls button {
@@ -55,6 +95,12 @@
 
 .detection-overlay {
   @apply absolute inset-0;
+  width: 100vw;
+  height: 100vh;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 30;
 }
 
 /* ============================================================================
@@ -63,6 +109,15 @@
 
 .measurement-display {
   @apply space-y-4;
+  position: fixed;
+  bottom: 20px;
+  left: 20px;
+  right: 20px;
+  z-index: 40;
+  background: rgba(0, 0, 0, 0.8);
+  border-radius: 12px;
+  padding: 16px;
+  backdrop-filter: blur(10px);
 }
 
 .measurement-display.error {
@@ -95,6 +150,15 @@
 
 .status-indicators {
   @apply mt-4 space-y-2;
+  position: fixed;
+  top: 100px;
+  right: 20px;
+  z-index: 45;
+  background: rgba(0, 0, 0, 0.8);
+  border-radius: 8px;
+  padding: 12px;
+  backdrop-filter: blur(10px);
+  max-width: 300px;
 }
 
 .status-indicator {

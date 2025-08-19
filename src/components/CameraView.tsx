@@ -71,12 +71,23 @@ export const CameraView: React.FC<CameraViewProps> = ({ className = '' }) => {
       videoRef.current.srcObject = stream;
       setIsCameraActive(true);
 
-      // Configurar canvas
+      // Configurar canvas para ocupar toda la pantalla
       if (canvasRef.current && overlayCanvasRef.current) {
-        canvasRef.current.width = 640;
-        canvasRef.current.height = 480;
-        overlayCanvasRef.current.width = 640;
-        overlayCanvasRef.current.height = 480;
+        const video = videoRef.current;
+        const canvas = canvasRef.current;
+        const overlayCanvas = overlayCanvasRef.current;
+        
+        // Obtener dimensiones del video
+        const videoWidth = video.videoWidth || window.innerWidth;
+        const videoHeight = video.videoHeight || window.innerHeight;
+        
+        // Configurar canvas para ocupar toda la pantalla
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        overlayCanvas.width = window.innerWidth;
+        overlayCanvas.height = window.innerHeight;
+        
+        console.log('📱 Canvas configurado para pantalla completa:', { width: canvas.width, height: canvas.height });
       }
 
     } catch (error) {

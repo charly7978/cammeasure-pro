@@ -31,9 +31,12 @@ import {
   DetectedObject 
 } from '@/lib/types';
 
+import { useUnifiedOptimization } from '@/lib/unifiedOptimizationSystem';
+
 const Index = () => {
   const [activeTab, setActiveTab] = useState<'camera' | 'calibration' | 'measurements'>('camera');
   const { calibrationData } = useCalibration();
+  const optimization = useUnifiedOptimization();
   const [measurementMode, setMeasurementMode] = useState<MeasurementMode>('2d');
   const [measurementResult, setMeasurementResult] = useState<MeasurementResult | null>(null);
   const [capturedImage, setCapturedImage] = useState<ImageData | null>(null);
@@ -45,6 +48,26 @@ const Index = () => {
   
   const { sensorData, isListening, startListening, stopListening } = useDeviceSensors();
   const { isReady: isOpenCVLoaded, error: openCVError } = useOpenCV();
+
+  // INICIALIZAR SISTEMA DE OPTIMIZACIÓN
+  useEffect(() => {
+    const initOptimization = async () => {
+      try {
+        await optimization.initialize();
+        console.log('🎉 SISTEMA DE OPTIMIZACIÓN COMPLETAMENTE ACTIVADO');
+        console.log(optimization.generateReport());
+      } catch (error) {
+        console.error('❌ Error inicializando optimización:', error);
+      }
+    };
+    
+    initOptimization();
+    
+    // Cleanup al desmontar
+    return () => {
+      optimization.shutdown();
+    };
+  }, [optimization]);
 
   useEffect(() => {
     startListening();

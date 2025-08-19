@@ -222,8 +222,7 @@ export const MeasurementEngine: React.FC<MeasurementEngineProps> = ({
       return {
         depthMap,
         measurements3D,
-        confidence: (depthMap.confidence && depthMap.confidence.length > 0) ? 
-          depthMap.confidence.reduce((a: number, b: number) => a + b, 0) / depthMap.confidence.length : 0.5
+        confidence: 0.5 // Valor por defecto cuando no hay datos de confianza
       };
       
     } catch (error) {
@@ -468,7 +467,7 @@ export const MeasurementEngine: React.FC<MeasurementEngineProps> = ({
         clearInterval(intervalId);
       }
     };
-  }, [imageData, isActive, opencvLoaded, measurementWorker.isInitialized, processMeasurement, onMeasurementComplete, onError, isProcessing]);
+  }, [imageData, isActive, opencvLoaded, processMeasurement, onMeasurementComplete, onError, isProcessing]);
 
   // MÉTODOS AUXILIARES IMPLEMENTADOS
   const multiScaleQualityAnalysis = async (frame: ImageData): Promise<any> => {

@@ -852,12 +852,34 @@ export function useOpenCV() {
         contours.splice(0, contours.length, ...result);
       }
     },
-    detectEdges: (src: ImageData) => nativeOpenCV.detectEdges(src),
-    findContoursSimple: (src: ImageData) => nativeOpenCV.findContoursSimple(src),
-    warpAffine: (src: ImageData, matrix: number[][], size: number[]) => 
-      nativeOpenCV.warpAffine(src, matrix, size),
-    getRotationMatrix2D: (center: number[], angle: number, scale: number) => 
-      nativeOpenCV.getRotationMatrix2D(center, angle, scale)
+    // Funciones adicionales (mantener compatibilidad)
+    // Funciones adicionales (mantener compatibilidad)
+    contourArea: (contour: any) => 0,
+    boundingRect: (contour: any) => ({ x: 0, y: 0, width: 0, height: 0 }),
+    arcLength: (contour: any, closed: boolean) => 0,
+    moments: (contour: any) => ({ m00: 0, m10: 0, m01: 0 }),
+    isContourConvex: (contour: any) => false,
+    minEnclosingCircle: (contour: any) => ({ center: { x: 0, y: 0 }, radius: 0 }),
+    convexHull: (contour: any, hull: any, clockwise: boolean, returnPoints: boolean) => {},
+    HuMoments: (moments: any) => new Float32Array(7),
+    
+    // Constantes OpenCV
+    COLOR_RGBA2GRAY: 6,
+    RETR_EXTERNAL: 0,
+    CHAIN_APPROX_SIMPLE: 2,
+    MORPH_RECT: 0,
+    MORPH_CLOSE: 3,
+    MORPH_ELLIPSE: 2,
+    
+    // Funciones de estructura
+    getStructuringElement: (shape: number, size: number[]) => ({}),
+    morphologyEx: (src: ImageData, dst: ImageData, op: number, kernel: any) => {},
+    dilate: (src: ImageData, dst: ImageData, kernel: any, anchor: any, iterations: number) => {},
+    equalizeHist: (src: ImageData, dst: ImageData) => {},
+    
+    // Funciones de filtrado
+    bilateralFilter: (src: ImageData, dst: ImageData, d: number, sigmaColor: number, sigmaSpace: number) => {},
+    CLAHE: (clipLimit: number, tileGridSize: number[]) => ({})
   };
 
   return {

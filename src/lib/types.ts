@@ -58,6 +58,14 @@ export interface BoundingRect {
   };
 }
 
+export interface Dimensions {
+  width: number;
+  height: number;
+  area: number;
+  unit: string;
+  perimeter?: number;
+}
+
 export interface DetectedObject extends BoundingRect {
   points: Point3D[];
   id: string;
@@ -78,14 +86,7 @@ export interface DetectedObject extends BoundingRect {
     height: number;
   };
   
-  dimensions: {
-    width: number;
-    height: number;
-    area: number;
-    unit: string;
-  };
-  
-  // Propiedades 3D
+  dimensions: Dimensions;
   isReal3D?: boolean;
   measurements3D?: {
     width3D: number;

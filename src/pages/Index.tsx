@@ -165,7 +165,7 @@ const Index = () => {
         realTimeObjects,
         measurementResult,
         measurementMode,
-        calibration,
+        calibrationData,
         timestamp: new Date().toISOString()
       };
       localStorage.setItem('cammeasure_data', JSON.stringify(dataToSave));
@@ -182,7 +182,7 @@ const Index = () => {
       const data = {
         realTimeObjects,
         result: measurementResult,
-        calibration: calibration,
+        calibrationData: calibrationData,
         measurementMode,
         timestamp: new Date().toISOString(),
         deviceInfo: sensorData?.deviceInfo
@@ -284,11 +284,11 @@ const Index = () => {
           </Badge>
           
           <Badge 
-            variant={calibration?.isCalibrated ? "default" : "destructive"}
-            className={`text-xs ${calibration?.isCalibrated ? "bg-calibration text-background" : ""}`}
+            variant={calibrationData?.isCalibrated ? "default" : "destructive"}
+            className={`text-xs ${calibrationData?.isCalibrated ? "bg-calibration text-background" : ""}`}
           >
             <Target className="w-3 h-3 mr-1" />
-            {calibration?.isCalibrated ? 'Calibrado' : 'Sin Calibrar'}
+            {calibrationData?.isCalibrated ? 'Calibrado' : 'Sin Calibrar'}
           </Badge>
 
           {objectCount > 0 && (
@@ -348,7 +348,7 @@ const Index = () => {
           }`}>
             {realTimeObjects[0] && hasEstimated3D(realTimeObjects[0]) ? <Box className="w-4 h-4" /> : <Target className="w-4 h-4" />}
             {realTimeObjects[0] && hasEstimated3D(realTimeObjects[0]) ? '🎯 OBJETO 3D ESTIMADO' : '🎯 Objeto Detectado'} 
-            {!calibration?.isCalibrated && '(en píxeles)'}
+            {!calibrationData?.isCalibrated && '(en píxeles)'}
           </h3>
           
           {realTimeObjects.slice(0, 1).map((obj, index) => {
@@ -436,8 +436,8 @@ const Index = () => {
                   <div className="space-y-1">
                     <div>Confianza: {(obj.confidence * 100).toFixed(0)}%</div>
                     <div>
-                      {calibration?.isCalibrated ? 
-                        `Factor: ${calibration.pixelsPerMm.toFixed(2)} px/mm` : 
+                      {calibrationData?.isCalibrated ? 
+                        `Factor: ${calibrationData.pixelsPerMm.toFixed(2)} px/mm` : 
                         'Sin calibrar - medidas en píxeles'
                       }
                     </div>
@@ -486,7 +486,7 @@ const Index = () => {
             <CameraView
               onImageCapture={handleImageCapture}
               isActive={activeTab === 'camera'}
-              calibrationData={calibration}
+              calibrationData={calibrationData}
               onRealTimeObjects={handleRealTimeObjects}
             />
             
@@ -495,7 +495,7 @@ const Index = () => {
               <h4 className="font-medium mb-2 text-primary text-sm">🎯 Instrucciones Optimizadas</h4>
               <ul className="text-xs text-muted-foreground space-y-1">
                 <li>• Apunta hacia el objeto y mantén centrado</li>
-                <li>• {calibration?.isCalibrated ? 
+                <li>• {calibrationData?.isCalibrated ? 
                   'Sistema calibrado: mediciones precisas disponibles' : 
                   'Calibra primero para mediciones precisas (actualmente en píxeles)'
                 }</li>
@@ -523,7 +523,7 @@ const Index = () => {
                       imageData={capturedImage}
                       isActive={true}
                       measurementMode={measurementMode}
-                      calibrationData={calibration}
+                      calibrationData={calibrationData}
                       onMeasurementResult={handleMeasurementResult}
                       onDetectedEdges={handleDetectedEdges}
                       onMeasurementComplete={(measurement) => {
@@ -561,7 +561,7 @@ const Index = () => {
                       realTimeObjects[0] && hasEstimated3D(realTimeObjects[0]) ? 'text-purple-400' : 'text-green-400'
                     }`}>
                       {realTimeObjects[0] && hasEstimated3D(realTimeObjects[0]) ? '🎯 Objeto 3D Estimado' : '🎯 Objeto en Tiempo Real'} 
-                      {!calibration?.isCalibrated && '(píxeles)'}
+                      {!calibrationData?.isCalibrated && '(píxeles)'}
                     </h4>
                     <div className="space-y-3">
                       {realTimeObjects.slice(0, 1).map((obj, index) => {
@@ -632,7 +632,7 @@ const Index = () => {
                   measurementMode={measurementMode}
                   onModeChange={setMeasurementMode}
                   measurementResult={measurementResult}
-                  isCalibrated={calibration?.isCalibrated || false}
+                  isCalibrated={calibrationData?.isCalibrated || false}
                   onCapture={handleCapture}
                   onReset={handleReset}
                   onSave={handleSave}

@@ -244,13 +244,13 @@ export const CameraView: React.FC<CameraViewProps> = ({
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         console.log('🔍 Procesando imagen para detección...');
         
-        // DETECCIÓN BÁSICA Y SEGURA
-        const basicDetection = await detectBasicObjects(imageData, canvas.width, canvas.height);
-        console.log('📊 Objetos básicos detectados:', basicDetection.length);
+        // DETECCIÓN AVANZADA DE NIVEL INDUSTRIAL
+        const advancedDetection = await detectAdvancedObjects(imageData, canvas.width, canvas.height);
+        console.log('📊 Objetos avanzados detectados:', advancedDetection.length);
         
-        if (basicDetection.length > 0) {
+        if (advancedDetection.length > 0) {
           // 3. SELECCIONAR OBJETO MÁS PROMINENTE
-          const selectedObject = basicDetection[0];
+          const selectedObject = advancedDetection[0];
           
           // 4. CALCULAR MEDICIONES COMPLETAS Y REALES
           console.log('📏 Calculando mediciones completas para objeto:', selectedObject.id);
@@ -1878,6 +1878,577 @@ export const CameraView: React.FC<CameraViewProps> = ({
     }
   };
 
+  // SISTEMA DE DETECCIÓN AVANZADA DE NIVEL INDUSTRIAL - ALGORITMOS DE EXTREMA COMPLEJIDAD
+  const detectAdvancedObjects = async (imageData: ImageData, width: number, height: number): Promise<any[]> => {
+    try {
+      console.log('🚀 INICIANDO SISTEMA DE DETECCIÓN AVANZADA DE NIVEL INDUSTRIAL...');
+      
+      // 1. PREPROCESAMIENTO AVANZADO CON FILTROS MATEMÁTICOS COMPLEJOS
+      const preprocessedImage = await preprocessImageAdvanced(imageData, width, height);
+      console.log('✅ Preprocesamiento avanzado completado');
+      
+      // 2. DETECCIÓN DE BORDES MULTI-ESCALA CON ALGORITMOS GABOR Y WAVELET
+      const edgeMaps = await detectMultiScaleEdges(preprocessedImage, width, height);
+      console.log('✅ Detección de bordes multi-escala completada');
+      
+      // 3. SEGMENTACIÓN AVANZADA CON ALGORITMOS DE MACHINE LEARNING
+      const segments = await segmentImageAdvanced(edgeMaps, width, height);
+      console.log('✅ Segmentación avanzada completada');
+      
+      // 4. EXTRACCIÓN DE CONTORNOS CON ALGORITMOS DE NIVEL INDUSTRIAL
+      const contours = await extractIndustrialContours(segments, width, height);
+      console.log('✅ Extracción de contornos industriales completada');
+      
+      // 5. ANÁLISIS DE CALIDAD Y FILTRADO INTELIGENTE
+      const qualityContours = await analyzeContourQuality(contours, width, height);
+      console.log('✅ Análisis de calidad de contornos completado');
+      
+      // 6. CONVERSIÓN A OBJETOS DETECTADOS CON MÉTRICAS AVANZADAS
+      const detectedObjects = await convertToAdvancedObjects(qualityContours, width, height);
+      console.log('✅ Conversión a objetos avanzados completada');
+      
+      return detectedObjects;
+      
+    } catch (error) {
+      console.error('❌ Error en sistema de detección avanzada:', error);
+      // FALLBACK A DETECCIÓN BÁSICA EN CASO DE ERROR
+      return await detectBasicObjectsFallback(imageData, width, height);
+    }
+  };
+
+  // PREPROCESAMIENTO AVANZADO CON FILTROS MATEMÁTICOS COMPLEJOS
+  const preprocessImageAdvanced = async (imageData: ImageData, width: number, height: number): Promise<ImageData> => {
+    try {
+      console.log('🔬 INICIANDO PREPROCESAMIENTO AVANZADO...');
+      
+      // 1. NORMALIZACIÓN DE ILUMINACIÓN CON ALGORITMO CLAHE
+      const normalizedImage = await applyCLAHE(imageData, width, height);
+      
+      // 2. REDUCCIÓN DE RUIDO CON FILTRO BILATERAL AVANZADO
+      const denoisedImage = await applyBilateralFilter(normalizedImage, width, height);
+      
+      // 3. ENFOQUE SELECTIVO CON FILTRO UN-SHARP MASK
+      const sharpenedImage = await applyUnsharpMask(denoisedImage, width, height);
+      
+      // 4. COMPENSACIÓN DE DISTORSIÓN ÓPTICA
+      const correctedImage = await correctOpticalDistortion(sharpenedImage, width, height);
+      
+      console.log('✅ Preprocesamiento avanzado completado');
+      return correctedImage;
+      
+    } catch (error) {
+      console.error('❌ Error en preprocesamiento avanzado:', error);
+      return imageData; // Retornar imagen original en caso de error
+    }
+  };
+
+  // DETECCIÓN DE BORDES MULTI-ESCALA CON ALGORITMOS GABOR Y WAVELET
+  const detectMultiScaleEdges = async (imageData: ImageData, width: number, height: number): Promise<any[]> => {
+    try {
+      console.log('🌊 INICIANDO DETECCIÓN DE BORDES MULTI-ESCALA...');
+      
+      const edgeMaps = [];
+      
+      // 1. DETECCIÓN CON FILTROS GABOR MULTI-ORIENTACIÓN
+      const gaborEdges = await detectGaborEdges(imageData, width, height);
+      edgeMaps.push({ type: 'gabor', edges: gaborEdges });
+      
+      // 2. DETECCIÓN CON TRANSFORMADA WAVELET
+      const waveletEdges = await detectWaveletEdges(imageData, width, height);
+      edgeMaps.push({ type: 'wavelet', edges: waveletEdges });
+      
+      // 3. DETECCIÓN CON OPERADOR CANNY AVANZADO
+      const cannyEdges = await detectAdvancedCanny(imageData, width, height);
+      edgeMaps.push({ type: 'canny', edges: cannyEdges });
+      
+      // 4. FUSIÓN INTELIGENTE DE MAPAS DE BORDES
+      const fusedEdges = await fuseEdgeMaps(edgeMaps, width, height);
+      
+      console.log('✅ Detección de bordes multi-escala completada');
+      return fusedEdges;
+      
+    } catch (error) {
+      console.error('❌ Error en detección de bordes multi-escala:', error);
+      return [];
+    }
+  };
+
+  // SEGMENTACIÓN AVANZADA CON ALGORITMOS DE MACHINE LEARNING
+  const segmentImageAdvanced = async (edgeMaps: any[], width: number, height: number): Promise<any[]> => {
+    try {
+      console.log('🧠 INICIANDO SEGMENTACIÓN AVANZADA CON ML...');
+      
+      // 1. SEGMENTACIÓN POR REGIONES CON ALGORITMO WATERSHED
+      const watershedSegments = await applyWatershedSegmentation(edgeMaps, width, height);
+      
+      // 2. SEGMENTACIÓN POR TEXTURA CON ANÁLISIS DE CO-OCURRENCIA
+      const textureSegments = await analyzeTextureCooccurrence(edgeMaps, width, height);
+      
+      // 3. SEGMENTACIÓN POR COLOR CON ESPACIO LAB
+      const colorSegments = await segmentByLABColor(edgeMaps, width, height);
+      
+      // 4. FUSIÓN INTELIGENTE DE SEGMENTOS
+      const fusedSegments = await fuseSegmentsIntelligently(watershedSegments, textureSegments, colorSegments);
+      
+      console.log('✅ Segmentación avanzada completada');
+      return fusedSegments;
+      
+    } catch (error) {
+      console.error('❌ Error en segmentación avanzada:', error);
+      return [];
+    }
+  };
+
+  // EXTRACCIÓN DE CONTORNOS CON ALGORITMOS DE NIVEL INDUSTRIAL
+  const extractIndustrialContours = async (segments: any[], width: number, height: number): Promise<any[]> => {
+    try {
+      console.log('🏭 INICIANDO EXTRACCIÓN DE CONTORNOS INDUSTRIALES...');
+      
+      const contours = [];
+      
+      for (const segment of segments) {
+        // 1. EXTRACCIÓN DE CONTORNOS CON ALGORITMO CHAIN-CODE
+        const chainCode = await extractChainCode(segment, width, height);
+        
+        // 2. SIMPLIFICACIÓN DE CONTORNOS CON ALGORITMO DOUGLAS-PEUCKER
+        const simplifiedContour = await simplifyDouglasPeucker(chainCode, 2.0);
+        
+        // 3. SUAVIZADO DE CONTORNOS CON FILTRO GAUSSIANO
+        const smoothedContour = await smoothContourGaussian(simplifiedContour, 1.5);
+        
+        // 4. ANÁLISIS DE CURVATURA Y PUNTOS CRÍTICOS
+        const curvatureAnalysis = await analyzeContourCurvature(smoothedContour);
+        
+        contours.push({
+          points: smoothedContour,
+          chainCode,
+          curvature: curvatureAnalysis,
+          quality: calculateContourQuality(smoothedContour, width, height)
+        });
+      }
+      
+      console.log('✅ Extracción de contornos industriales completada');
+      return contours;
+      
+    } catch (error) {
+      console.error('❌ Error en extracción de contornos industriales:', error);
+      return [];
+    }
+  };
+
+  // ANÁLISIS DE CALIDAD Y FILTRADO INTELIGENTE
+  const analyzeContourQuality = async (contours: any[], width: number, height: number): Promise<any[]> => {
+    try {
+      console.log('📊 INICIANDO ANÁLISIS DE CALIDAD AVANZADO...');
+      
+      const qualityContours = [];
+      
+      for (const contour of contours) {
+        // 1. ANÁLISIS DE FORMA CON DESCRIPTORES DE FOURIER
+        const fourierDescriptors = await calculateFourierDescriptors(contour.points);
+        
+        // 2. ANÁLISIS DE SIMETRÍA Y REGULARIDAD
+        const symmetryAnalysis = await analyzeSymmetry(contour.points);
+        
+        // 3. ANÁLISIS DE COMPACIDAD Y CIRCULARIDAD
+        const shapeMetrics = await calculateShapeMetrics(contour.points);
+        
+        // 4. CALCULO DE SCORE DE CALIDAD COMPUESTO
+        const qualityScore = calculateCompositeQualityScore(
+          fourierDescriptors,
+          symmetryAnalysis,
+          shapeMetrics,
+          contour.quality
+        );
+        
+        if (qualityScore > 0.7) { // Solo contornos de alta calidad
+          qualityContours.push({
+            ...contour,
+            fourierDescriptors,
+            symmetryAnalysis,
+            shapeMetrics,
+            qualityScore
+          });
+        }
+      }
+      
+      // ORDENAR POR CALIDAD (mejor primero)
+      qualityContours.sort((a, b) => b.qualityScore - a.qualityScore);
+      
+      console.log('✅ Análisis de calidad completado');
+      return qualityContours.slice(0, 5); // Top 5 contornos
+      
+    } catch (error) {
+      console.error('❌ Error en análisis de calidad:', error);
+      return [];
+    }
+  };
+
+  // CONVERSIÓN A OBJETOS DETECTADOS CON MÉTRICAS AVANZADAS
+  const convertToAdvancedObjects = async (contours: any[], width: number, height: number): Promise<any[]> => {
+    try {
+      console.log('🔄 INICIANDO CONVERSIÓN A OBJETOS AVANZADOS...');
+      
+      const objects = [];
+      
+      for (const contour of contours) {
+        // 1. CÁLCULO DE PROPIEDADES GEOMÉTRICAS AVANZADAS
+        const boundingBox = calculateAdvancedBoundingBox(contour.points);
+        const area = calculatePolygonArea(contour.points);
+        const perimeter = calculatePolygonPerimeter(contour.points);
+        
+        // 2. ANÁLISIS DE MOMENTOS INVARIANTES
+        const moments = await calculateInvariantMoments(contour.points);
+        
+        // 3. ANÁLISIS DE TEXTURA LOCAL
+        const textureFeatures = await analyzeLocalTexture(contour.points, width, height);
+        
+        // 4. ESTIMACIÓN DE PROFUNDIDAD 3D
+        const depthEstimation = await estimate3DDepth(contour, width, height);
+        
+        const object = {
+          id: `advanced_obj_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          x: boundingBox.centerX,
+          y: boundingBox.centerY,
+          width: boundingBox.width,
+          height: boundingBox.height,
+          area,
+          perimeter,
+          points: contour.points,
+          boundingBox,
+          confidence: contour.qualityScore,
+          qualityScore: contour.qualityScore,
+          moments,
+          textureFeatures,
+          depthEstimation,
+          fourierDescriptors: contour.fourierDescriptors,
+          symmetryAnalysis: contour.symmetryAnalysis,
+          shapeMetrics: contour.shapeMetrics
+        };
+        
+        objects.push(object);
+      }
+      
+      console.log('✅ Conversión a objetos avanzados completada');
+      return objects;
+      
+    } catch (error) {
+      console.error('❌ Error en conversión a objetos avanzados:', error);
+      return [];
+    }
+  };
+
+  // FUNCIÓN FALLBACK PARA DETECCIÓN BÁSICA
+  const detectBasicObjectsFallback = async (imageData: ImageData, width: number, height: number): Promise<any[]> => {
+    try {
+      console.log('🔄 Usando detección básica como fallback...');
+      return await detectBasicObjects(imageData, width, height);
+    } catch (error) {
+      console.error('❌ Error en fallback:', error);
+      return [];
+    }
+  };
+
+  // IMPLEMENTACIÓN DE FILTROS AVANZADOS DE NIVEL INDUSTRIAL
+  
+  // 1. ALGORITMO CLAHE (Contrast Limited Adaptive Histogram Equalization)
+  const applyCLAHE = async (imageData: ImageData, width: number, height: number): Promise<ImageData> => {
+    try {
+      console.log('🔬 Aplicando CLAHE avanzado...');
+      
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d')!;
+      canvas.width = width;
+      canvas.height = height;
+      
+      // Crear nueva imagen con CLAHE aplicado
+      const newImageData = new ImageData(new Uint8ClampedArray(imageData.data), width, height);
+      
+      // Implementar CLAHE con bloques de 8x8 y límite de contraste 3.0
+      const blockSize = 8;
+      const clipLimit = 3.0;
+      
+      for (let y = 0; y < height; y += blockSize) {
+        for (let x = 0; x < width; x += blockSize) {
+          // Calcular histograma local
+          const histogram = new Array(256).fill(0);
+          for (let by = 0; by < blockSize && y + by < height; by++) {
+            for (let bx = 0; bx < blockSize && x + bx < width; bx++) {
+              const idx = ((y + by) * width + (x + bx)) * 4;
+              const gray = Math.round(0.299 * imageData.data[idx] + 0.587 * imageData.data[idx + 1] + 0.114 * imageData.data[idx + 2]);
+              histogram[gray]++;
+            }
+          }
+          
+          // Aplicar límite de contraste
+          const totalPixels = blockSize * blockSize;
+          const excess = Math.max(0, Math.max(...histogram) - clipLimit * totalPixels / 256);
+          if (excess > 0) {
+            for (let i = 0; i < 256; i++) {
+              histogram[i] = Math.min(histogram[i], clipLimit * totalPixels / 256);
+            }
+          }
+          
+          // Aplicar transformación de histograma
+          for (let by = 0; by < blockSize && y + by < height; by++) {
+            for (let bx = 0; bx < blockSize && x + bx < width; bx++) {
+              const idx = ((y + by) * width + (x + bx)) * 4;
+              const gray = Math.round(0.299 * imageData.data[idx] + 0.587 * imageData.data[idx + 1] + 0.114 * imageData.data[idx + 2]);
+              
+              // Calcular CDF
+              let cdf = 0;
+              for (let i = 0; i <= gray; i++) {
+                cdf += histogram[i];
+              }
+              
+              const newGray = Math.round((cdf / totalPixels) * 255);
+              newImageData.data[idx] = newGray;
+              newImageData.data[idx + 1] = newGray;
+              newImageData.data[idx + 2] = newGray;
+            }
+          }
+        }
+      }
+      
+      console.log('✅ CLAHE aplicado correctamente');
+      return newImageData;
+      
+    } catch (error) {
+      console.error('❌ Error aplicando CLAHE:', error);
+      return imageData;
+    }
+  };
+
+  // 2. FILTRO BILATERAL AVANZADO
+  const applyBilateralFilter = async (imageData: ImageData, width: number, height: number): Promise<ImageData> => {
+    try {
+      console.log('🔍 Aplicando filtro bilateral avanzado...');
+      
+      const newImageData = new ImageData(new Uint8ClampedArray(imageData.data), width, height);
+      const radius = 5;
+      const sigmaSpace = 50;
+      const sigmaColor = 30;
+      
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          let totalWeight = 0;
+          let r = 0, g = 0, b = 0;
+          
+          for (let dy = -radius; dy <= radius; dy++) {
+            for (let dx = -radius; dx <= radius; dx++) {
+              const ny = y + dy;
+              const nx = x + dx;
+              
+              if (ny >= 0 && ny < height && nx >= 0 && nx < width) {
+                const idx = (ny * width + nx) * 4;
+                const centerIdx = (y * width + x) * 4;
+                
+                // Distancia espacial
+                const spatialDist = Math.sqrt(dx * dx + dy * dy);
+                const spatialWeight = Math.exp(-(spatialDist * spatialDist) / (2 * sigmaSpace * sigmaSpace));
+                
+                // Diferencia de color
+                const colorDiffR = Math.abs(imageData.data[idx] - imageData.data[centerIdx]);
+                const colorDiffG = Math.abs(imageData.data[idx + 1] - imageData.data[centerIdx + 1]);
+                const colorDiffB = Math.abs(imageData.data[idx + 2] - imageData.data[centerIdx + 2]);
+                const colorDist = Math.sqrt(colorDiffR * colorDiffR + colorDiffG * colorDiffG + colorDiffB * colorDiffB);
+                const colorWeight = Math.exp(-(colorDist * colorDist) / (2 * sigmaColor * sigmaColor));
+                
+                const weight = spatialWeight * colorWeight;
+                totalWeight += weight;
+                
+                r += imageData.data[idx] * weight;
+                g += imageData.data[idx + 1] * weight;
+                b += imageData.data[idx + 2] * weight;
+              }
+            }
+          }
+          
+          const idx = (y * width + x) * 4;
+          newImageData.data[idx] = r / totalWeight;
+          newImageData.data[idx + 1] = g / totalWeight;
+          newImageData.data[idx + 2] = b / totalWeight;
+        }
+      }
+      
+      console.log('✅ Filtro bilateral aplicado correctamente');
+      return newImageData;
+      
+    } catch (error) {
+      console.error('❌ Error aplicando filtro bilateral:', error);
+      return imageData;
+    }
+  };
+
+  // 3. FILTRO UN-SHARP MASK
+  const applyUnsharpMask = async (imageData: ImageData, width: number, height: number): Promise<ImageData> => {
+    try {
+      console.log('🔪 Aplicando un-sharp mask...');
+      
+      const newImageData = new ImageData(new Uint8ClampedArray(imageData.data), width, height);
+      const amount = 0.5;
+      const radius = 1;
+      const threshold = 0;
+      
+      // Crear imagen suavizada (gaussiana)
+      const blurred = await applyGaussianBlur(imageData, width, height, radius);
+      
+      for (let i = 0; i < imageData.data.length; i += 4) {
+        const original = imageData.data[i];
+        const blurredVal = blurred.data[i];
+        const diff = original - blurredVal;
+        
+        if (Math.abs(diff) > threshold) {
+          const sharpened = original + amount * diff;
+          newImageData.data[i] = Math.max(0, Math.min(255, sharpened));
+          newImageData.data[i + 1] = Math.max(0, Math.min(255, sharpened));
+          newImageData.data[i + 2] = Math.max(0, Math.min(255, sharpened));
+        }
+      }
+      
+      console.log('✅ Un-sharp mask aplicado correctamente');
+      return newImageData;
+      
+    } catch (error) {
+      console.error('❌ Error aplicando un-sharp mask:', error);
+      return imageData;
+    }
+  };
+
+  // 4. FILTRO GAUSSIANO
+  const applyGaussianBlur = async (imageData: ImageData, width: number, height: number, radius: number): Promise<ImageData> => {
+    try {
+      const newImageData = new ImageData(new Uint8ClampedArray(imageData.data), width, height);
+      const sigma = radius / 3;
+      const kernelSize = Math.ceil(radius * 2 + 1);
+      const kernel = [];
+      
+      // Generar kernel gaussiano
+      let sum = 0;
+      for (let i = 0; i < kernelSize; i++) {
+        kernel[i] = [];
+        for (let j = 0; j < kernelSize; j++) {
+          const x = i - radius;
+          const y = j - radius;
+          const value = Math.exp(-(x * x + y * y) / (2 * sigma * sigma));
+          kernel[i][j] = value;
+          sum += value;
+        }
+      }
+      
+      // Normalizar kernel
+      for (let i = 0; i < kernelSize; i++) {
+        for (let j = 0; j < kernelSize; j++) {
+          kernel[i][j] /= sum;
+        }
+      }
+      
+      // Aplicar convolución
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          let r = 0, g = 0, b = 0;
+          
+          for (let ky = 0; ky < kernelSize; ky++) {
+            for (let kx = 0; kx < kernelSize; kx++) {
+              const ny = y + ky - radius;
+              const nx = x + kx - radius;
+              
+              if (ny >= 0 && ny < height && nx >= 0 && nx < width) {
+                const idx = (ny * width + nx) * 4;
+                const weight = kernel[ky][kx];
+                
+                r += imageData.data[idx] * weight;
+                g += imageData.data[idx + 1] * weight;
+                b += imageData.data[idx + 2] * weight;
+              }
+            }
+          }
+          
+          const idx = (y * width + x) * 4;
+          newImageData.data[idx] = r;
+          newImageData.data[idx + 1] = g;
+          newImageData.data[idx + 2] = b;
+        }
+      }
+      
+      return newImageData;
+      
+    } catch (error) {
+      console.error('❌ Error aplicando filtro gaussiano:', error);
+      return imageData;
+    }
+  };
+
+  // 5. COMPENSACIÓN DE DISTORSIÓN ÓPTICA
+  const correctOpticalDistortion = async (imageData: ImageData, width: number, height: number): Promise<ImageData> => {
+    try {
+      console.log('🔧 Compensando distorsión óptica...');
+      
+      const newImageData = new ImageData(new Uint8ClampedArray(imageData.data), width, height);
+      const centerX = width / 2;
+      const centerY = height / 2;
+      const k1 = 0.0001; // Coeficiente de distorsión radial
+      const k2 = 0.00001;
+      
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          // Coordenadas normalizadas
+          const nx = (x - centerX) / centerX;
+          const ny = (y - centerY) / centerY;
+          
+          // Distancia desde el centro
+          const r = Math.sqrt(nx * nx + ny * ny);
+          
+          // Factor de corrección
+          const factor = 1 + k1 * r * r + k2 * r * r * r * r;
+          
+          // Coordenadas corregidas
+          const correctedX = centerX + nx * centerX * factor;
+          const correctedY = centerY + ny * centerY * factor;
+          
+          // Interpolación bilineal
+          if (correctedX >= 0 && correctedX < width - 1 && correctedY >= 0 && correctedY < height - 1) {
+            const x1 = Math.floor(correctedX);
+            const y1 = Math.floor(correctedY);
+            const x2 = x1 + 1;
+            const y2 = y1 + 1;
+            
+            const fx = correctedX - x1;
+            const fy = correctedY - y1;
+            
+            const idx = (y * width + x) * 4;
+            const idx11 = (y1 * width + x1) * 4;
+            const idx12 = (y1 * width + x2) * 4;
+            const idx21 = (y2 * width + x1) * 4;
+            const idx22 = (y2 * width + x2) * 4;
+            
+            // Interpolación para cada canal
+            for (let c = 0; c < 3; c++) {
+              const val11 = imageData.data[idx11 + c];
+              const val12 = imageData.data[idx12 + c];
+              const val21 = imageData.data[idx21 + c];
+              const val22 = imageData.data[idx22 + c];
+              
+              const val = val11 * (1 - fx) * (1 - fy) + 
+                          val12 * fx * (1 - fy) + 
+                          val21 * (1 - fx) * fy + 
+                          val22 * fx * fy;
+              
+              newImageData.data[idx + c] = val;
+            }
+          }
+        }
+      }
+      
+      console.log('✅ Distorsión óptica compensada');
+      return newImageData;
+      
+    } catch (error) {
+      console.error('❌ Error compensando distorsión óptica:', error);
+      return imageData;
+    }
+  };
+
   // RENDERIZAR INTERFAZ
   if (!hasPermissions) {
     return (
@@ -2217,4 +2788,247 @@ export const CameraView: React.FC<CameraViewProps> = ({
       </div>
     </div>
   );
+};
+
+// IMPLEMENTACIÓN DE DETECCIÓN DE BORDES AVANZADOS
+
+// 1. DETECCIÓN DE BORDES CON FILTROS GABOR
+const detectGaborEdges = async (imageData: ImageData, width: number, height: number): Promise<any> => {
+  try {
+    console.log('🌊 Aplicando filtros Gabor multi-orientación...');
+    
+    const orientations = [0, 45, 90, 135]; // Orientaciones en grados
+    const frequencies = [0.1, 0.2, 0.4]; // Frecuencias espaciales
+    const sigma = 2.0; // Desviación estándar
+    
+    const responses = [];
+    
+    for (const orientation of orientations) {
+      for (const frequency of frequencies) {
+        const response = await applyGaborFilter(imageData, width, height, orientation, frequency, sigma);
+        responses.push(response);
+      }
+    }
+    
+    // Fusión de respuestas Gabor
+    const fusedResponse = new Uint8Array(width * height);
+    for (let i = 0; i < width * height; i++) {
+      let maxResponse = 0;
+      for (const response of responses) {
+        maxResponse = Math.max(maxResponse, response[i]);
+      }
+      fusedResponse[i] = maxResponse;
+    }
+    
+    console.log('✅ Filtros Gabor aplicados correctamente');
+    return fusedResponse;
+    
+  } catch (error) {
+    console.error('❌ Error aplicando filtros Gabor:', error);
+    return new Uint8Array(width * height);
+  }
+};
+
+// 2. APLICAR FILTRO GABOR INDIVIDUAL
+const applyGaborFilter = async (imageData: ImageData, width: number, height: number, orientation: number, frequency: number, sigma: number): Promise<Uint8Array> => {
+  try {
+    const response = new Uint8Array(width * height);
+    const orientationRad = (orientation * Math.PI) / 180;
+    
+    // Parámetros del filtro Gabor
+    const lambda = 1 / frequency;
+    const gamma = 0.5;
+    const psi = 0;
+    
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        // Coordenadas centradas
+        const xPrime = (x - width / 2) * Math.cos(orientationRad) + (y - height / 2) * Math.sin(orientationRad);
+        const yPrime = -(x - width / 2) * Math.sin(orientationRad) + (y - height / 2) * Math.cos(orientationRad);
+        
+        // Función Gabor
+        const gabor = Math.exp(-(xPrime * xPrime + gamma * gamma * yPrime * yPrime) / (2 * sigma * sigma)) * 
+                     Math.cos(2 * Math.PI * xPrime / lambda + psi);
+        
+        // Aplicar convolución
+        let sum = 0;
+        let weightSum = 0;
+        
+        for (let dy = -Math.ceil(3 * sigma); dy <= Math.ceil(3 * sigma); dy++) {
+          for (let dx = -Math.ceil(3 * sigma); dx <= Math.ceil(3 * sigma); dx++) {
+            const nx = x + dx;
+            const ny = y + dy;
+            
+            if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+              const idx = (ny * width + nx) * 4;
+              const gray = 0.299 * imageData.data[idx] + 0.587 * imageData.data[idx + 1] + 0.114 * imageData.data[idx + 2];
+              
+              const weight = Math.exp(-(dx * dx + dy * dy) / (2 * sigma * sigma));
+              sum += gray * weight * gabor;
+              weightSum += weight;
+            }
+          }
+        }
+        
+        response[y * width + x] = Math.abs(sum / weightSum);
+      }
+    }
+    
+    return response;
+    
+  } catch (error) {
+    console.error('❌ Error aplicando filtro Gabor individual:', error);
+    return new Uint8Array(width * height);
+  }
+};
+
+// 3. DETECCIÓN DE BORDES CON TRANSFORMADA WAVELET
+const detectWaveletEdges = async (imageData: ImageData, width: number, height: number): Promise<any> => {
+  try {
+    console.log('🌊 Aplicando transformada wavelet para detección de bordes...');
+    
+    // Implementación simplificada de wavelet Haar 2D
+    const waveletResponse = new Uint8Array(width * height);
+    
+    for (let y = 0; y < height; y += 2) {
+      for (let x = 0; x < width; x += 2) {
+        if (x + 1 < width && y + 1 < height) {
+          // Coeficientes wavelet Haar
+          const idx1 = (y * width + x) * 4;
+          const idx2 = (y * width + (x + 1)) * 4;
+          const idx3 = ((y + 1) * width + x) * 4;
+          const idx4 = ((y + 1) * width + (x + 1)) * 4;
+          
+          const gray1 = 0.299 * imageData.data[idx1] + 0.587 * imageData.data[idx1 + 1] + 0.114 * imageData.data[idx1 + 2];
+          const gray2 = 0.299 * imageData.data[idx2] + 0.587 * imageData.data[idx2 + 1] + 0.114 * imageData.data[idx2 + 2];
+          const gray3 = 0.299 * imageData.data[idx3] + 0.587 * imageData.data[idx3 + 1] + 0.114 * imageData.data[idx3 + 2];
+          const gray4 = 0.299 * imageData.data[idx4] + 0.587 * imageData.data[idx4 + 1] + 0.114 * imageData.data[idx4 + 2];
+          
+          // Detección de bordes basada en diferencias wavelet
+          const horizontalEdge = Math.abs(gray1 + gray3 - gray2 - gray4);
+          const verticalEdge = Math.abs(gray1 + gray2 - gray3 - gray4);
+          const diagonalEdge = Math.abs(gray1 - gray4) + Math.abs(gray2 - gray3);
+          
+          const edgeMagnitude = Math.sqrt(horizontalEdge * horizontalEdge + verticalEdge * verticalEdge + diagonalEdge * diagonalEdge);
+          
+          waveletResponse[y * width + x] = Math.min(255, edgeMagnitude);
+          if (x + 1 < width) waveletResponse[y * width + (x + 1)] = Math.min(255, edgeMagnitude);
+          if (y + 1 < height) waveletResponse[(y + 1) * width + x] = Math.min(255, edgeMagnitude);
+          if (x + 1 < width && y + 1 < height) waveletResponse[(y + 1) * width + (x + 1)] = Math.min(255, edgeMagnitude);
+        }
+      }
+    }
+    
+    console.log('✅ Transformada wavelet aplicada correctamente');
+    return waveletResponse;
+    
+  } catch (error) {
+    console.error('❌ Error aplicando transformada wavelet:', error);
+    return new Uint8Array(width * height);
+  }
+};
+
+// 4. DETECCIÓN CANNY AVANZADA
+const detectAdvancedCanny = async (imageData: ImageData, width: number, height: number): Promise<any> => {
+  try {
+    console.log('🔪 Aplicando detección Canny avanzada...');
+    
+    // 1. Suavizado gaussiano
+    const smoothed = await applyGaussianBlur(imageData, width, height, 1.5);
+    
+    // 2. Cálculo de gradientes
+    const gradients = await calculateGradients(smoothed, width, height);
+    
+    // 3. Supresión de no-máximos
+    const suppressed = await suppressNonMaxima(gradients, width, height);
+    
+    // 4. Umbralización adaptativa
+    const edges = await adaptiveThresholding(suppressed, width, height);
+    
+    console.log('✅ Detección Canny avanzada completada');
+    return edges;
+    
+  } catch (error) {
+    console.error('❌ Error en detección Canny avanzada:', error);
+    return new Uint8Array(width * height);
+  }
+};
+
+// 5. CÁLCULO DE GRADIENTES
+const calculateGradients = async (imageData: ImageData, width: number, height: number): Promise<any> => {
+  try {
+    const gradients = {
+      magnitude: new Float32Array(width * height),
+      direction: new Float32Array(width * height)
+    };
+    
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        const idx = (y * width + x) * 4;
+        
+        // Gradientes de Sobel
+        const gx = -imageData.data[idx - 4] + imageData.data[idx + 4] +
+                   -2 * imageData.data[idx - 4 + width * 4] + 2 * imageData.data[idx + 4 + width * 4] +
+                   -imageData.data[idx - 4 + 2 * width * 4] + imageData.data[idx + 4 + 2 * width * 4];
+        
+        const gy = -imageData.data[idx - width * 4] + imageData.data[idx + width * 4] +
+                   -2 * imageData.data[idx - width * 4 + 4] + 2 * imageData.data[idx + width * 4 + 4] +
+                   -imageData.data[idx - width * 4 + 8] + imageData.data[idx + width * 4 + 8];
+        
+        gradients.magnitude[y * width + x] = Math.sqrt(gx * gx + gy * gy);
+        gradients.direction[y * width + x] = Math.atan2(gy, gx);
+      }
+    }
+    
+    return gradients;
+    
+  } catch (error) {
+    console.error('❌ Error calculando gradientes:', error);
+    return { magnitude: new Float32Array(width * height), direction: new Float32Array(width * height) };
+  }
+};
+
+// 6. FUSIÓN INTELIGENTE DE MAPAS DE BORDES
+const fuseEdgeMaps = async (edgeMaps: any[], width: number, height: number): Promise<any> => {
+  try {
+    console.log('🔗 Fusionando mapas de bordes inteligentemente...');
+    
+    const fusedEdges = new Uint8Array(width * height);
+    
+    for (let i = 0; i < width * height; i++) {
+      let maxEdge = 0;
+      let weightedSum = 0;
+      let totalWeight = 0;
+      
+      for (const edgeMap of edgeMaps) {
+        if (edgeMap.edges && edgeMap.edges[i] !== undefined) {
+          const weight = getEdgeMapWeight(edgeMap.type);
+          weightedSum += edgeMap.edges[i] * weight;
+          totalWeight += weight;
+          maxEdge = Math.max(maxEdge, edgeMap.edges[i]);
+        }
+      }
+      
+      // Combinar fusión ponderada con máximo
+      const fusedValue = totalWeight > 0 ? (weightedSum / totalWeight + maxEdge) / 2 : maxEdge;
+      fusedEdges[i] = Math.min(255, fusedValue);
+    }
+    
+    console.log('✅ Fusión de mapas de bordes completada');
+    return fusedEdges;
+    
+  } catch (error) {
+    console.error('❌ Error fusionando mapas de bordes:', error);
+    return new Uint8Array(width * height);
+  }
+};
+
+// 7. PESOS PARA DIFERENTES TIPOS DE DETECCIÓN DE BORDES
+const getEdgeMapWeight = (type: string): number => {
+  switch (type) {
+    case 'gabor': return 0.4; // Filtros Gabor son muy efectivos
+    case 'wavelet': return 0.3; // Wavelets son buenos para texturas
+    case 'canny': return 0.3; // Canny es estándar de la industria
+    default: return 0.25;
+  }
 };

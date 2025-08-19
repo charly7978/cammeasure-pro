@@ -110,7 +110,7 @@ export class SobelEdgeDetector {
     }
   }
 
-  static convertToGrayscale(imageData: ImageData): Uint8Array {
+  private static convertToGrayscale(imageData: ImageData): Uint8Array {
     const grayData = new Uint8Array(imageData.width * imageData.height);
     
     for (let i = 0; i < imageData.data.length; i += 4) {
@@ -125,7 +125,7 @@ export class SobelEdgeDetector {
     return grayData;
   }
 
-  static applyGaussianFilter(
+  private static applyGaussianFilter(
     data: Uint8Array, 
     width: number, 
     height: number, 
@@ -199,7 +199,7 @@ export class SobelEdgeDetector {
     return kernel;
   }
 
-  static calculateSobelGradients(
+  private static calculateSobelGradients(
     data: Uint8Array, 
     width: number, 
     height: number, 
@@ -236,7 +236,7 @@ export class SobelEdgeDetector {
     return { gradientX, gradientY };
   }
 
-  static calculateGradientMagnitude(
+  private static calculateGradientMagnitude(
     gradientX: Float32Array, 
     gradientY: Float32Array
   ): Float32Array {
@@ -249,7 +249,7 @@ export class SobelEdgeDetector {
     return magnitude;
   }
 
-  static calculateGradientDirection(
+  private static calculateGradientDirection(
     gradientX: Float32Array, 
     gradientY: Float32Array
   ): Float32Array {
@@ -388,7 +388,7 @@ export class SobelEdgeDetector {
     }
   }
 
-  static applySimpleThreshold(magnitude: Float32Array, threshold: number): Uint8Array {
+  private static applySimpleThreshold(magnitude: Float32Array, threshold: number): Uint8Array {
     const edges = new Uint8Array(magnitude.length);
     
     for (let i = 0; i < magnitude.length; i++) {
@@ -398,7 +398,7 @@ export class SobelEdgeDetector {
     return edges;
   }
 
-  static calculateConfidence(edges: Uint8Array, magnitude: Float32Array): number {
+  private static calculateConfidence(edges: Uint8Array, magnitude: Float32Array): number {
     const edgePixels = edges.filter(pixel => pixel > 0).length;
     const totalPixels = edges.length;
     const edgeRatio = edgePixels / totalPixels;
@@ -441,9 +441,8 @@ export class LaplacianEdgeDetector {
 
   static detectEdges(
     imageData: ImageData,
-    params?: any
+    kernelSize: number = 3
   ): EdgeDetectionResult {
-    const kernelSize = params?.kernelSize || 3;
     const startTime = performance.now();
     
     try {
@@ -520,8 +519,7 @@ export class ScharrEdgeDetector {
   ]);
 
   static detectEdges(
-    imageData: ImageData,
-    params?: any
+    imageData: ImageData
   ): EdgeDetectionResult {
     const startTime = performance.now();
     
@@ -591,25 +589,13 @@ export class EdgeDetectionFactory {
   static createDetector(algorithm: 'sobel' | 'canny' | 'laplacian' | 'scharr'): any {
     switch (algorithm) {
       case 'sobel':
-        return {
-          detectEdges: (imageData: ImageData, params?: any) => SobelEdgeDetector.detectEdges(imageData, params)
-        };
+        return SobelEdgeDetector;
       case 'canny':
-        return {
-          detectEdges: (imageData: ImageData, params?: any) => SobelEdgeDetector.detectEdges(imageData, {
-            ...params,
-            enableNonMaximaSuppression: true,
-            enableHysteresisThresholding: true
-          })
-        };
+        return SobelEdgeDetector; // Canny usa Sobel internamente
       case 'laplacian':
-        return {
-          detectEdges: (imageData: ImageData, params?: any) => LaplacianEdgeDetector.detectEdges(imageData, params)
-        };
+        return LaplacianEdgeDetector;
       case 'scharr':
-        return {
-          detectEdges: (imageData: ImageData, params?: any) => ScharrEdgeDetector.detectEdges(imageData, params)
-        };
+        return ScharrEdgeDetector;
       default:
         throw new Error(`Algoritmo de detección de bordes no soportado: ${algorithm}`);
     }

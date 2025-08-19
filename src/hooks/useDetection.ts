@@ -395,8 +395,6 @@ export const useDetection = (params: DetectionParams = getDefaultDetectionParams
     };
   }, [params.enableRealTime, startRealTimeDetection, stopRealTimeDetection]);
 
-
-
   // EFECTO DE LIMPIEZA
   useEffect(() => {
     return () => {

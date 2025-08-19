@@ -321,7 +321,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
       const contours = findContoursFromEdges(edges, width, height);
       console.log('✅ Contornos detectados:', contours.length);
 
-      // 4. FILTRAR CONTORNOS VÁLIDOS - PRIORIZAR OBJETOS CENTRALES
+      // 4. FILTRAR CONTORNOS VÁLIDOS - PRIORIZAR OBJETOS CENTRALES Y GRANDES
       const validContours = filterValidContours(contours, width, height);
       console.log('✅ Contornos válidos filtrados:', validContours.length);
 
@@ -740,43 +740,43 @@ export const CameraView: React.FC<CameraViewProps> = ({
         return { ...contour, qualityScore: score };
       });
       
-      // 2. FILTRADO POR CRITERIOS MATEMÁTICOS MÚLTIPLES
+      // 2. FILTRADO POR CRITERIOS MATEMÁTICOS MÚLTIPLES - PRIORIZAR OBJETOS GRANDES
       let validContours = scoredContours.filter(contour => {
         const { boundingBox, area, perimeter, curvature, smoothness, confidence, qualityScore } = contour;
         const { width: w, height: h } = boundingBox;
         
-        // Criterios de área con análisis matemático
-        const minArea = Math.max(1500, (width * height) * 0.015);
-        const maxArea = (width * height) * 0.65;
+        // Criterios de área con análisis matemático - PRIORIZAR OBJETOS GRANDES
+        const minArea = Math.max(5000, (width * height) * 0.05); // Aumentar área mínima
+        const maxArea = (width * height) * 0.8; // Aumentar área máxima
         if (area < minArea || area > maxArea) return false;
         
         // Análisis de proporción con tolerancia matemática
         const aspectRatio = w / h;
         const idealAspectRatio = 1.0;
         const aspectRatioDeviation = Math.abs(aspectRatio - idealAspectRatio) / idealAspectRatio;
-        if (aspectRatioDeviation > 3.0) return false; // Máximo 300% de desviación
+        if (aspectRatioDeviation > 5.0) return false; // Aumentar tolerancia a 500%
         
         // Análisis de densidad de puntos con fórmula matemática
         const theoreticalPerimeter = 2 * (w + h);
         const perimeterEfficiency = perimeter / theoreticalPerimeter;
-        if (perimeterEfficiency < 0.4 || perimeterEfficiency > 2.0) return false;
+        if (perimeterEfficiency < 0.3 || perimeterEfficiency > 3.0) return false; // Aumentar tolerancia
         
-        // Análisis de curvatura y suavidad
-        if (curvature < 0.05 || curvature > 2.5) return false;
-        if (smoothness < 0.25) return false;
+        // Análisis de curvatura y suavidad - Más permisivo
+        if (curvature < 0.02 || curvature > 3.0) return false;
+        if (smoothness < 0.15) return false;
         
-        // Verificar confianza matemática
-        if (confidence < 0.35) return false;
+        // Verificar confianza matemática - Más permisivo
+        if (confidence < 0.25) return false;
         
-        // Verificar puntuación de calidad general
-        if (qualityScore < 0.4) return false;
+        // Verificar puntuación de calidad general - Más permisivo
+        if (qualityScore < 0.3) return false;
         
         return true;
       });
       
       console.log('✅ Contornos válidos por criterios matemáticos:', validContours.length);
       
-      // 3. PRIORIZACIÓN MATEMÁTICA AVANZADA
+      // 3. PRIORIZACIÓN MATEMÁTICA AVANZADA - PRIORIZAR TAMAÑO Y CENTRALIDAD
       if (validContours.length > 0) {
         validContours.sort((a, b) => {
           // Calcular centro de la imagen
@@ -798,7 +798,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
           const aNormalizedDistance = aDistanceToCenter / maxDistance;
           const bNormalizedDistance = bDistanceToCenter / maxDistance;
           
-          // Calcular puntuación compuesta
+          // Calcular puntuación compuesta - PRIORIZAR TAMAÑO
           const aScore = calculateCompositeScore(a, aNormalizedDistance);
           const bScore = calculateCompositeScore(b, bNormalizedDistance);
           
@@ -856,18 +856,18 @@ export const CameraView: React.FC<CameraViewProps> = ({
     try {
       const { qualityScore, area, confidence } = contour;
       
-      // Factores de puntuación
+      // Factores de puntuación - PRIORIZAR TAMAÑO
       const qualityFactor = qualityScore;
-      const sizeFactor = Math.min(1.0, area / 10000);
+      const sizeFactor = Math.min(1.0, area / 5000); // Reducir divisor para priorizar objetos grandes
       const confidenceFactor = confidence;
       const centralityFactor = 1.0 - normalizedDistance;
       
-      // Fórmula de puntuación compuesta con pesos optimizados
+      // Fórmula de puntuación compuesta con pesos optimizados - PRIORIZAR TAMAÑO
       const compositeScore = (
-        qualityFactor * 0.30 +
-        sizeFactor * 0.25 +
-        confidenceFactor * 0.25 +
-        centralityFactor * 0.20
+        qualityFactor * 0.20 +      // Reducir peso de calidad
+        sizeFactor * 0.40 +         // Aumentar peso del tamaño
+        confidenceFactor * 0.25 +   // Mantener confianza
+        centralityFactor * 0.15     // Reducir peso de centralidad
       );
       
       return Math.min(1.0, Math.max(0.0, compositeScore));

@@ -98,30 +98,54 @@ export class RealImageProcessor {
       console.log('✅ Filtros matemáticos reales inicializados:', this.filters.size);
       
     } catch (error) {
-      console.error('❌ Error inicializando filtros matemáticos:', error);
+      console.error('❌ Error inicializando filtros:', error);
+      this.isInitialized = false;
     }
   }
 
-  // DETECCIÓN REAL DE BORDES CON OPERADOR SOBEL
+  // DETECCIÓN REAL DE BORDES CON SOBEL - IMPLEMENTACIÓN COMPLETA
   public detectEdgesSobel(imageData: ImageData): EdgeDetectionResult {
     try {
-      console.log('🔍 Aplicando detección real de bordes con operador Sobel...');
+      if (!this.isInitialized) {
+        throw new Error('Procesador de imagen no inicializado');
+      }
+
+      console.log('🔍 Aplicando detección real de bordes con Sobel...');
       
       const { data, width, height } = imageData;
+      
+      // Convertir a escala de grises
       const grayData = this.convertToGrayscale(data);
       
-      // Aplicar operadores Sobel X e Y
-      const sobelX = this.applyConvolution(grayData, width, height, this.getSobelXKernel());
-      const sobelY = this.applyConvolution(grayData, width, height, this.getSobelYKernel());
+      // Aplicar kernels Sobel X e Y
+      const sobelX = [
+        [-1, 0, 1],
+        [-2, 0, 2],
+        [-1, 0, 1]
+      ];
       
-      // Calcular magnitud y dirección del gradiente
-      const magnitude = this.calculateGradientMagnitude(sobelX, sobelY, width, height);
-      const direction = this.calculateGradientDirection(sobelX, sobelY, width, height);
+      const sobelY = [
+        [-1, -2, -1],
+        [0, 0, 0],
+        [1, 2, 1]
+      ];
+      
+      // Calcular gradientes X e Y
+      const gx = this.applyConvolution(grayData, width, height, sobelX);
+      const gy = this.applyConvolution(grayData, width, height, sobelY);
+      
+      // Calcular magnitud del gradiente
+      const magnitude = this.calculateGradientMagnitude(gx, gy, width, height);
+      
+      // Calcular dirección del gradiente
+      const direction = this.calculateGradientDirection(gx, gy, width, height);
       
       // Aplicar umbral adaptativo
       const edges = this.applyAdaptiveThreshold(magnitude, width, height);
       
-      const result: EdgeDetectionResult = {
+      console.log('✅ Detección real de bordes con Sobel completada');
+      
+      return {
         edges,
         magnitude,
         direction,
@@ -129,11 +153,8 @@ export class RealImageProcessor {
         height
       };
       
-      console.log('✅ Detección real de bordes con Sobel completada');
-      return result;
-      
     } catch (error) {
-      console.error('❌ Error en detección real de bordes:', error);
+      console.error('❌ Error en detección de bordes Sobel:', error);
       return this.createEmptyEdgeResult();
     }
   }
@@ -144,11 +165,11 @@ export class RealImageProcessor {
       const grayData = new Uint8Array(data.length / 4);
       
       for (let i = 0; i < data.length; i += 4) {
+        // Fórmula real de luminancia: Y = 0.299R + 0.587G + 0.114B
         const r = data[i];
         const g = data[i + 1];
         const b = data[i + 2];
         
-        // Fórmula estándar de luminancia: Y = 0.299R + 0.587G + 0.114B
         grayData[i / 4] = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
       }
       
@@ -160,43 +181,27 @@ export class RealImageProcessor {
     }
   }
 
-  // KERNELS SOBEL REALES
-  private getSobelXKernel(): number[][] {
-    return [
-      [-1, 0, 1],
-      [-2, 0, 2],
-      [-1, 0, 1]
-    ];
-  }
-
-  private getSobelYKernel(): number[][] {
-    return [
-      [-1, -2, -1],
-      [0, 0, 0],
-      [1, 2, 1]
-    ];
-  }
-
   // APLICACIÓN REAL DE CONVOLUCIÓN 2D
   private applyConvolution(data: Uint8Array, width: number, height: number, kernel: number[][]): Float32Array {
     try {
-      const kernelSize = kernel.length;
-      const halfKernel = Math.floor(kernelSize / 2);
       const result = new Float32Array(width * height);
+      const kernelSize = kernel.length;
+      const kernelRadius = Math.floor(kernelSize / 2);
       
-      // Aplicar convolución 2D
-      for (let y = halfKernel; y < height - halfKernel; y++) {
-        for (let x = halfKernel; x < width - halfKernel; x++) {
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
           let sum = 0;
           
           for (let ky = 0; ky < kernelSize; ky++) {
             for (let kx = 0; kx < kernelSize; kx++) {
-              const pixelX = x + kx - halfKernel;
-              const pixelY = y + ky - halfKernel;
-              const pixelValue = data[pixelY * width + pixelX];
-              const kernelValue = kernel[ky][kx];
+              const px = x + kx - kernelRadius;
+              const py = y + ky - kernelRadius;
               
-              sum += pixelValue * kernelValue;
+              if (px >= 0 && px < width && py >= 0 && py < height) {
+                const pixelValue = data[py * width + px];
+                const kernelValue = kernel[ky][kx];
+                sum += pixelValue * kernelValue;
+              }
             }
           }
           
@@ -371,17 +376,25 @@ export class RealImageProcessor {
       const perimeter = points.length;
       const averageIntensity = totalIntensity / points.length;
       
+      // Calcular confianza basada en la calidad del contorno
+      const confidence = Math.min(0.95, Math.max(0.1, 
+        (points.length / Math.max(perimeter, 1)) * 
+        (averageIntensity / 255) * 
+        (area / (width * height))
+      ));
+      
       return {
         points,
         boundingBox,
         area,
         perimeter,
-        averageIntensity
+        averageIntensity,
+        confidence
       };
       
     } catch (error) {
       console.error('❌ Error trazando contorno:', error);
-      return { points: [], boundingBox: { x: 0, y: 0, width: 0, height: 0 }, area: 0, perimeter: 0, averageIntensity: 0 };
+      return { points: [], boundingBox: { x: 0, y: 0, width: 0, height: 0 }, area: 0, perimeter: 0, averageIntensity: 0, confidence: 0.1 };
     }
   }
 
@@ -406,16 +419,15 @@ export class RealImageProcessor {
       const correlation = this.calculateCorrelation(cooccurrenceMatrix);
       const entropy = this.calculateEntropy(cooccurrenceMatrix);
       
-      const result: TextureAnalysisResult = {
+      console.log('✅ Análisis real de textura completado');
+      
+      return {
         contrast,
         homogeneity,
         energy,
         correlation,
         entropy
       };
-      
-      console.log('✅ Análisis real de textura completado');
-      return result;
       
     } catch (error) {
       console.error('❌ Error en análisis real de textura:', error);
@@ -424,15 +436,15 @@ export class RealImageProcessor {
   }
 
   // EXTRACCIÓN REAL DE REGIÓN DE INTERÉS
-  private extractROI(data: Uint8Array, imageWidth: number, region: { x: number; y: number; width: number; height: number }): Uint8Array {
+  private extractROI(grayData: Uint8Array, imageWidth: number, region: { x: number; y: number; width: number; height: number }): Uint8Array {
     try {
-      const { x, y, width, height } = region;
-      const roiData = new Uint8Array(width * height);
+      const roiData = new Uint8Array(region.width * region.height);
       
-      let index = 0;
-      for (let row = y; row < y + height; row++) {
-        for (let col = x; col < x + width; col++) {
-          roiData[index++] = data[row * imageWidth + col];
+      for (let y = 0; y < region.height; y++) {
+        for (let x = 0; x < region.width; x++) {
+          const sourceIndex = (region.y + y) * imageWidth + (region.x + x);
+          const targetIndex = y * region.width + x;
+          roiData[targetIndex] = grayData[sourceIndex];
         }
       }
       
@@ -440,23 +452,30 @@ export class RealImageProcessor {
       
     } catch (error) {
       console.error('❌ Error extrayendo ROI:', error);
-      return new Uint8Array(0);
+      return new Uint8Array(region.width * region.height);
     }
   }
 
   // CÁLCULO REAL DE MATRIZ DE CO-OCURRENCIA
-  private calculateCooccurrenceMatrix(data: Uint8Array, width: number, height: number): number[][] {
+  private calculateCooccurrenceMatrix(roiData: Uint8Array, width: number, height: number): number[][] {
     try {
       const matrix = Array(256).fill(0).map(() => Array(256).fill(0));
       
-      // Calcular matriz de co-ocurrencia (distancia 1, dirección 0°)
+      // Calcular matriz de co-ocurrencia horizontal
       for (let y = 0; y < height; y++) {
         for (let x = 0; x < width - 1; x++) {
-          const pixel1 = data[y * width + x];
-          const pixel2 = data[y * width + x + 1];
-          
-          matrix[pixel1][pixel2]++;
-          matrix[pixel2][pixel1]++; // Simétrica
+          const currentPixel = roiData[y * width + x];
+          const nextPixel = roiData[y * width + x + 1];
+          matrix[currentPixel][nextPixel]++;
+        }
+      }
+      
+      // Calcular matriz de co-ocurrencia vertical
+      for (let y = 0; y < height - 1; y++) {
+        for (let x = 0; x < width; x++) {
+          const currentPixel = roiData[y * width + x];
+          const nextPixel = roiData[(y + 1) * width + x];
+          matrix[currentPixel][nextPixel]++;
         }
       }
       
@@ -477,8 +496,7 @@ export class RealImageProcessor {
       for (let i = 0; i < 256; i++) {
         for (let j = 0; j < 256; j++) {
           if (matrix[i][j] > 0) {
-            const normalized = matrix[i][j] / total;
-            contrast += normalized * Math.pow(i - j, 2);
+            contrast += (matrix[i][j] / total) * Math.pow(i - j, 2);
           }
         }
       }
@@ -500,8 +518,7 @@ export class RealImageProcessor {
       for (let i = 0; i < 256; i++) {
         for (let j = 0; j < 256; j++) {
           if (matrix[i][j] > 0) {
-            const normalized = matrix[i][j] / total;
-            homogeneity += normalized / (1 + Math.pow(i - j, 2));
+            homogeneity += (matrix[i][j] / total) / (1 + Math.pow(i - j, 2));
           }
         }
       }
@@ -523,8 +540,7 @@ export class RealImageProcessor {
       for (let i = 0; i < 256; i++) {
         for (let j = 0; j < 256; j++) {
           if (matrix[i][j] > 0) {
-            const normalized = matrix[i][j] / total;
-            energy += normalized * normalized;
+            energy += Math.pow(matrix[i][j] / total, 2);
           }
         }
       }
@@ -548,9 +564,8 @@ export class RealImageProcessor {
       for (let i = 0; i < 256; i++) {
         for (let j = 0; j < 256; j++) {
           if (matrix[i][j] > 0) {
-            const normalized = matrix[i][j] / total;
-            meanI += i * normalized;
-            meanJ += j * normalized;
+            meanI += (i * matrix[i][j]) / total;
+            meanJ += (j * matrix[i][j]) / total;
           }
         }
       }
@@ -559,8 +574,7 @@ export class RealImageProcessor {
       for (let i = 0; i < 256; i++) {
         for (let j = 0; j < 256; j++) {
           if (matrix[i][j] > 0) {
-            const normalized = matrix[i][j] / total;
-            correlation += normalized * (i - meanI) * (j - meanJ);
+            correlation += ((i - meanI) * (j - meanJ) * matrix[i][j]) / total;
           }
         }
       }
@@ -582,8 +596,8 @@ export class RealImageProcessor {
       for (let i = 0; i < 256; i++) {
         for (let j = 0; j < 256; j++) {
           if (matrix[i][j] > 0) {
-            const normalized = matrix[i][j] / total;
-            entropy -= normalized * Math.log2(normalized);
+            const p = matrix[i][j] / total;
+            entropy -= p * Math.log2(p);
           }
         }
       }
@@ -596,7 +610,7 @@ export class RealImageProcessor {
     }
   }
 
-  // FILTROS MATEMÁTICOS REALES
+  // APLICACIÓN REAL DE FILTROS
   public applyFilter(imageData: ImageData, filterName: string): Uint8Array {
     try {
       console.log(`🔍 Aplicando filtro matemático real: ${filterName}`);

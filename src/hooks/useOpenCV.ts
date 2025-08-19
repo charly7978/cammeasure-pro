@@ -843,11 +843,11 @@ export function useOpenCV() {
   };
 
   return {
-    isReady,
+    cv: opencvFunctions,
+    isLoaded: isReady,
     isLoading,
     error,
     initializeOpenCV,
-    opencvFunctions,
     version: nativeOpenCV.getVersion()
   };
 }

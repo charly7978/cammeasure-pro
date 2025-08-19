@@ -1,4 +1,3 @@
-
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -17,6 +16,8 @@ import {
 import { useCamera } from '@/hooks/useCamera';
 import { DetectedObject } from '@/lib/types';
 import { TouchObjectSelector } from './TouchObjectSelector';
+import { useCalibration } from '@/hooks/useCalibration';
+import { applyFilter, detectContoursReal } from '@/lib';
 
 interface CameraViewProps {
   onImageCapture?: (imageData: ImageData) => void;
@@ -293,86 +294,235 @@ export const CameraView: React.FC<CameraViewProps> = ({
 
   // FUNCIONES BÁSICAS DE DETECCIÓN - IMPLEMENTADAS PARA ESTABILIDAD
   
-  // DETECCIÓN REAL DE OBJETOS CENTRALES PROMINENTES - ALGORITMOS COMPLETOS
+  // DETECCIÓN AUTOMÁTICA DE OBJETOS
   const detectBasicObjects = async (imageData: ImageData, width: number, height: number): Promise<any[]> => {
     try {
-      console.log('🔍 INICIANDO DETECCIÓN REAL DE OBJETOS CENTRALES...');
+      console.log('🔍 INICIANDO DETECCIÓN AUTOMÁTICA DE OBJETOS...');
       
-      if (!imageData || !imageData.data || width <= 0 || height <= 0) {
-        console.warn('⚠️ Datos de imagen inválidos');
-        return [];
-      }
-
-      // 1. CONVERTIR A ESCALA DE GRISES
-      const grayData = new Uint8Array(width * height);
-      for (let i = 0; i < imageData.data.length; i += 4) {
-        const r = imageData.data[i];
-        const g = imageData.data[i + 1];
-        const b = imageData.data[i + 2];
-        grayData[i / 4] = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
-      }
-      console.log('✅ Conversión a escala de grises completada');
-
-      // 2. DETECCIÓN DE BORDES CON OPERADOR SOBEL MEJORADO
-      const edges = detectEdgesWithSobel(grayData, width, height);
-      console.log('✅ Detección de bordes con Sobel completada');
-
-      // 3. DETECCIÓN DE CONTORNOS REALES
-      const contours = findContoursFromEdges(edges, width, height);
-      console.log('✅ Contornos detectados:', contours.length);
-
-      // 4. FILTRAR CONTORNOS VÁLIDOS - PRIORIZAR OBJETOS CENTRALES Y GRANDES
+      // 1. APLICAR FILTRO CANNY PARA DETECTAR BORDES
+      const filteredImage = await applyFilter(imageData, 'canny');
+      console.log('✅ Filtro Canny aplicado para detección automática');
+      
+      // 2. DETECTAR CONTORNOS REALES CON ALGORITMOS NATIVOS
+      const contours = await detectContoursReal(filteredImage, width, height);
+      console.log('✅ Contornos detectados con algoritmos nativos:', contours.length);
+      
+      // 3. FILTRAR CONTORNOS VÁLIDOS
       const validContours = filterValidContours(contours, width, height);
       console.log('✅ Contornos válidos filtrados:', validContours.length);
-
-      // 5. CONVERTIR A FORMATO DE OBJETOS
-      const detectedObjects = validContours.map((contour, index) => ({
-        id: `obj_${index}`,
-        type: 'detected',
-        x: contour.boundingBox.x,
-        y: contour.boundingBox.y,
-        width: contour.boundingBox.width,
-        height: contour.boundingBox.height,
-        area: contour.area,
-        confidence: contour.confidence || 0.8,
-        boundingBox: contour.boundingBox,
-        dimensions: {
-          width: contour.boundingBox.width,
-          height: contour.boundingBox.height,
-          area: contour.area,
-          unit: 'px'
-        }
-      }));
-
-      console.log('✅ DETECCIÓN REAL COMPLETADA:', detectedObjects.length, 'objetos');
+      
+      // 4. CONVERTIR A OBJETOS DETECTADOS
+      const detectedObjects = validContours.map((contour: any, index: number) => {
+        const boundingBox = calculateBoundingBox(contour.points);
+        const area = calculateArea(contour.points);
+        const perimeter = calculatePerimeter(contour.points);
+        
+        return {
+          id: `auto_obj_${index}`,
+          x: boundingBox.x + boundingBox.width / 2,
+          y: boundingBox.y + boundingBox.height / 2,
+          width: boundingBox.width,
+          height: boundingBox.height,
+          area,
+          perimeter,
+          points: contour.points,
+          boundingBox,
+          confidence: contour.confidence || 0.85,
+          qualityScore: calculateQualityScore(contour, area, perimeter, boundingBox, width, height)
+        };
+      });
+      
+      console.log('✅ Objetos automáticos detectados:', detectedObjects.length);
       return detectedObjects;
-
+      
     } catch (error) {
-      console.error('❌ Error en detección real:', error);
-      // RETORNAR OBJETO SIMPLE COMO FALLBACK
-      const fallbackObject = {
-        id: 'fallback_obj',
-        type: 'fallback',
-        x: width * 0.1,
-        y: height * 0.1,
-        width: width * 0.8,
-        height: height * 0.8,
-        area: width * height * 0.64,
-        confidence: 0.5,
-        boundingBox: {
-          x: width * 0.1,
-          y: height * 0.1,
-          width: width * 0.8,
-          height: height * 0.8
-        },
-        dimensions: {
-          width: width * 0.8,
-          height: height * 0.8,
-          area: width * height * 0.64,
-          unit: 'px'
+      console.error('❌ Error en detección automática:', error);
+      return [];
+    }
+  };
+
+  // FUNCIÓN AUXILIAR: CALCULAR BOUNDING BOX
+  const calculateBoundingBox = (points: number[][]): { x: number; y: number; width: number; height: number } => {
+    if (points.length === 0) return { x: 0, y: 0, width: 0, height: 0 };
+    
+    let minX = points[0][0], maxX = points[0][0];
+    let minY = points[0][1], maxY = points[0][1];
+    
+    for (const [x, y] of points) {
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y);
+      maxY = Math.max(maxY, y);
+    }
+    
+    return {
+      x: minX,
+      y: minY,
+      width: maxX - minX,
+      height: maxY - minY
+    };
+  };
+
+  // FUNCIÓN AUXILIAR: CALCULAR ÁREA
+  const calculateArea = (points: number[][]): number => {
+    if (points.length < 3) return 0;
+    
+    let area = 0;
+    for (let i = 0; i < points.length; i++) {
+      const j = (i + 1) % points.length;
+      area += points[i][0] * points[j][1];
+      area -= points[j][0] * points[i][1];
+    }
+    
+    return Math.abs(area) / 2;
+  };
+
+  // FUNCIÓN AUXILIAR: CALCULAR PERÍMETRO
+  const calculatePerimeter = (points: number[][]): number => {
+    if (points.length < 2) return 0;
+    
+    let perimeter = 0;
+    for (let i = 0; i < points.length; i++) {
+      const j = (i + 1) % points.length;
+      const dx = points[j][0] - points[i][0];
+      const dy = points[j][1] - points[i][1];
+      perimeter += Math.sqrt(dx * dx + dy * dy);
+    }
+    
+    return perimeter;
+  };
+
+  // FUNCIÓN AUXILIAR: CALCULAR SCORE DE CALIDAD
+  const calculateQualityScore = (contour: any, area: number, perimeter: number, boundingBox: any, imageWidth: number, imageHeight: number): number => {
+    try {
+      const imageArea = imageWidth * imageHeight;
+      const relativeArea = area / imageArea;
+      const aspectRatio = boundingBox.width / boundingBox.height;
+      const centrality = calculateCentrality(boundingBox, imageWidth, imageHeight);
+      
+      // Score basado en múltiples factores
+      let score = 0;
+      
+      // Factor de área (preferir objetos medianos-grandes)
+      if (relativeArea > 0.01 && relativeArea < 0.6) {
+        score += 0.3;
+      }
+      
+      // Factor de forma (preferir formas regulares)
+      if (aspectRatio > 0.3 && aspectRatio < 3.0) {
+        score += 0.2;
+      }
+      
+      // Factor de centralidad (preferir objetos centrales)
+      score += centrality * 0.2;
+      
+      // Factor de contorno (preferir contornos suaves)
+      if (contour.confidence && contour.confidence > 0.5) {
+        score += 0.2;
+      }
+      
+      // Factor de perímetro (preferir objetos con perímetro razonable)
+      const perimeterEfficiency = area / (perimeter * perimeter);
+      if (perimeterEfficiency > 0.01 && perimeterEfficiency < 0.1) {
+        score += 0.1;
+      }
+      
+      return Math.min(score, 1.0);
+      
+    } catch (error) {
+      console.error('Error calculando score de calidad:', error);
+      return 0.5;
+    }
+  };
+
+  // FUNCIÓN AUXILIAR: CALCULAR CENTRALIDAD
+  const calculateCentrality = (boundingBox: any, imageWidth: number, imageHeight: number): number => {
+    try {
+      const centerX = boundingBox.x + boundingBox.width / 2;
+      const centerY = boundingBox.y + boundingBox.height / 2;
+      
+      const distanceFromCenter = Math.sqrt(
+        Math.pow(centerX - imageWidth / 2, 2) + Math.pow(centerY - imageHeight / 2, 2)
+      );
+      
+      const maxDistance = Math.sqrt(Math.pow(imageWidth / 2, 2) + Math.pow(imageHeight / 2, 2));
+      
+      return 1 - (distanceFromCenter / maxDistance);
+      
+    } catch (error) {
+      console.error('Error calculando centralidad:', error);
+      return 0.5;
+    }
+  };
+
+  // FILTRAR CONTORNOS VÁLIDOS
+  const filterValidContours = (contours: any[], width: number, height: number): any[] => {
+    try {
+      const imageArea = width * height;
+      const validContours: any[] = [];
+      
+      for (const contour of contours) {
+        try {
+          // Verificar que tenga puntos válidos
+          if (!contour.points || contour.points.length < 3) {
+            continue;
+          }
+          
+          // Calcular propiedades del contorno
+          const boundingBox = calculateBoundingBox(contour.points);
+          const area = calculateArea(contour.points);
+          const perimeter = calculatePerimeter(contour.points);
+          
+          // Filtrar por área mínima y máxima
+          const relativeArea = area / imageArea;
+          if (relativeArea < 0.005 || relativeArea > 0.8) {
+            continue;
+          }
+          
+          // Filtrar por perímetro mínimo
+          if (perimeter < 100) {
+            continue;
+          }
+          
+          // Filtrar por relación de aspecto
+          const aspectRatio = boundingBox.width / boundingBox.height;
+          if (aspectRatio < 0.1 || aspectRatio > 10) {
+            continue;
+          }
+          
+          // Filtrar por tamaño mínimo absoluto
+          if (boundingBox.width < 20 || boundingBox.height < 20) {
+            continue;
+          }
+          
+          // Añadir propiedades calculadas
+          contour.boundingBox = boundingBox;
+          contour.area = area;
+          contour.perimeter = perimeter;
+          contour.aspectRatio = aspectRatio;
+          contour.relativeArea = relativeArea;
+          
+          validContours.push(contour);
+          
+        } catch (error) {
+          console.warn('Error procesando contorno:', error);
+          continue;
         }
-      };
-      return [fallbackObject];
+      }
+      
+      // Ordenar por score de calidad (mejor primero)
+      validContours.sort((a, b) => {
+        const scoreA = calculateQualityScore(a, a.area, a.perimeter, a.boundingBox, width, height);
+        const scoreB = calculateQualityScore(b, b.area, b.perimeter, b.boundingBox, width, height);
+        return scoreB - scoreA;
+      });
+      
+      // Limitar a los mejores 5 contornos
+      return validContours.slice(0, 5);
+      
+    } catch (error) {
+      console.error('Error filtrando contornos:', error);
+      return [];
     }
   };
   
@@ -729,96 +879,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
     }
   };
   
-  // FILTRO MATEMÁTICO AVANZADO DE CONTORNOS - ALGORITMO REAL
-  const filterValidContours = (contours: any[], width: number, height: number): any[] => {
-    try {
-      console.log('🔍 Aplicando filtro matemático avanzado de contornos...');
-      
-      // 1. ANÁLISIS MATEMÁTICO DE CALIDAD
-      const scoredContours = contours.map(contour => {
-        const score = calculateContourQualityScore(contour, width, height);
-        return { ...contour, qualityScore: score };
-      });
-      
-      // 2. FILTRADO POR CRITERIOS MATEMÁTICOS MÚLTIPLES - PRIORIZAR OBJETOS GRANDES
-      let validContours = scoredContours.filter(contour => {
-        const { boundingBox, area, perimeter, curvature, smoothness, confidence, qualityScore } = contour;
-        const { width: w, height: h } = boundingBox;
-        
-        // Criterios de área con análisis matemático - PRIORIZAR OBJETOS GRANDES
-        const minArea = Math.max(5000, (width * height) * 0.05); // Aumentar área mínima
-        const maxArea = (width * height) * 0.8; // Aumentar área máxima
-        if (area < minArea || area > maxArea) return false;
-        
-        // Análisis de proporción con tolerancia matemática
-        const aspectRatio = w / h;
-        const idealAspectRatio = 1.0;
-        const aspectRatioDeviation = Math.abs(aspectRatio - idealAspectRatio) / idealAspectRatio;
-        if (aspectRatioDeviation > 5.0) return false; // Aumentar tolerancia a 500%
-        
-        // Análisis de densidad de puntos con fórmula matemática
-        const theoreticalPerimeter = 2 * (w + h);
-        const perimeterEfficiency = perimeter / theoreticalPerimeter;
-        if (perimeterEfficiency < 0.3 || perimeterEfficiency > 3.0) return false; // Aumentar tolerancia
-        
-        // Análisis de curvatura y suavidad - Más permisivo
-        if (curvature < 0.02 || curvature > 3.0) return false;
-        if (smoothness < 0.15) return false;
-        
-        // Verificar confianza matemática - Más permisivo
-        if (confidence < 0.25) return false;
-        
-        // Verificar puntuación de calidad general - Más permisivo
-        if (qualityScore < 0.3) return false;
-        
-        return true;
-      });
-      
-      console.log('✅ Contornos válidos por criterios matemáticos:', validContours.length);
-      
-      // 3. PRIORIZACIÓN MATEMÁTICA AVANZADA - PRIORIZAR TAMAÑO Y CENTRALIDAD
-      if (validContours.length > 0) {
-        validContours.sort((a, b) => {
-          // Calcular centro de la imagen
-          const centerX = width / 2;
-          const centerY = height / 2;
-          
-          // Calcular centro de cada contorno
-          const aCenterX = a.boundingBox.x + a.boundingBox.width / 2;
-          const aCenterY = a.boundingBox.y + a.boundingBox.height / 2;
-          const bCenterX = b.boundingBox.x + b.boundingBox.width / 2;
-          const bCenterY = b.boundingBox.y + b.boundingBox.height / 2;
-          
-          // Distancia euclidiana al centro
-          const aDistanceToCenter = Math.sqrt((aCenterX - centerX) ** 2 + (aCenterY - centerY) ** 2);
-          const bDistanceToCenter = Math.sqrt((bCenterX - centerX) ** 2 + (bCenterY - centerY) ** 2);
-          
-          // Normalizar distancias
-          const maxDistance = Math.sqrt(width ** 2 + height ** 2) / 2;
-          const aNormalizedDistance = aDistanceToCenter / maxDistance;
-          const bNormalizedDistance = bDistanceToCenter / maxDistance;
-          
-          // Calcular puntuación compuesta - PRIORIZAR TAMAÑO
-          const aScore = calculateCompositeScore(a, aNormalizedDistance);
-          const bScore = calculateCompositeScore(b, bNormalizedDistance);
-          
-          return bScore - aScore; // Mayor puntuación primero
-        });
-        
-        console.log('✅ Contornos ordenados por puntuación matemática compuesta');
-      }
-      
-      // 4. SELECCIÓN INTELIGENTE CON ANÁLISIS DE CLUSTERS
-      const topContours = selectOptimalContours(validContours, width, height);
-      console.log('✅ Contornos óptimos seleccionados con análisis matemático:', topContours.length);
-      
-      return topContours;
-      
-    } catch (error) {
-      console.error('❌ Error en filtro matemático avanzado:', error);
-      return [];
-    }
-  };
+  // FUNCIÓN ELIMINADA - DUPLICADA CON LA NUEVA IMPLEMENTACIÓN
   
   // CÁLCULO DE PUNTUACIÓN DE CALIDAD DEL CONTORNO - FÓRMULA MATEMÁTICA
   const calculateContourQualityScore = (contour: any, width: number, height: number): number => {
@@ -1000,6 +1061,8 @@ export const CameraView: React.FC<CameraViewProps> = ({
       width: firstRect.width,
       height: firstRect.height,
       area: firstRect.width * firstRect.height,
+      perimeter: 2 * (firstRect.width + firstRect.height),
+      points: true,
       boundingBox: {
         x: firstRect.x,
         y: firstRect.y,

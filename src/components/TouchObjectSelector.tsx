@@ -1,9 +1,27 @@
 // COMPONENTE DE SELECCIÓN MANUAL DE OBJETOS POR TOQUE
 // Permite al usuario tocar la pantalla para seleccionar objetos específicos
 
-import React, { useRef, useState, useCallback, useEffect } from 'react';
-import { DetectedObject } from '@/lib/types';
-import { detectContoursReal, applyFilter } from '@/lib';
+import React, { useState, useCallback, useEffect } from 'react';
+import { Button } from './ui/button';
+import { useCalibration } from '../hooks/useCalibration';
+import { applyFilter, detectContoursReal } from '../lib';
+
+interface DetectedObject {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  area: number;
+  perimeter: number;
+  points: number[][];
+  boundingBox: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+}
 
 interface TouchObjectSelectorProps {
   videoRef: React.RefObject<HTMLVideoElement>;
@@ -20,10 +38,11 @@ export const TouchObjectSelector: React.FC<TouchObjectSelectorProps> = ({
   onError,
   isActive
 }) => {
-  const [touchPoint, setTouchPoint] = useState<{ x: number; y: number } | null>(null);
-  const [selectedObject, setSelectedObject] = useState<DetectedObject | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [measurementResult, setMeasurementResult] = useState<any>(null);
+  const [selectedObject, setSelectedObject] = useState<DetectedObject | null>(null);
+  const [measurements, setMeasurements] = useState<any>(null);
+  const [touchIndicator, setTouchIndicator] = useState<{ x: number; y: number } | null>(null);
+  const { calibrationData } = useCalibration();
 
   // MANEJAR TOQUE EN LA PANTALLA
   const handleTouch = useCallback(async (event: React.TouchEvent) => {
@@ -39,7 +58,7 @@ export const TouchObjectSelector: React.FC<TouchObjectSelectorProps> = ({
     const y = touch.clientY - rect.top;
     
     console.log('👆 TOQUE DETECTADO en:', { x, y });
-    setTouchPoint({ x, y });
+    setTouchIndicator({ x, y });
     
     // PROCESAR SELECCIÓN DE OBJETO
     await processTouchSelection(x, y);
@@ -56,7 +75,7 @@ export const TouchObjectSelector: React.FC<TouchObjectSelectorProps> = ({
     const y = event.clientY - rect.top;
     
     console.log('🖱️ CLICK DETECTADO en:', { x, y });
-    setTouchPoint({ x, y });
+    setTouchIndicator({ x, y });
     
     // PROCESAR SELECCIÓN DE OBJETO
     await processTouchSelection(x, y);
@@ -96,7 +115,7 @@ export const TouchObjectSelector: React.FC<TouchObjectSelectorProps> = ({
       
       // 4. CALCULAR MEDICIONES DEL OBJETO SELECCIONADO
       const measurements = await calculateObjectMeasurements(closestObject, imageData);
-      setMeasurementResult(measurements);
+      setMeasurements(measurements);
       
       // 5. DIBUJAR SELECCIÓN EN EL CANVAS
       drawObjectSelection(ctx, closestObject, touchX, touchY);
@@ -106,8 +125,8 @@ export const TouchObjectSelector: React.FC<TouchObjectSelectorProps> = ({
       
       console.log('✅ OBJETO SELECCIONADO:', {
         id: closestObject.id,
-        type: closestObject.type,
-        dimensions: closestObject.dimensions,
+        area: closestObject.area,
+        boundingBox: closestObject.boundingBox,
         measurements
       });
       
@@ -123,45 +142,128 @@ export const TouchObjectSelector: React.FC<TouchObjectSelectorProps> = ({
   // DETECTAR OBJETOS EN EL PUNTO DE TOQUE
   const detectObjectsAtTouchPoint = async (imageData: ImageData, touchX: number, touchY: number): Promise<DetectedObject[]> => {
     try {
-      console.log('🔍 DETECTANDO OBJETOS EN PUNTO DE TOQUE...');
+      console.log('🔍 DETECTANDO OBJETOS EN EL PUNTO DE TOQUE...');
       
       // 1. APLICAR FILTRO CANNY PARA DETECTAR BORDES
-      const edges = applyFilter(imageData, 'canny');
+      const filteredImage = await applyFilter(imageData, 'canny');
+      console.log('✅ Filtro Canny aplicado');
       
       // 2. DETECTAR CONTORNOS REALES
-      const contours = detectContoursReal(edges, imageData.width, imageData.height);
+      const contours = await detectContoursReal(filteredImage, imageData.width, imageData.height);
+      console.log('✅ Contornos detectados:', contours.length);
       
-      // 3. FILTRAR CONTORNOS QUE CONTENGAN EL PUNTO DE TOQUE
-      const validContours = contours.filter((contour: any) => {
-        return isPointInContour(touchX, touchY, contour);
-      });
+      // 3. FILTRAR OBJETOS QUE CONTENGAN EL PUNTO DE TOQUE
+      const objectsAtPoint: DetectedObject[] = [];
       
-      // 4. CONVERTIR A DETECTEDOBJECT[]
-      const detectedObjects: DetectedObject[] = validContours.map((contour: any, index: number) => ({
-        id: `touch_obj_${index}`,
-        type: 'touch_selected',
-        boundingBox: {
-          x: contour.boundingBox.x,
-          y: contour.boundingBox.y,
-          width: contour.boundingBox.width,
-          height: contour.boundingBox.height
-        },
-        dimensions: {
-          width: contour.boundingBox.width,
-          height: contour.boundingBox.height,
-          area: contour.area || contour.boundingBox.width * contour.boundingBox.height,
-          unit: 'px'
-        },
-        confidence: contour.confidence || 0.9,
-        contour: contour.points
-      }));
+      for (const contour of contours) {
+        if (isPointInContour(touchX, touchY, contour)) {
+          const boundingBox = calculateBoundingBox(contour.points);
+          const area = calculateArea(contour.points);
+          const perimeter = calculatePerimeter(contour.points);
+          
+          const object: DetectedObject = {
+            id: `obj_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            x: boundingBox.x + boundingBox.width / 2,
+            y: boundingBox.y + boundingBox.height / 2,
+            width: boundingBox.width,
+            height: boundingBox.height,
+            area,
+            perimeter,
+            points: contour.points,
+            boundingBox
+          };
+          
+          objectsAtPoint.push(object);
+        }
+      }
       
-      console.log(`✅ ${detectedObjects.length} objetos detectados en punto de toque`);
-      return detectedObjects;
+      console.log('✅ Objetos en el punto de toque:', objectsAtPoint.length);
+      return objectsAtPoint;
       
     } catch (error) {
       console.error('❌ Error detectando objetos:', error);
-      return [];
+      throw new Error('Error al detectar objetos en el punto de toque');
+    }
+  };
+
+  // FUNCIÓN AUXILIAR: CALCULAR BOUNDING BOX
+  const calculateBoundingBox = (points: number[][]): { x: number; y: number; width: number; height: number } => {
+    if (points.length === 0) return { x: 0, y: 0, width: 0, height: 0 };
+    
+    let minX = points[0][0], maxX = points[0][0];
+    let minY = points[0][1], maxY = points[0][1];
+    
+    for (const [x, y] of points) {
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y);
+      maxY = Math.max(maxY, y);
+    }
+    
+    return {
+      x: minX,
+      y: minY,
+      width: maxX - minX,
+      height: maxY - minY
+    };
+  };
+
+  // FUNCIÓN AUXILIAR: CALCULAR ÁREA
+  const calculateArea = (points: number[][]): number => {
+    if (points.length < 3) return 0;
+    
+    let area = 0;
+    for (let i = 0; i < points.length; i++) {
+      const j = (i + 1) % points.length;
+      area += points[i][0] * points[j][1];
+      area -= points[j][0] * points[i][1];
+    }
+    
+    return Math.abs(area) / 2;
+  };
+
+  // FUNCIÓN AUXILIAR: CALCULAR PERÍMETRO
+  const calculatePerimeter = (points: number[][]): number => {
+    if (points.length < 2) return 0;
+    
+    let perimeter = 0;
+    for (let i = 0; i < points.length; i++) {
+      const j = (i + 1) % points.length;
+      const dx = points[j][0] - points[i][0];
+      const dy = points[j][1] - points[i][1];
+      perimeter += Math.sqrt(dx * dx + dy * dy);
+    }
+    
+    return perimeter;
+  };
+
+  // FUNCIÓN AUXILIAR: CALCULAR CIRCULARIDAD
+  const calculateCircularity = (object: DetectedObject): number => {
+    try {
+      const { area, perimeter } = object;
+      if (perimeter === 0) return 0;
+      
+      // Circularidad = 4π * área / perímetro²
+      const circularity = (4 * Math.PI * area) / (perimeter * perimeter);
+      return Math.min(circularity, 1); // Normalizar a [0, 1]
+    } catch (error) {
+      console.error('Error calculando circularidad:', error);
+      return 0;
+    }
+  };
+
+  // FUNCIÓN AUXILIAR: CALCULAR COMPACIDAD
+  const calculateCompactness = (object: DetectedObject): number => {
+    try {
+      const { area, perimeter } = object;
+      if (perimeter === 0) return 0;
+      
+      // Compacidad = área / perímetro²
+      const compactness = area / (perimeter * perimeter);
+      return Math.min(compactness, 1); // Normalizar a [0, 1]
+    } catch (error) {
+      console.error('Error calculando compacidad:', error);
+      return 0;
     }
   };
 
@@ -193,14 +295,25 @@ export const TouchObjectSelector: React.FC<TouchObjectSelectorProps> = ({
 
   // SELECCIONAR OBJETO MÁS CERCANO AL TOQUE
   const selectClosestObject = (objects: DetectedObject[], touchX: number, touchY: number): DetectedObject => {
+    if (objects.length === 0) {
+      throw new Error('No hay objetos para seleccionar');
+    }
+    
+    if (objects.length === 1) {
+      return objects[0];
+    }
+    
+    // Encontrar el objeto cuyo centro del bounding box esté más cerca del punto de toque
     let closestObject = objects[0];
-    let minDistance = Infinity;
+    let minDistance = Number.MAX_VALUE;
     
     for (const object of objects) {
       const centerX = object.boundingBox.x + object.boundingBox.width / 2;
       const centerY = object.boundingBox.y + object.boundingBox.height / 2;
       
-      const distance = Math.sqrt(Math.pow(centerX - touchX, 2) + Math.pow(centerY - touchY, 2));
+      const distance = Math.sqrt(
+        Math.pow(centerX - touchX, 2) + Math.pow(centerY - touchY, 2)
+      );
       
       if (distance < minDistance) {
         minDistance = distance;
@@ -208,79 +321,78 @@ export const TouchObjectSelector: React.FC<TouchObjectSelectorProps> = ({
       }
     }
     
+    console.log('✅ Objeto más cercano seleccionado:', closestObject.id);
     return closestObject;
   };
 
   // CALCULAR MEDICIONES DEL OBJETO SELECCIONADO
   const calculateObjectMeasurements = async (object: DetectedObject, imageData: ImageData): Promise<any> => {
     try {
-      console.log('📏 CALCULANDO MEDICIONES DEL OBJETO...');
+      const { width, height, area, perimeter } = object;
       
-      const { width, height, area } = object.dimensions;
+      // Usar calibración real para convertir px → mm
+      let realWidth = width;
+      let realHeight = height;
+      let realArea = area;
+      let realPerimeter = perimeter;
       
-      // 1. MEDICIONES BÁSICAS 2D
-      const perimeter = 2 * (width + height);
-      const diagonal = Math.sqrt(width * width + height * height);
-      const aspectRatio = width / height;
-      
-      // 2. ESTIMACIÓN DE PROFUNDIDAD (basada en el tamaño del objeto)
-      const estimatedDepth = estimateDepthFromObjectSize(object, imageData);
-      
-      // 3. MEDICIONES 3D ESTIMADAS
-      const volume = width * height * estimatedDepth;
-      const surfaceArea = 2 * (width * height + width * estimatedDepth + height * estimatedDepth);
-      
-      // 4. ANÁLISIS DE FORMA
+      if (calibrationData?.isCalibrated && calibrationData.pixelsPerMm > 0) {
+        const pixelsPerMm = calibrationData.pixelsPerMm;
+        realWidth = width / pixelsPerMm;
+        realHeight = height / pixelsPerMm;
+        realArea = area / (pixelsPerMm ** 2);
+        realPerimeter = perimeter / pixelsPerMm;
+      }
+
+      // Calcular propiedades adicionales
+      const diagonal = Math.sqrt(realWidth ** 2 + realHeight ** 2);
+      const aspectRatio = realWidth / realHeight;
       const circularity = calculateCircularity(object);
       const compactness = calculateCompactness(object);
-      
-      const measurements = {
-        // Medidas 2D
-        width: { value: width, unit: 'px' },
-        height: { value: height, unit: 'px' },
-        area: { value: area, unit: 'px²' },
-        perimeter: { value: perimeter, unit: 'px' },
-        diagonal: { value: diagonal, unit: 'px' },
-        aspectRatio: { value: aspectRatio, unit: '' },
-        
-        // Medidas 3D estimadas
-        depth: { value: estimatedDepth, unit: 'px' },
-        volume: { value: volume, unit: 'px³' },
-        surfaceArea: { value: surfaceArea, unit: 'px²' },
+
+      // Estimar profundidad 3D basada en el tamaño relativo del objeto
+      const estimatedDepth = estimateDepthFromObjectSize(realArea, imageData.width, imageData.height);
+
+      return {
+        // Medidas 2D en mm (si está calibrado) o px
+        width: realWidth,
+        height: realHeight,
+        area: realArea,
+        perimeter: realPerimeter,
+        diagonal,
+        aspectRatio,
         
         // Propiedades de forma
-        circularity: { value: circularity, unit: '' },
-        compactness: { value: compactness, unit: '' },
+        circularity,
+        compactness,
         
-        // Metadatos
-        confidence: 0.92,
-        timestamp: Date.now(),
-        method: 'Touch Selection + Real Contour Detection'
+        // Estimación 3D
+        estimatedDepth,
+        estimatedVolume: realArea * estimatedDepth,
+        estimatedSurfaceArea: (realWidth * realHeight * 2) + (realWidth * estimatedDepth * 2) + (realHeight * estimatedDepth * 2),
+        
+        // Unidades
+        units: calibrationData?.isCalibrated ? 'mm' : 'px',
+        calibrationFactor: calibrationData?.pixelsPerMm || null
       };
-      
-      console.log('✅ Mediciones calculadas:', measurements);
-      return measurements;
-      
     } catch (error) {
-      console.error('❌ Error calculando mediciones:', error);
-      throw error;
+      console.error('Error calculando mediciones:', error);
+      throw new Error('Error al calcular mediciones del objeto');
     }
   };
 
   // ESTIMAR PROFUNDIDAD BASADA EN EL TAMAÑO DEL OBJETO
-  const estimateDepthFromObjectSize = (object: DetectedObject, imageData: ImageData): number => {
+  const estimateDepthFromObjectSize = (objectArea: number, imageWidth: number, imageHeight: number): number => {
     try {
       // Estimación basada en perspectiva y tamaño del objeto
-      const { width, height } = object.dimensions;
-      const imageArea = imageData.width * imageData.height;
-      const objectArea = width * height;
+      const imageArea = imageWidth * imageHeight;
       
       // Factor de profundidad basado en el área relativa del objeto
       const relativeArea = objectArea / imageArea;
       const depthFactor = Math.sqrt(relativeArea);
       
       // Profundidad estimada (en píxeles)
-      const estimatedDepth = Math.max(width, height) * depthFactor;
+      const estimatedDepth = 100 * depthFactor; // Valor por defecto en píxeles
       
       return Math.round(estimatedDepth);
       
@@ -290,44 +402,13 @@ export const TouchObjectSelector: React.FC<TouchObjectSelectorProps> = ({
     }
   };
 
-  // CALCULAR CIRCULARIDAD DEL OBJETO
-  const calculateCircularity = (object: DetectedObject): number => {
-    try {
-      const { area, perimeter } = object.dimensions;
-      if (perimeter === 0) return 0;
-      
-      // Circularidad = 4π * área / perímetro²
-      const circularity = (4 * Math.PI * area) / (perimeter * perimeter);
-      return Math.min(circularity, 1); // Normalizar a [0, 1]
-      
-    } catch (error) {
-      console.error('❌ Error calculando circularidad:', error);
-      return 0;
-    }
-  };
-
-  // CALCULAR COMPACTNESS DEL OBJETO
-  const calculateCompactness = (object: DetectedObject): number => {
-    try {
-      const { area, perimeter } = object.dimensions;
-      if (area === 0) return 0;
-      
-      // Compactness = área / perímetro²
-      const compactness = area / (perimeter * perimeter);
-      return compactness;
-      
-    } catch (error) {
-      console.error('❌ Error calculando compactness:', error);
-      return 0;
-    }
-  };
-
   // DIBUJAR SELECCIÓN DEL OBJETO EN EL CANVAS
   const drawObjectSelection = (ctx: CanvasRenderingContext2D, object: DetectedObject, touchX: number, touchY: number) => {
     try {
-      const { x, y, width, height } = object.boundingBox;
+      const { boundingBox } = object;
+      const { x, y, width, height } = boundingBox;
       
-      // 1. DIBUJAR RECTÁNGULO DE SELECCIÓN
+      // 1. DIBUJAR BOUNDING BOX
       ctx.strokeStyle = '#00FF00';
       ctx.lineWidth = 3;
       ctx.setLineDash([5, 5]);
@@ -337,33 +418,29 @@ export const TouchObjectSelector: React.FC<TouchObjectSelectorProps> = ({
       // 2. DIBUJAR PUNTO DE TOQUE
       ctx.fillStyle = '#FF0000';
       ctx.beginPath();
-      ctx.arc(touchX, touchY, 8, 0, 2 * Math.PI);
+      ctx.arc(touchX, touchY, 6, 0, 2 * Math.PI);
       ctx.fill();
       
       // 3. DIBUJAR INFORMACIÓN DEL OBJETO
-      ctx.fillStyle = '#FFFFFF';
-      ctx.strokeStyle = '#000000';
-      ctx.lineWidth = 2;
-      ctx.font = '16px Arial';
+      ctx.fillStyle = '#00FF00';
+      ctx.font = '14px Arial';
+      ctx.textAlign = 'left';
       
       const infoText = `Objeto: ${object.id}`;
       const sizeText = `${width} × ${height} px`;
-      const areaText = `Área: ${object.dimensions.area} px²`;
+      const areaText = `Área: ${object.area} px²`;
       
       // Fondo para el texto
-      const textX = x + width + 10;
-      const textY = y;
-      
       ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-      ctx.fillRect(textX - 5, textY - 60, 150, 80);
+      ctx.fillRect(10, 10, 200, 80);
       
       // Texto
       ctx.fillStyle = '#FFFFFF';
-      ctx.fillText(infoText, textX, textY - 40);
-      ctx.fillText(sizeText, textX, textY - 20);
-      ctx.fillText(areaText, textX, textY);
+      ctx.fillText(infoText, 15, 30);
+      ctx.fillText(sizeText, 15, 50);
+      ctx.fillText(areaText, 15, 70);
       
-      console.log('✅ Selección dibujada en canvas');
+      console.log('✅ Selección dibujada en el canvas');
       
     } catch (error) {
       console.error('❌ Error dibujando selección:', error);
@@ -381,9 +458,9 @@ export const TouchObjectSelector: React.FC<TouchObjectSelectorProps> = ({
     // Limpiar canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
-    setTouchPoint(null);
+    setTouchIndicator(null);
     setSelectedObject(null);
-    setMeasurementResult(null);
+    setMeasurements(null);
     
     console.log('🧹 Selección limpiada');
   }, [overlayCanvasRef]);
@@ -403,12 +480,12 @@ export const TouchObjectSelector: React.FC<TouchObjectSelectorProps> = ({
       style={{ pointerEvents: isActive ? 'auto' : 'none' }}
     >
       {/* INDICADOR DE TOQUE */}
-      {touchPoint && (
+      {touchIndicator && (
         <div 
           className="absolute w-4 h-4 bg-red-500 rounded-full border-2 border-white shadow-lg animate-pulse"
           style={{
-            left: touchPoint.x - 8,
-            top: touchPoint.y - 8,
+            left: touchIndicator.x - 8,
+            top: touchIndicator.y - 8,
             transform: 'translate(-50%, -50%)'
           }}
         />
@@ -422,17 +499,17 @@ export const TouchObjectSelector: React.FC<TouchObjectSelectorProps> = ({
       )}
       
       {/* RESULTADO DE MEDICIÓN */}
-      {measurementResult && selectedObject && (
+      {measurements && selectedObject && (
         <div className="absolute top-4 right-4 bg-green-500 text-white p-4 rounded-lg shadow-lg max-w-xs">
           <h3 className="font-bold mb-2">📏 Objeto Seleccionado</h3>
           <div className="text-sm space-y-1">
             <div>ID: {selectedObject.id}</div>
-            <div>Ancho: {measurementResult.width.value} {measurementResult.width.unit}</div>
-            <div>Alto: {measurementResult.height.value} {measurementResult.height.unit}</div>
-            <div>Área: {measurementResult.area.value} {measurementResult.area.unit}</div>
-            <div>Profundidad: {measurementResult.depth.value} {measurementResult.depth.unit}</div>
-            <div>Volumen: {measurementResult.volume.value} {measurementResult.volume.unit}</div>
-            <div>Confianza: {(measurementResult.confidence * 100).toFixed(1)}%</div>
+            <div>Ancho: {measurements.width} {measurements.units}</div>
+            <div>Alto: {measurements.height} {measurements.units}</div>
+            <div>Área: {measurements.area} {measurements.units}²</div>
+            <div>Profundidad: {measurements.estimatedDepth} {measurements.units}</div>
+            <div>Volumen: {measurements.estimatedVolume} {measurements.units}³</div>
+            <div>Confianza: {(measurements.confidence * 100).toFixed(1)}%</div>
           </div>
           <button 
             onClick={clearSelection}

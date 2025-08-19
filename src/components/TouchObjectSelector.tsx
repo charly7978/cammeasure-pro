@@ -1,8 +1,7 @@
 // COMPONENTE DE SELECCIÓN MANUAL DE OBJETOS POR TOQUE
 // Implementa detección real de contornos y mediciones precisas
 import React, { useRef, useState, useCallback, useEffect } from 'react';
-import { DetectedObject } from '@/lib/types';
-import { detectContoursReal, applyFilter } from '@/lib';
+import { DetectedObject, ContourDetectionFactory } from '@/lib';
 
 interface TouchObjectSelectorProps {
   videoRef: React.RefObject<HTMLVideoElement>;
@@ -124,14 +123,16 @@ export const TouchObjectSelector: React.FC<TouchObjectSelectorProps> = ({
     try {
       console.log('🔍 DETECTANDO OBJETOS EN PUNTO DE TOQUE...');
       
-      // 1. APLICAR FILTRO CANNY PARA DETECTAR BORDES
-      const edges = applyFilter(imageData, 'canny');
+      // 1. DETECTAR BORDES CON CANNY
+      const edgeDetector = ContourDetectionFactory.createDetector('suzuki');
+      const edgeResult = await edgeDetector.detectEdges(imageData, { algorithm: 'canny', threshold: 0.5 });
       
       // 2. DETECTAR CONTORNOS REALES
-      const contours = detectContoursReal(edges, imageData.width, imageData.height);
+      const contourDetector = ContourDetectionFactory.createDetector('suzuki');
+      const contourResult = await contourDetector.detectContours(imageData, { algorithm: 'suzuki', minArea: 100 });
       
       // 3. FILTRAR CONTORNOS QUE CONTENGAN EL PUNTO DE TOQUE
-      const validContours = contours.filter((contour: any) => {
+      const validContours = contourResult.contours.filter((contour: any) => {
         return isPointInContour(touchX, touchY, contour);
       });
       

@@ -140,6 +140,12 @@ export const TouchObjectSelector: React.FC<TouchObjectSelectorProps> = ({
       const detectedObjects: DetectedObject[] = validContours.map((contour: any, index: number) => ({
         id: `touch_obj_${index}`,
         type: 'touch_selected',
+        points: [], // Array vacío para compatibilidad
+        x: contour.boundingBox.x,
+        y: contour.boundingBox.y,
+        width: contour.boundingBox.width,
+        height: contour.boundingBox.height,
+        area: contour.boundingBox.area,
         boundingBox: {
           x: contour.boundingBox.x,
           y: contour.boundingBox.y,
@@ -294,7 +300,7 @@ export const TouchObjectSelector: React.FC<TouchObjectSelectorProps> = ({
   const calculateCircularity = (object: DetectedObject): number => {
     try {
       const { area, perimeter } = object.dimensions;
-      if (perimeter === 0) return 0;
+      if (perimeter === 0 || !perimeter) return 0;
       
       // Circularidad = 4π * área / perímetro²
       const circularity = (4 * Math.PI * area) / (perimeter * perimeter);
@@ -310,7 +316,7 @@ export const TouchObjectSelector: React.FC<TouchObjectSelectorProps> = ({
   const calculateCompactness = (object: DetectedObject): number => {
     try {
       const { area, perimeter } = object.dimensions;
-      if (area === 0) return 0;
+      if (area === 0 || !perimeter) return 0;
       
       // Compactness = área / perímetro²
       const compactness = area / (perimeter * perimeter);

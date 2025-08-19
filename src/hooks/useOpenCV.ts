@@ -827,13 +827,31 @@ export function useOpenCV() {
 
   // FUNCIONES DE OPENCV REALES
   const opencvFunctions: OpenCVFunctions = {
-    cvtColor: (src: ImageData, code: number) => nativeOpenCV.cvtColor(src, code),
-    GaussianBlur: (src: ImageData, ksize: number[], sigmaX: number, sigmaY?: number) => 
-      nativeOpenCV.GaussianBlur(src, ksize, sigmaX, sigmaY),
-    Canny: (src: ImageData, threshold1: number, threshold2: number) => 
-      nativeOpenCV.Canny(src, threshold1, threshold2),
-    findContours: (src: ImageData, mode: number, method: number) => 
-      nativeOpenCV.findContours(src, mode, method),
+    cvtColor: (src: ImageData, dst: ImageData, code: number) => {
+      const result = nativeOpenCV.cvtColor(src, code);
+      // Copiar resultado al destino
+      if (dst && result) {
+        dst.data.set(result.data);
+      }
+    },
+    GaussianBlur: (src: ImageData, dst: ImageData, ksize: number[], sigma: number) => {
+      const result = nativeOpenCV.GaussianBlur(src, ksize, sigma);
+      if (dst && result) {
+        dst.data.set(result.data);
+      }
+    },
+    Canny: (src: ImageData, dst: ImageData, threshold1: number, threshold2: number) => {
+      const result = nativeOpenCV.Canny(src, threshold1, threshold2);
+      if (dst && result) {
+        dst.data.set(result.data);
+      }
+    },
+    findContours: (src: ImageData, contours: any[], hierarchy: any[], mode: number, method: number) => {
+      const result = nativeOpenCV.findContours(src, mode, method);
+      if (contours && result) {
+        contours.splice(0, contours.length, ...result);
+      }
+    },
     detectEdges: (src: ImageData) => nativeOpenCV.detectEdges(src),
     findContoursSimple: (src: ImageData) => nativeOpenCV.findContoursSimple(src),
     warpAffine: (src: ImageData, matrix: number[][], size: number[]) => 

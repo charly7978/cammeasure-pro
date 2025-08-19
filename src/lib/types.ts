@@ -59,7 +59,7 @@ export interface BoundingRect {
 }
 
 export interface DetectedObject extends BoundingRect {
-  points: boolean;
+  points: Point3D[];
   id: string;
   type: string;
   depth?: number;
@@ -479,6 +479,8 @@ export interface MeasurementResult {
     distance?: number;
   };
   // Propiedades adicionales para compatibilidad
+  area?: number;
+  volume?: number;
   distance2D?: number;
   distance3D?: number;
   unit?: string;

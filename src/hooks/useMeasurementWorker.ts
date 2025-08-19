@@ -720,6 +720,7 @@ class RealTimeMeasurementProcessor {
     return {
       id: objectId,
       type: 'detected',
+      points: [], // Array vacío para compatibilidad
       x: boundingBox.x,
       y: boundingBox.y,
       width: boundingBox.width,

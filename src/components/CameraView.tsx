@@ -187,11 +187,11 @@ export const CameraView: React.FC<CameraViewProps> = ({
   }, [isActive, hasPermissions, cameraStream]);
 
   const handleCameraSwitch = async () => {
-    const newDirection = currentCamera === 'back' ? 'front' : 'back';
+    const newDirection = currentCamera === 'back' ? 'user' : 'environment';
     
     try {
       await switchCamera(newDirection);
-      setCurrentCamera(newDirection);
+      setCurrentCamera(newDirection === 'user' ? 'front' : 'back');
     } catch (error) {
       console.error('Error switching camera:', error);
     }
@@ -995,6 +995,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
     return {
       id: 'central_prominent_obj',
       type: 'detected',
+      points: [], // Array vacío de Point3D para compatibilidad
       x: firstRect.x,
       y: firstRect.y,
       width: firstRect.width,
@@ -1480,7 +1481,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
       const { width, height } = object.dimensions;
       
       // Si tenemos puntos del contorno, calcular perímetro real
-      if (object.points && object.points.length > 0) {
+      if (object.points && Array.isArray(object.points) && object.points.length > 0) {
         let perimeter = 0;
         for (let i = 0; i < object.points.length; i++) {
           const current = object.points[i];
@@ -1564,8 +1565,8 @@ export const CameraView: React.FC<CameraViewProps> = ({
       const { width, height } = object.dimensions;
       
       // Si tenemos puntos del contorno, calcular convex hull real
-      if (object.points && object.points.length > 0) {
-        const convexHull = calculateConvexHull(object.points);
+      if (object.points && Array.isArray(object.points) && object.points.length > 0) {
+        const convexHull = calculateConvexHull(object.points as any);
         return calculatePolygonArea(convexHull);
       }
       

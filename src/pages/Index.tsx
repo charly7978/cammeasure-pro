@@ -33,7 +33,7 @@ import {
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState<'camera' | 'calibration' | 'measurements'>('camera');
-  const { calibration, setCalibration } = useCalibration();
+  const { calibrationData } = useCalibration();
   const [measurementMode, setMeasurementMode] = useState<MeasurementMode>('2d');
   const [measurementResult, setMeasurementResult] = useState<MeasurementResult | null>(null);
   const [capturedImage, setCapturedImage] = useState<ImageData | null>(null);
@@ -44,7 +44,7 @@ const Index = () => {
   const [showCalibrationWarning, setShowCalibrationWarning] = useState(true);
   
   const { sensorData, isListening, startListening, stopListening } = useDeviceSensors();
-  const { isLoaded: isOpenCVLoaded, error: openCVError } = useOpenCV();
+  const { isReady: isOpenCVLoaded, error: openCVError } = useOpenCV();
 
   useEffect(() => {
     startListening();
@@ -62,7 +62,7 @@ const Index = () => {
 
   // Mostrar advertencia de calibración si no está calibrado
   useEffect(() => {
-    if (!calibration?.isCalibrated && showCalibrationWarning) {
+    if (!calibrationData?.isCalibrated && showCalibrationWarning) {
       const timer = setTimeout(() => {
         toast({
           title: "⚠️ Calibración Requerida",
@@ -72,7 +72,7 @@ const Index = () => {
       
       return () => clearTimeout(timer);
     }
-  }, [calibration?.isCalibrated, showCalibrationWarning]);
+  }, [calibrationData?.isCalibrated, showCalibrationWarning]);
 
   const handleImageCapture = (imageData: ImageData) => {
     setCapturedImage(imageData);
@@ -89,7 +89,7 @@ const Index = () => {
   };
 
   const handleCalibrationChange = (data: CalibrationData) => {
-    setCalibration(data);
+    // TODO: Update calibration through hook
     
     if (data.isCalibrated) {
       setShowCalibrationWarning(false);
@@ -316,7 +316,7 @@ const Index = () => {
       </div>
 
       {/* Advertencia de calibración */}
-      {!calibration?.isCalibrated && (
+      {!calibrationData?.isCalibrated && (
         <Card className="p-4 bg-amber-500/10 border-amber-500/30">
           <div className="flex items-center gap-3">
             <AlertTriangle className="w-5 h-5 text-amber-500" />

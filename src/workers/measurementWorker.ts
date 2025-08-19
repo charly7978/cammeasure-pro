@@ -1,7 +1,7 @@
 // WORKER REAL DE MEDICIÓN - ALGORITMOS MATEMÁTICOS COMPLETOS
 // Implementación nativa de procesamiento de imagen y cálculos de medición
 
-import { DetectedObject, MeasurementResult } from '../lib/types';
+import { DetectedObject, MeasurementResult, Point3D, MeasurementMode } from '../lib/types';
 
 // INTERFACES PARA MEDICIÓN REAL
 export interface RealMeasurementParams {
@@ -354,7 +354,7 @@ async function processImageReal(params: RealMeasurementParams): Promise<RealMeas
         area: selectedContour.area,
         unit: 'px'
       },
-      points: false
+      points: [] as Point3D[], // Array vacío para compatibilidad
     };
     
     const processingTime = performance.now() - startTime;
@@ -412,9 +412,17 @@ async function calculateMeasurementsReal(params: any): Promise<MeasurementResult
     const measurements = measurementCalculator.calculateRealMeasurements(object, calibrationData);
     
     const result: MeasurementResult = {
+      mode: '2d' as MeasurementMode,
       timestamp: Date.now(),
-      object,
-      measurements,
+      measurements: {
+        width: measurements.width,
+        height: measurements.height,
+        area: measurements.area,
+        volume: measurements.volume,
+        distance: measurements.distance2D
+      },
+      area: measurements.area,
+      volume: measurements.volume,
       points: [],
       confidence: object.confidence
     };

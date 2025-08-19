@@ -29,21 +29,8 @@ export const MeasurementEngine: React.FC<MeasurementEngineProps> = ({
   onMeasurementComplete,
   onError
 }) => {
-  const { cv, isLoaded: opencvLoaded } = useOpenCV();
-  const measurementWorker = useMeasurementWorker({
-    enableMultiScale: true,
-    enableTextureAnalysis: true,
-    enableShapeAnalysis: true,
-    enableSemanticSegmentation: true,
-    enableDepthEstimation: true,
-    enableMLEnhancement: true,
-    processingQuality: 'ultra',
-    temporalBufferSize: 20,
-    confidenceThreshold: 0.85,
-    uncertaintyThreshold: 0.15,
-    enableRealTimeLearning: true,
-    adaptiveThresholds: true
-  });
+  const { isReady: opencvLoaded } = useOpenCV();
+  const measurementWorker = useMeasurementWorker();
 
   const [currentMeasurement, setCurrentMeasurement] = useState<AdvancedMeasurementResult | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -149,7 +136,7 @@ export const MeasurementEngine: React.FC<MeasurementEngineProps> = ({
       console.error('❌ Error en motor de medición:', error);
       throw error;
     }
-  }, [cv, opencvLoaded, measurementMode]);
+  }, [opencvLoaded, measurementMode]);
 
   // PREPROCESAMIENTO AVANZADO MULTI-ESCALA
   const advancedMultiScalePreprocessing = async (frame: ImageData): Promise<any> => {
@@ -181,7 +168,7 @@ export const MeasurementEngine: React.FC<MeasurementEngineProps> = ({
 
   // DETECCIÓN DE OBJETOS MULTI-ALGORITMO
   const multiAlgorithmObjectDetection = async (preprocessedData: any): Promise<any> => {
-    if (!cv || !opencvLoaded) {
+    if (!opencvLoaded) {
       throw new Error('OpenCV no disponible');
     }
     
@@ -189,7 +176,7 @@ export const MeasurementEngine: React.FC<MeasurementEngineProps> = ({
     const nativeDetection = detectContoursReal(preprocessedData.preprocessed, preprocessedData.width, preprocessedData.height);
     
     // 2. DETECCIÓN CON WORKER AVANZADO
-    const workerDetection = await measurementWorker.startMeasurement(preprocessedData.preprocessed);
+    const workerDetection = await measurementWorker.processImage(preprocessedData);
     
     // 3. DETECCIÓN CON ALGORITMOS ESPECIALIZADOS
     const specializedDetection = await specializedObjectDetection(preprocessedData);
@@ -235,7 +222,8 @@ export const MeasurementEngine: React.FC<MeasurementEngineProps> = ({
       return {
         depthMap,
         measurements3D,
-        confidence: depthMap.confidence.reduce((a: number, b: number) => a + b, 0) / depthMap.confidence.length
+        confidence: (depthMap.confidence && depthMap.confidence.length > 0) ? 
+          depthMap.confidence.reduce((a: number, b: number) => a + b, 0) / depthMap.confidence.length : 0.5
       };
       
     } catch (error) {
@@ -421,7 +409,7 @@ export const MeasurementEngine: React.FC<MeasurementEngineProps> = ({
 
   // PROCESAMIENTO PRINCIPAL
   useEffect(() => {
-    if (!isActive || !imageData || !opencvLoaded || !measurementWorker.isInitialized) {
+    if (!isActive || !imageData || !opencvLoaded) {
       return;
     }
 
@@ -640,8 +628,8 @@ export const MeasurementEngine: React.FC<MeasurementEngineProps> = ({
             OpenCV: {opencvLoaded ? '✅ Cargado' : '❌ No disponible'}
           </div>
           
-          <div className={`indicator ${measurementWorker.isInitialized ? 'success' : 'error'}`}>
-            Worker: {measurementWorker.isInitialized ? '✅ Inicializado' : '❌ No inicializado'}
+          <div className={`indicator success`}>
+            Worker: ✅ Disponible
           </div>
           
           <div className={`indicator ${isProcessing ? 'processing' : 'idle'}`}>

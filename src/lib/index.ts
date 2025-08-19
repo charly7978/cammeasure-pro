@@ -15,4 +15,4 @@ export { real3DDepthCalculator, calculateDepthFromStereo, calculateObjectDepth, 
 // ============================================================================
 // EXPORTACIÓN DE CONTEXTO
 // ============================================================================
-export { CalibrationProvider } from './calibrationContext';
+export { RealCalibrationProvider } from './calibrationContext';

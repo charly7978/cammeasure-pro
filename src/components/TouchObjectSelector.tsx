@@ -1,5 +1,6 @@
 // COMPONENTE DE SELECCIÓN MANUAL DE OBJETOS POR TOQUE
-// Implementa detección real de contornos y mediciones precisas
+// Permite al usuario tocar la pantalla para seleccionar objetos específicos
+
 import React, { useRef, useState, useCallback, useEffect } from 'react';
 import { DetectedObject } from '@/lib/types';
 import { detectContoursReal, applyFilter } from '@/lib';
@@ -139,11 +140,6 @@ export const TouchObjectSelector: React.FC<TouchObjectSelectorProps> = ({
       const detectedObjects: DetectedObject[] = validContours.map((contour: any, index: number) => ({
         id: `touch_obj_${index}`,
         type: 'touch_selected',
-        x: contour.boundingBox.x,
-        y: contour.boundingBox.y,
-        width: contour.boundingBox.width,
-        height: contour.boundingBox.height,
-        area: contour.area || contour.boundingBox.width * contour.boundingBox.height,
         boundingBox: {
           x: contour.boundingBox.x,
           y: contour.boundingBox.y,
@@ -157,7 +153,7 @@ export const TouchObjectSelector: React.FC<TouchObjectSelectorProps> = ({
           unit: 'px'
         },
         confidence: contour.confidence || 0.9,
-        points: contour.points || []
+        contour: contour.points
       }));
       
       console.log(`✅ ${detectedObjects.length} objetos detectados en punto de toque`);
@@ -297,10 +293,7 @@ export const TouchObjectSelector: React.FC<TouchObjectSelectorProps> = ({
   // CALCULAR CIRCULARIDAD DEL OBJETO
   const calculateCircularity = (object: DetectedObject): number => {
     try {
-      const { area } = object.dimensions;
-      const { width, height } = object.dimensions;
-      const perimeter = 2 * (width + height);
-      
+      const { area, perimeter } = object.dimensions;
       if (perimeter === 0) return 0;
       
       // Circularidad = 4π * área / perímetro²
@@ -316,10 +309,7 @@ export const TouchObjectSelector: React.FC<TouchObjectSelectorProps> = ({
   // CALCULAR COMPACTNESS DEL OBJETO
   const calculateCompactness = (object: DetectedObject): number => {
     try {
-      const { area } = object.dimensions;
-      const { width, height } = object.dimensions;
-      const perimeter = 2 * (width + height);
-      
+      const { area, perimeter } = object.dimensions;
       if (area === 0) return 0;
       
       // Compactness = área / perímetro²

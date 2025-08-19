@@ -8,10 +8,5 @@ import { useRealCalibration } from '@/lib/calibrationContext';
  * @throws An error if used outside of a CalibrationProvider.
  */
 export const useCalibration = () => {
-  const { calibrationData, setCalibrationData } = useRealCalibration();
-  
-  return {
-    calibration: calibrationData,
-    setCalibration: setCalibrationData
-  };
+  return useRealCalibration();
 };

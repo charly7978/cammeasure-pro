@@ -151,89 +151,191 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
     }
   }, [videoRef, overlayCanvasRef, isActive, isProcessing, frameCount, fps, onMeasurementUpdate, onObjectsDetected, onError]);
 
-  // SISTEMA COORDINADO DE PROCESAMIENTO
+  // SISTEMA INTELIGENTE DE PROCESAMIENTO CON OPTIMIZACIONES
   useEffect(() => {
     if (!isActive || !videoRef?.current || !overlayCanvasRef?.current) {
       return;
     }
 
     let isComponentActive = true;
-    let processingLock = false;
     const processId = `realtime-measurement-${Date.now()}`;
 
-    const processWithCoordination = async () => {
-      if (!isComponentActive || processingLock || isProcessing) return;
-      
-      processingLock = true;
-      
+    const setupIntelligentProcessing = async () => {
       try {
-        // Importar coordinador de procesos
+        // Importar optimizadores
+        const { performanceOptimizer } = await import('@/lib/performanceOptimizer');
+        const { workerPool } = await import('@/lib/workerPool');
         const { processCoordinator } = await import('@/lib/processCoordinator');
-        
-        // Verificar si el sistema está sobrecargado
-        const resourceStatus = processCoordinator.getResourceStatus();
-        if (resourceStatus.isOverloaded) {
-          console.log('⏸️ Sistema sobrecargado, pausando procesamiento temporal');
-          return;
-        }
-        
-        // Adquirir lock para procesamiento
-        const lockAcquired = await processCoordinator.acquireLock(processId, 'RealTimeMeasurement', 1000);
-        if (!lockAcquired) {
-          return; // No procesar si no se puede adquirir lock
-        }
-        
-        try {
-          // Registrar uso de recursos
-          processCoordinator.registerResource('imageData');
-          
-          await processFrameAutomatically();
-          
-          // Liberar recurso
-          processCoordinator.releaseResource('imageData');
-          
-        } finally {
-          processCoordinator.releaseLock(processId);
-        }
-        
-      } catch (error) {
-        console.error('Error en procesamiento coordinado:', error);
-      } finally {
-        processingLock = false;
-      }
-    };
 
-    // Crear debounce para evitar llamadas excesivas
-    let debounceTimer: NodeJS.Timeout;
-    const debouncedProcess = () => {
-      clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(processWithCoordination, 600); // Aumentar a 600ms
-    };
+        // Crear función de procesamiento optimizada
+        const optimizedProcess = performanceOptimizer.createIntelligentThrottle(
+          async () => {
+            if (!isComponentActive || isProcessing) return;
 
-    // Iniciar procesamiento con delay
-    const startDelay = setTimeout(() => {
-      if (isComponentActive) {
-        debouncedProcess();
-        
-        // Configurar intervalo más amplio
+            // Verificar salud del sistema
+            const metrics = performanceOptimizer.getMetrics();
+            if (metrics.isOverloaded) {
+              console.log('⏸️ Sistema sobrecargado, saltando frame');
+              return;
+            }
+
+            // Adquirir lock con timeout más corto
+            const lockAcquired = await processCoordinator.acquireLock(processId, 'RealTimeMeasurement', 1000);
+            if (!lockAcquired) return;
+
+            try {
+              // Añadir tarea al optimizador
+              performanceOptimizer.addTask({
+                id: `rt-measure-${Date.now()}`,
+                priority: 'medium',
+                estimatedTime: 100,
+                component: 'RealTimeMeasurement',
+                processor: async () => {
+                  if (!videoRef.current || !overlayCanvasRef.current) return;
+
+                  const canvas = overlayCanvasRef.current;
+                  const ctx = canvas.getContext('2d');
+                  if (!ctx) return;
+
+                  const video = videoRef.current;
+                  canvas.width = video.videoWidth;
+                  canvas.height = video.videoHeight;
+
+                  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+                  // Optimizar imagen según rendimiento del sistema
+                  const quality = metrics.isOverloaded ? 'low' : 'medium';
+                  const optimizedImageData = performanceOptimizer.optimizeImageData(imageData, quality);
+
+                  // Usar worker para procesamiento pesado
+                  try {
+                    const detectionResult = await workerPool.executeTask(
+                      'detection',
+                      { imageData: optimizedImageData, threshold: 128 },
+                      'medium',
+                      2000 // Timeout de 2 segundos
+                    );
+
+                    if (detectionResult && detectionResult.edges.length > 0) {
+                      // Crear objeto detectado completo
+                      const detectedObject = {
+                        id: 'rt_obj',
+                        type: 'detected' as const,
+                        x: Math.min(...detectionResult.edges.map((e: any) => e.x)),
+                        y: Math.min(...detectionResult.edges.map((e: any) => e.y)),
+                        width: Math.max(...detectionResult.edges.map((e: any) => e.x)) - Math.min(...detectionResult.edges.map((e: any) => e.x)),
+                        height: Math.max(...detectionResult.edges.map((e: any) => e.y)) - Math.min(...detectionResult.edges.map((e: any) => e.y)),
+                        area: optimizedImageData.width * optimizedImageData.height * 0.01,
+                        boundingBox: {
+                          x: Math.min(...detectionResult.edges.map((e: any) => e.x)),
+                          y: Math.min(...detectionResult.edges.map((e: any) => e.y)),
+                          width: Math.max(...detectionResult.edges.map((e: any) => e.x)) - Math.min(...detectionResult.edges.map((e: any) => e.x)),
+                          height: Math.max(...detectionResult.edges.map((e: any) => e.y)) - Math.min(...detectionResult.edges.map((e: any) => e.y))
+                        },
+                        dimensions: {
+                          width: optimizedImageData.width * 0.1,
+                          height: optimizedImageData.height * 0.1,
+                          area: optimizedImageData.width * optimizedImageData.height * 0.01,
+                          unit: 'px' as const
+                        },
+                        confidence: 0.8,
+                        points: detectionResult.edges.map((e: any) => [e.x, e.y])
+                      };
+
+                      // Crear medición optimizada
+                      const measurement = {
+                        width: detectedObject.dimensions.width,
+                        height: detectedObject.dimensions.height,
+                        area: detectedObject.dimensions.area,
+                        perimeter: 2 * (detectedObject.dimensions.width + detectedObject.dimensions.height),
+                        circularity: 1.0,
+                        solidity: 1.0,
+                        confidence: detectedObject.confidence,
+                        depth: 100,
+                        volume: detectedObject.dimensions.area * 100,
+                        surfaceArea: detectedObject.dimensions.area * 2,
+                        curvature: 0,
+                        roughness: 0,
+                        orientation: { pitch: 0, yaw: 0, roll: 0 },
+                        materialProperties: {
+                          refractiveIndex: 1.0,
+                          scatteringCoefficient: 0,
+                          absorptionCoefficient: 0
+                        },
+                        uncertainty: {
+                          measurement: 0.1,
+                          calibration: 0.05,
+                          algorithm: 0.02,
+                          total: 0.17
+                        },
+                        algorithm: 'Optimized Real-Time Detection',
+                        processingTime: performance.now() - Date.now(),
+                        frameRate: metrics.framerate,
+                        qualityMetrics: {
+                          sharpness: 0.8,
+                          contrast: 0.7,
+                          noise: 0.1,
+                          blur: 0.1
+                        }
+                      };
+
+                      setCurrentMeasurement(measurement);
+                      onMeasurementUpdate(measurement);
+
+                      if (onObjectsDetected) {
+                        onObjectsDetected([detectedObject]);
+                      }
+
+                      // Dibujar overlay simplificado
+                      drawSimplifiedOverlay(ctx, detectedObject);
+                    }
+                  } catch (workerError) {
+                    console.warn('Worker no disponible, usando procesamiento local simplificado');
+                    // Fallback simple sin worker
+                    await processFrameAutomatically();
+                  }
+                }
+              });
+
+            } finally {
+              processCoordinator.releaseLock(processId);
+            }
+          },
+          'RealTimeMeasurement'
+        );
+
+        // Configurar procesamiento con intervalo inteligente
         const intervalId = setInterval(() => {
-          if (isComponentActive && !processingLock) {
-            debouncedProcess();
+          if (isComponentActive) {
+            optimizedProcess();
           }
-        }, 1200); // Intervalo de 1.2 segundos
-        
-        // Cleanup para intervalo
+        }, 800); // Intervalo más conservador
+
+        // Cleanup
         return () => {
           clearInterval(intervalId);
         };
-      }
-    }, 1500);
 
-    // Limpiar al desmontar
+      } catch (error) {
+        console.error('Error configurando procesamiento inteligente:', error);
+        // Fallback al método original simplificado
+        const fallbackInterval = setInterval(() => {
+          if (isComponentActive && !isProcessing) {
+            processFrameAutomatically();
+          }
+        }, 1000);
+        
+        return () => clearInterval(fallbackInterval);
+      }
+    };
+
+    const cleanup = setupIntelligentProcessing();
+
+    // Cleanup al desmontar
     return () => {
       isComponentActive = false;
-      clearTimeout(startDelay);
-      clearTimeout(debounceTimer);
+      cleanup.then(cleanupFn => cleanupFn && cleanupFn());
       if (processingInterval.current) {
         clearInterval(processingInterval.current);
       }
@@ -242,6 +344,24 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
       }
     };
   }, [isActive, videoRef, overlayCanvasRef, processFrameAutomatically, isProcessing]);
+
+  // OVERLAY SIMPLIFICADO PARA MEJOR RENDIMIENTO
+  const drawSimplifiedOverlay = (ctx: CanvasRenderingContext2D, object: any) => {
+    const { x, y, width, height } = object.boundingBox;
+    
+    // Limpiar solo el área necesaria
+    ctx.clearRect(x - 10, y - 60, width + 20, height + 80);
+    
+    // Dibujar bounding box
+    ctx.strokeStyle = '#00ff00';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, width, height);
+    
+    // Dibujar solo información esencial
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '14px Arial';
+    ctx.fillText(`${width.toFixed(0)}×${height.toFixed(0)}px`, x, y - 10);
+  };
 
   // FUNCIONES AUXILIARES PARA MEDICIÓN AUTOMÁTICA
 

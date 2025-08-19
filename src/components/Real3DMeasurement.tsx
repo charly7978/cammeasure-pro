@@ -399,34 +399,53 @@ export const Real3DMeasurement: React.FC<Real3DMeasurementProps> = ({
     // Procesar frame inmediatamente
     processFrame();
     
-    // Sistema de procesamiento 3D optimizado con gestión de memoria
+    // Sistema coordinado de procesamiento 3D
     let isComponentActive = true;
     let is3DProcessing = false;
-    let rafId: number;
-    let lastProcess3DTime = 0;
-    const MIN_3D_INTERVAL = 500; // Aumentar a 500ms para procesamiento 3D pesado
+    const process3DId = `real3d-measurement-${Date.now()}`;
     
-    const schedule3DProcess = () => {
-      if (!isComponentActive || !isActive) return;
+    const processWithCoordination = async () => {
+      if (!isComponentActive || is3DProcessing || !isActive) return;
       
-      rafId = requestAnimationFrame((currentTime) => {
-        // Procesamiento 3D solo si no hay otro en curso y ha pasado tiempo suficiente
-        if (!is3DProcessing && currentTime - lastProcess3DTime >= MIN_3D_INTERVAL) {
-          is3DProcessing = true;
-          lastProcess3DTime = currentTime;
-          
-          processFrame().finally(() => {
-            is3DProcessing = false;
-            // Limpiar buffers para evitar memory leak
-            cleanupFrameBuffers();
-            // Programar siguiente procesamiento 3D con más tiempo
-            setTimeout(() => schedule3DProcess(), 100);
-          });
-        } else {
-          // Reprogramar para próximo frame
-          schedule3DProcess();
+      is3DProcessing = true;
+      
+      try {
+        // Importar coordinador
+        const { processCoordinator } = await import('@/lib/processCoordinator');
+        
+        // Verificar sobrecarga del sistema
+        const resourceStatus = processCoordinator.getResourceStatus();
+        if (resourceStatus.isOverloaded) {
+          console.log('⏸️ Sistema 3D sobrecargado, pausando temporal');
+          return;
         }
-      });
+        
+        // Adquirir lock exclusivo para procesamiento 3D
+        const lockAcquired = await processCoordinator.acquireLock(process3DId, 'Real3DMeasurement', 2000);
+        if (!lockAcquired) {
+          return;
+        }
+        
+        try {
+          // Registrar múltiples recursos para procesamiento 3D
+          processCoordinator.registerResource('imageData');
+          processCoordinator.registerResource('imageData'); // Stereo frame
+          
+          await processFrame();
+          
+          // Liberar recursos
+          processCoordinator.releaseResource('imageData');
+          processCoordinator.releaseResource('imageData');
+          
+        } finally {
+          processCoordinator.releaseLock(process3DId);
+        }
+        
+      } catch (error) {
+        console.error('Error en procesamiento 3D coordinado:', error);
+      } finally {
+        is3DProcessing = false;
+      }
     };
     
     // Función de limpieza de buffers
@@ -445,14 +464,34 @@ export const Real3DMeasurement: React.FC<Real3DMeasurementProps> = ({
       }
     };
     
-    // Iniciar sistema de procesamiento 3D con delay inicial
-    setTimeout(() => schedule3DProcess(), 1000);
+    // Iniciar procesamiento 3D coordinado con debounce
+    let debounceTimer: NodeJS.Timeout;
+    const debouncedProcess3D = () => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(processWithCoordination, 800); // 800ms debounce para 3D
+    };
+
+    const startDelay = setTimeout(() => {
+      if (isComponentActive) {
+        debouncedProcess3D();
+        
+        // Intervalo más conservador para 3D
+        const intervalId = setInterval(() => {
+          if (isComponentActive && !is3DProcessing) {
+            debouncedProcess3D();
+          }
+        }, 1500); // 1.5 segundos entre procesamiento 3D
+
+        return () => {
+          clearInterval(intervalId);
+        };
+      }
+    }, 2000); // Delay inicial más largo para 3D
     
     return () => {
       isComponentActive = false;
-      if (rafId) {
-        cancelAnimationFrame(rafId);
-      }
+      clearTimeout(startDelay);
+      clearTimeout(debounceTimer);
       // Limpiar buffers al desmontar
       frameBufferRef.current = [];
       stereoBufferRef.current = [];

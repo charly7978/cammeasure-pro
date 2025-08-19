@@ -151,62 +151,96 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
     }
   }, [videoRef, overlayCanvasRef, isActive, isProcessing, frameCount, fps, onMeasurementUpdate, onObjectsDetected, onError]);
 
-  // SISTEMA INTELIGENTE DE PROCESAMIENTO (Con prevención de memory leaks)
+  // SISTEMA COORDINADO DE PROCESAMIENTO
   useEffect(() => {
-    if (isActive && videoRef?.current && overlayCanvasRef?.current) {
-      let isComponentActive = true;
-      let rafId: number;
-      let lastProcessTime = 0;
-      const PROCESS_INTERVAL = 500; // Aumentar a 500ms para prevenir sobrecarga
-      let processCount = 0;
-      
-      // Usar requestAnimationFrame para mejor fluidez
-      const scheduleNext = () => {
-        if (!isComponentActive) return;
-        
-        rafId = requestAnimationFrame((currentTime) => {
-          // Throttle inteligente: solo procesar si ha pasado suficiente tiempo
-          if (currentTime - lastProcessTime >= PROCESS_INTERVAL && !isProcessing) {
-            lastProcessTime = currentTime;
-            processCount++;
-            
-            // Limpieza periódica cada 10 procesos
-            if (processCount % 10 === 0) {
-              console.log('🧹 Limpieza periódica de memoria en RealTimeMeasurement');
-              // Forzar garbage collection si está disponible
-              if (typeof window !== 'undefined' && 'gc' in window) {
-                (window as any).gc();
-              }
-            }
-            
-            processFrameAutomatically().finally(() => {
-              // Programar siguiente ejecución después de completar con más delay
-              setTimeout(() => scheduleNext(), 200);
-            });
-          } else {
-            // Si no es tiempo de procesar, programar siguiente check con delay
-            setTimeout(() => scheduleNext(), 100);
-          }
-        });
-      };
-      
-      // Iniciar ciclo de procesamiento con delay inicial
-      setTimeout(() => scheduleNext(), 1000);
-
-      // Limpiar al desmontar
-      return () => {
-        isComponentActive = false;
-        if (rafId) {
-          cancelAnimationFrame(rafId);
-        }
-        if (processingInterval.current) {
-          clearInterval(processingInterval.current);
-        }
-        if (animationFrameId.current) {
-          cancelAnimationFrame(animationFrameId.current);
-        }
-      };
+    if (!isActive || !videoRef?.current || !overlayCanvasRef?.current) {
+      return;
     }
+
+    let isComponentActive = true;
+    let processingLock = false;
+    const processId = `realtime-measurement-${Date.now()}`;
+
+    const processWithCoordination = async () => {
+      if (!isComponentActive || processingLock || isProcessing) return;
+      
+      processingLock = true;
+      
+      try {
+        // Importar coordinador de procesos
+        const { processCoordinator } = await import('@/lib/processCoordinator');
+        
+        // Verificar si el sistema está sobrecargado
+        const resourceStatus = processCoordinator.getResourceStatus();
+        if (resourceStatus.isOverloaded) {
+          console.log('⏸️ Sistema sobrecargado, pausando procesamiento temporal');
+          return;
+        }
+        
+        // Adquirir lock para procesamiento
+        const lockAcquired = await processCoordinator.acquireLock(processId, 'RealTimeMeasurement', 1000);
+        if (!lockAcquired) {
+          return; // No procesar si no se puede adquirir lock
+        }
+        
+        try {
+          // Registrar uso de recursos
+          processCoordinator.registerResource('imageData');
+          
+          await processFrameAutomatically();
+          
+          // Liberar recurso
+          processCoordinator.releaseResource('imageData');
+          
+        } finally {
+          processCoordinator.releaseLock(processId);
+        }
+        
+      } catch (error) {
+        console.error('Error en procesamiento coordinado:', error);
+      } finally {
+        processingLock = false;
+      }
+    };
+
+    // Crear debounce para evitar llamadas excesivas
+    let debounceTimer: NodeJS.Timeout;
+    const debouncedProcess = () => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(processWithCoordination, 600); // Aumentar a 600ms
+    };
+
+    // Iniciar procesamiento con delay
+    const startDelay = setTimeout(() => {
+      if (isComponentActive) {
+        debouncedProcess();
+        
+        // Configurar intervalo más amplio
+        const intervalId = setInterval(() => {
+          if (isComponentActive && !processingLock) {
+            debouncedProcess();
+          }
+        }, 1200); // Intervalo de 1.2 segundos
+        
+        // Cleanup para intervalo
+        return () => {
+          clearInterval(intervalId);
+        };
+      }
+    }, 1500);
+
+    // Limpiar al desmontar
+    return () => {
+      isComponentActive = false;
+      clearTimeout(startDelay);
+      clearTimeout(debounceTimer);
+      if (processingInterval.current) {
+        clearInterval(processingInterval.current);
+      }
+      if (animationFrameId.current) {
+        cancelAnimationFrame(animationFrameId.current);
+      }
+    };
   }, [isActive, videoRef, overlayCanvasRef, processFrameAutomatically, isProcessing]);
 
   // FUNCIONES AUXILIARES PARA MEDICIÓN AUTOMÁTICA

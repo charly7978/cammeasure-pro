@@ -354,15 +354,15 @@ export const Real3DMeasurement: React.FC<Real3DMeasurementProps> = ({
       setIsProcessing(true);
       
       try {
-        // Agregar frames al buffer temporal
+        // Gestión inteligente de buffers con límite estricto
         frameBufferRef.current.push(imageData);
-        if (frameBufferRef.current.length > 10) {
+        if (frameBufferRef.current.length > 3) { // Reducir drásticamente el buffer
           frameBufferRef.current.shift();
         }
         
         if (stereoImageData) {
           stereoBufferRef.current.push(stereoImageData);
-          if (stereoBufferRef.current.length > 10) {
+          if (stereoBufferRef.current.length > 3) { // Reducir drásticamente el buffer
             stereoBufferRef.current.shift();
           }
         }
@@ -399,16 +399,63 @@ export const Real3DMeasurement: React.FC<Real3DMeasurementProps> = ({
     // Procesar frame inmediatamente
     processFrame();
     
-    // Configurar procesamiento continuo si está activo
-    let intervalId: NodeJS.Timeout;
-    if (isActive) {
-      intervalId = setInterval(processFrame, 200); // 5 FPS máximo para 3D
-    }
+    // Sistema de procesamiento 3D optimizado con gestión de memoria
+    let isComponentActive = true;
+    let is3DProcessing = false;
+    let rafId: number;
+    let lastProcess3DTime = 0;
+    const MIN_3D_INTERVAL = 500; // Aumentar a 500ms para procesamiento 3D pesado
+    
+    const schedule3DProcess = () => {
+      if (!isComponentActive || !isActive) return;
+      
+      rafId = requestAnimationFrame((currentTime) => {
+        // Procesamiento 3D solo si no hay otro en curso y ha pasado tiempo suficiente
+        if (!is3DProcessing && currentTime - lastProcess3DTime >= MIN_3D_INTERVAL) {
+          is3DProcessing = true;
+          lastProcess3DTime = currentTime;
+          
+          processFrame().finally(() => {
+            is3DProcessing = false;
+            // Limpiar buffers para evitar memory leak
+            cleanupFrameBuffers();
+            // Programar siguiente procesamiento 3D con más tiempo
+            setTimeout(() => schedule3DProcess(), 100);
+          });
+        } else {
+          // Reprogramar para próximo frame
+          schedule3DProcess();
+        }
+      });
+    };
+    
+    // Función de limpieza de buffers
+    const cleanupFrameBuffers = () => {
+      // Mantener solo los últimos 3 frames para evitar memory leak
+      if (frameBufferRef.current.length > 3) {
+        frameBufferRef.current = frameBufferRef.current.slice(-3);
+      }
+      if (stereoBufferRef.current.length > 3) {
+        stereoBufferRef.current = stereoBufferRef.current.slice(-3);
+      }
+      
+      // Forzar garbage collection si está disponible
+      if (typeof window !== 'undefined' && 'gc' in window) {
+        (window as any).gc();
+      }
+    };
+    
+    // Iniciar sistema de procesamiento 3D con delay inicial
+    setTimeout(() => schedule3DProcess(), 1000);
     
     return () => {
-      if (intervalId) {
-        clearInterval(intervalId);
+      isComponentActive = false;
+      if (rafId) {
+        cancelAnimationFrame(rafId);
       }
+      // Limpiar buffers al desmontar
+      frameBufferRef.current = [];
+      stereoBufferRef.current = [];
     };
   }, [imageData, stereoImageData, isActive, opencvLoaded, process3DMeasurement, onMeasurementUpdate, onError, isProcessing]);
 

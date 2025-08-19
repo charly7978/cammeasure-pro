@@ -151,13 +151,14 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
     }
   }, [videoRef, overlayCanvasRef, isActive, isProcessing, frameCount, fps, onMeasurementUpdate, onObjectsDetected, onError]);
 
-  // SISTEMA INTELIGENTE DE PROCESAMIENTO (Sin múltiples setInterval)
+  // SISTEMA INTELIGENTE DE PROCESAMIENTO (Con prevención de memory leaks)
   useEffect(() => {
     if (isActive && videoRef?.current && overlayCanvasRef?.current) {
       let isComponentActive = true;
       let rafId: number;
       let lastProcessTime = 0;
-      const PROCESS_INTERVAL = 300; // 300ms entre procesamiento
+      const PROCESS_INTERVAL = 500; // Aumentar a 500ms para prevenir sobrecarga
+      let processCount = 0;
       
       // Usar requestAnimationFrame para mejor fluidez
       const scheduleNext = () => {
@@ -167,19 +168,30 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
           // Throttle inteligente: solo procesar si ha pasado suficiente tiempo
           if (currentTime - lastProcessTime >= PROCESS_INTERVAL && !isProcessing) {
             lastProcessTime = currentTime;
+            processCount++;
+            
+            // Limpieza periódica cada 10 procesos
+            if (processCount % 10 === 0) {
+              console.log('🧹 Limpieza periódica de memoria en RealTimeMeasurement');
+              // Forzar garbage collection si está disponible
+              if (typeof window !== 'undefined' && 'gc' in window) {
+                (window as any).gc();
+              }
+            }
+            
             processFrameAutomatically().finally(() => {
-              // Programar siguiente ejecución después de completar
-              scheduleNext();
+              // Programar siguiente ejecución después de completar con más delay
+              setTimeout(() => scheduleNext(), 200);
             });
           } else {
-            // Si no es tiempo de procesar, programar siguiente check
-            scheduleNext();
+            // Si no es tiempo de procesar, programar siguiente check con delay
+            setTimeout(() => scheduleNext(), 100);
           }
         });
       };
       
-      // Iniciar ciclo de procesamiento
-      scheduleNext();
+      // Iniciar ciclo de procesamiento con delay inicial
+      setTimeout(() => scheduleNext(), 1000);
 
       // Limpiar al desmontar
       return () => {

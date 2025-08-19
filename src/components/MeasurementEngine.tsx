@@ -418,9 +418,9 @@ export const MeasurementEngine: React.FC<MeasurementEngineProps> = ({
       setIsProcessing(true);
       
       try {
-        // Agregar frame al buffer temporal
+        // Gestión de memoria optimizada para frames
         frameBufferRef.current.push(imageData);
-        if (frameBufferRef.current.length > 20) {
+        if (frameBufferRef.current.length > 3) { // Buffer mínimo para evitar memory leak
           frameBufferRef.current.shift();
         }
         
@@ -456,12 +456,13 @@ export const MeasurementEngine: React.FC<MeasurementEngineProps> = ({
     // Procesar frame inmediatamente
     processFrame();
     
-    // Sistema de cola inteligente para evitar superposición
+    // Sistema de cola inteligente con prevención de memory leaks
     let isComponentActive = true;
     let processingQueue = false;
     let rafId: number;
     let lastProcessTime = 0;
-    const MIN_PROCESS_INTERVAL = 150; // Mínimo 150ms entre procesos
+    const MIN_PROCESS_INTERVAL = 300; // Aumentar a 300ms
+    let processCount = 0;
     
     const scheduleNextProcess = () => {
       if (!isComponentActive || !isActive) return;
@@ -471,27 +472,42 @@ export const MeasurementEngine: React.FC<MeasurementEngineProps> = ({
         if (!processingQueue && currentTime - lastProcessTime >= MIN_PROCESS_INTERVAL) {
           processingQueue = true;
           lastProcessTime = currentTime;
+          processCount++;
+          
+          // Limpieza periódica cada 5 procesos
+          if (processCount % 5 === 0) {
+            console.log('🧹 Limpieza de memoria en MeasurementEngine');
+            // Limpiar buffer
+            frameBufferRef.current = frameBufferRef.current.slice(-2);
+            
+            // Forzar garbage collection
+            if (typeof window !== 'undefined' && 'gc' in window) {
+              (window as any).gc();
+            }
+          }
           
           processFrame().finally(() => {
             processingQueue = false;
-            // Programar siguiente procesamiento
-            scheduleNextProcess();
+            // Programar siguiente procesamiento con más delay
+            setTimeout(() => scheduleNextProcess(), 150);
           });
         } else {
-          // Reprogramar si no es tiempo de procesar
-          scheduleNextProcess();
+          // Reprogramar si no es tiempo de procesar con delay
+          setTimeout(() => scheduleNextProcess(), 100);
         }
       });
     };
     
-    // Iniciar sistema de cola
-    scheduleNextProcess();
+    // Iniciar sistema de cola con delay inicial
+    setTimeout(() => scheduleNextProcess(), 1500);
     
     return () => {
       isComponentActive = false;
       if (rafId) {
         cancelAnimationFrame(rafId);
       }
+      // Limpiar buffers al desmontar
+      frameBufferRef.current = [];
     };
   }, [imageData, isActive, opencvLoaded, processMeasurement, onMeasurementComplete, onError, isProcessing]);
 

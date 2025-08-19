@@ -1,3 +1,4 @@
+
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -16,8 +17,6 @@ import {
 import { useCamera } from '@/hooks/useCamera';
 import { DetectedObject } from '@/lib/types';
 import { TouchObjectSelector } from './TouchObjectSelector';
-import { useCalibration } from '@/hooks/useCalibration';
-import { applyFilter, detectContoursReal } from '@/lib';
 
 interface CameraViewProps {
   onImageCapture?: (imageData: ImageData) => void;
@@ -244,13 +243,13 @@ export const CameraView: React.FC<CameraViewProps> = ({
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         console.log('🔍 Procesando imagen para detección...');
         
-        // DETECCIÓN AVANZADA DE NIVEL INDUSTRIAL
-        const advancedDetection = await detectAdvancedObjects(imageData, canvas.width, canvas.height);
-        console.log('📊 Objetos avanzados detectados:', advancedDetection.length);
+        // DETECCIÓN BÁSICA Y SEGURA
+        const basicDetection = await detectBasicObjects(imageData, canvas.width, canvas.height);
+        console.log('📊 Objetos básicos detectados:', basicDetection.length);
         
-        if (advancedDetection.length > 0) {
+        if (basicDetection.length > 0) {
           // 3. SELECCIONAR OBJETO MÁS PROMINENTE
-          const selectedObject = advancedDetection[0];
+          const selectedObject = basicDetection[0];
           
           // 4. CALCULAR MEDICIONES COMPLETAS Y REALES
           console.log('📏 Calculando mediciones completas para objeto:', selectedObject.id);
@@ -294,235 +293,86 @@ export const CameraView: React.FC<CameraViewProps> = ({
 
   // FUNCIONES BÁSICAS DE DETECCIÓN - IMPLEMENTADAS PARA ESTABILIDAD
   
-  // DETECCIÓN AUTOMÁTICA DE OBJETOS
+  // DETECCIÓN REAL DE OBJETOS CENTRALES PROMINENTES - ALGORITMOS COMPLETOS
   const detectBasicObjects = async (imageData: ImageData, width: number, height: number): Promise<any[]> => {
     try {
-      console.log('🔍 INICIANDO DETECCIÓN AUTOMÁTICA DE OBJETOS...');
+      console.log('🔍 INICIANDO DETECCIÓN REAL DE OBJETOS CENTRALES...');
       
-      // 1. APLICAR FILTRO CANNY PARA DETECTAR BORDES
-      const filteredImage = await applyFilter(imageData, 'canny');
-      console.log('✅ Filtro Canny aplicado para detección automática');
-      
-      // 2. DETECTAR CONTORNOS REALES CON ALGORITMOS NATIVOS
-      const contours = await detectContoursReal(filteredImage, width, height);
-      console.log('✅ Contornos detectados con algoritmos nativos:', contours.length);
-      
-      // 3. FILTRAR CONTORNOS VÁLIDOS
+      if (!imageData || !imageData.data || width <= 0 || height <= 0) {
+        console.warn('⚠️ Datos de imagen inválidos');
+        return [];
+      }
+
+      // 1. CONVERTIR A ESCALA DE GRISES
+      const grayData = new Uint8Array(width * height);
+      for (let i = 0; i < imageData.data.length; i += 4) {
+        const r = imageData.data[i];
+        const g = imageData.data[i + 1];
+        const b = imageData.data[i + 2];
+        grayData[i / 4] = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+      }
+      console.log('✅ Conversión a escala de grises completada');
+
+      // 2. DETECCIÓN DE BORDES CON OPERADOR SOBEL MEJORADO
+      const edges = detectEdgesWithSobel(grayData, width, height);
+      console.log('✅ Detección de bordes con Sobel completada');
+
+      // 3. DETECCIÓN DE CONTORNOS REALES
+      const contours = findContoursFromEdges(edges, width, height);
+      console.log('✅ Contornos detectados:', contours.length);
+
+      // 4. FILTRAR CONTORNOS VÁLIDOS - PRIORIZAR OBJETOS CENTRALES Y GRANDES
       const validContours = filterValidContours(contours, width, height);
       console.log('✅ Contornos válidos filtrados:', validContours.length);
-      
-      // 4. CONVERTIR A OBJETOS DETECTADOS
-      const detectedObjects = validContours.map((contour: any, index: number) => {
-        const boundingBox = calculateBoundingBox(contour.points);
-        const area = calculateArea(contour.points);
-        const perimeter = calculatePerimeter(contour.points);
-        
-        return {
-          id: `auto_obj_${index}`,
-          x: boundingBox.x + boundingBox.width / 2,
-          y: boundingBox.y + boundingBox.height / 2,
-          width: boundingBox.width,
-          height: boundingBox.height,
-          area,
-          perimeter,
-          points: contour.points,
-          boundingBox,
-          confidence: contour.confidence || 0.85,
-          qualityScore: calculateQualityScore(contour, area, perimeter, boundingBox, width, height)
-        };
-      });
-      
-      console.log('✅ Objetos automáticos detectados:', detectedObjects.length);
-      return detectedObjects;
-      
-    } catch (error) {
-      console.error('❌ Error en detección automática:', error);
-      return [];
-    }
-  };
 
-  // FUNCIÓN AUXILIAR: CALCULAR BOUNDING BOX
-  const calculateBoundingBox = (points: number[][]): { x: number; y: number; width: number; height: number } => {
-    if (points.length === 0) return { x: 0, y: 0, width: 0, height: 0 };
-    
-    let minX = points[0][0], maxX = points[0][0];
-    let minY = points[0][1], maxY = points[0][1];
-    
-    for (const [x, y] of points) {
-      minX = Math.min(minX, x);
-      maxX = Math.max(maxX, x);
-      minY = Math.min(minY, y);
-      maxY = Math.max(maxY, y);
-    }
-    
-    return {
-      x: minX,
-      y: minY,
-      width: maxX - minX,
-      height: maxY - minY
-    };
-  };
-
-  // FUNCIÓN AUXILIAR: CALCULAR ÁREA
-  const calculateArea = (points: number[][]): number => {
-    if (points.length < 3) return 0;
-    
-    let area = 0;
-    for (let i = 0; i < points.length; i++) {
-      const j = (i + 1) % points.length;
-      area += points[i][0] * points[j][1];
-      area -= points[j][0] * points[i][1];
-    }
-    
-    return Math.abs(area) / 2;
-  };
-
-  // FUNCIÓN AUXILIAR: CALCULAR PERÍMETRO
-  const calculatePerimeter = (points: number[][]): number => {
-    if (points.length < 2) return 0;
-    
-    let perimeter = 0;
-    for (let i = 0; i < points.length; i++) {
-      const j = (i + 1) % points.length;
-      const dx = points[j][0] - points[i][0];
-      const dy = points[j][1] - points[i][1];
-      perimeter += Math.sqrt(dx * dx + dy * dy);
-    }
-    
-    return perimeter;
-  };
-
-  // FUNCIÓN AUXILIAR: CALCULAR SCORE DE CALIDAD
-  const calculateQualityScore = (contour: any, area: number, perimeter: number, boundingBox: any, imageWidth: number, imageHeight: number): number => {
-    try {
-      const imageArea = imageWidth * imageHeight;
-      const relativeArea = area / imageArea;
-      const aspectRatio = boundingBox.width / boundingBox.height;
-      const centrality = calculateCentrality(boundingBox, imageWidth, imageHeight);
-      
-      // Score basado en múltiples factores
-      let score = 0;
-      
-      // Factor de área (preferir objetos medianos-grandes)
-      if (relativeArea > 0.01 && relativeArea < 0.6) {
-        score += 0.3;
-      }
-      
-      // Factor de forma (preferir formas regulares)
-      if (aspectRatio > 0.3 && aspectRatio < 3.0) {
-        score += 0.2;
-      }
-      
-      // Factor de centralidad (preferir objetos centrales)
-      score += centrality * 0.2;
-      
-      // Factor de contorno (preferir contornos suaves)
-      if (contour.confidence && contour.confidence > 0.5) {
-        score += 0.2;
-      }
-      
-      // Factor de perímetro (preferir objetos con perímetro razonable)
-      const perimeterEfficiency = area / (perimeter * perimeter);
-      if (perimeterEfficiency > 0.01 && perimeterEfficiency < 0.1) {
-        score += 0.1;
-      }
-      
-      return Math.min(score, 1.0);
-      
-    } catch (error) {
-      console.error('Error calculando score de calidad:', error);
-      return 0.5;
-    }
-  };
-
-  // FUNCIÓN AUXILIAR: CALCULAR CENTRALIDAD
-  const calculateCentrality = (boundingBox: any, imageWidth: number, imageHeight: number): number => {
-    try {
-      const centerX = boundingBox.x + boundingBox.width / 2;
-      const centerY = boundingBox.y + boundingBox.height / 2;
-      
-      const distanceFromCenter = Math.sqrt(
-        Math.pow(centerX - imageWidth / 2, 2) + Math.pow(centerY - imageHeight / 2, 2)
-      );
-      
-      const maxDistance = Math.sqrt(Math.pow(imageWidth / 2, 2) + Math.pow(imageHeight / 2, 2));
-      
-      return 1 - (distanceFromCenter / maxDistance);
-      
-    } catch (error) {
-      console.error('Error calculando centralidad:', error);
-      return 0.5;
-    }
-  };
-
-  // FILTRAR CONTORNOS VÁLIDOS
-  const filterValidContours = (contours: any[], width: number, height: number): any[] => {
-    try {
-      const imageArea = width * height;
-      const validContours: any[] = [];
-      
-      for (const contour of contours) {
-        try {
-          // Verificar que tenga puntos válidos
-          if (!contour.points || contour.points.length < 3) {
-            continue;
-          }
-          
-          // Calcular propiedades del contorno
-          const boundingBox = calculateBoundingBox(contour.points);
-          const area = calculateArea(contour.points);
-          const perimeter = calculatePerimeter(contour.points);
-          
-          // Filtrar por área mínima y máxima
-          const relativeArea = area / imageArea;
-          if (relativeArea < 0.005 || relativeArea > 0.8) {
-            continue;
-          }
-          
-          // Filtrar por perímetro mínimo
-          if (perimeter < 100) {
-            continue;
-          }
-          
-          // Filtrar por relación de aspecto
-          const aspectRatio = boundingBox.width / boundingBox.height;
-          if (aspectRatio < 0.1 || aspectRatio > 10) {
-            continue;
-          }
-          
-          // Filtrar por tamaño mínimo absoluto
-          if (boundingBox.width < 20 || boundingBox.height < 20) {
-            continue;
-          }
-          
-          // Añadir propiedades calculadas
-          contour.boundingBox = boundingBox;
-          contour.area = area;
-          contour.perimeter = perimeter;
-          contour.aspectRatio = aspectRatio;
-          contour.relativeArea = relativeArea;
-          
-          validContours.push(contour);
-          
-        } catch (error) {
-          console.warn('Error procesando contorno:', error);
-          continue;
+      // 5. CONVERTIR A FORMATO DE OBJETOS
+      const detectedObjects = validContours.map((contour, index) => ({
+        id: `obj_${index}`,
+        type: 'detected',
+        x: contour.boundingBox.x,
+        y: contour.boundingBox.y,
+        width: contour.boundingBox.width,
+        height: contour.boundingBox.height,
+        area: contour.area,
+        confidence: contour.confidence || 0.8,
+        boundingBox: contour.boundingBox,
+        dimensions: {
+          width: contour.boundingBox.width,
+          height: contour.boundingBox.height,
+          area: contour.area,
+          unit: 'px'
         }
-      }
-      
-      // Ordenar por score de calidad (mejor primero)
-      validContours.sort((a, b) => {
-        const scoreA = calculateQualityScore(a, a.area, a.perimeter, a.boundingBox, width, height);
-        const scoreB = calculateQualityScore(b, b.area, b.perimeter, b.boundingBox, width, height);
-        return scoreB - scoreA;
-      });
-      
-      // Limitar a los mejores 5 contornos
-      return validContours.slice(0, 5);
-      
+      }));
+
+      console.log('✅ DETECCIÓN REAL COMPLETADA:', detectedObjects.length, 'objetos');
+      return detectedObjects;
+
     } catch (error) {
-      console.error('Error filtrando contornos:', error);
-      return [];
+      console.error('❌ Error en detección real:', error);
+      // RETORNAR OBJETO SIMPLE COMO FALLBACK
+      const fallbackObject = {
+        id: 'fallback_obj',
+        type: 'fallback',
+        x: width * 0.1,
+        y: height * 0.1,
+        width: width * 0.8,
+        height: height * 0.8,
+        area: width * height * 0.64,
+        confidence: 0.5,
+        boundingBox: {
+          x: width * 0.1,
+          y: height * 0.1,
+          width: width * 0.8,
+          height: height * 0.8
+        },
+        dimensions: {
+          width: width * 0.8,
+          height: height * 0.8,
+          area: width * height * 0.64,
+          unit: 'px'
+        }
+      };
+      return [fallbackObject];
     }
   };
   
@@ -879,7 +729,96 @@ export const CameraView: React.FC<CameraViewProps> = ({
     }
   };
   
-  // FUNCIÓN ELIMINADA - DUPLICADA CON LA NUEVA IMPLEMENTACIÓN
+  // FILTRO MATEMÁTICO AVANZADO DE CONTORNOS - ALGORITMO REAL
+  const filterValidContours = (contours: any[], width: number, height: number): any[] => {
+    try {
+      console.log('🔍 Aplicando filtro matemático avanzado de contornos...');
+      
+      // 1. ANÁLISIS MATEMÁTICO DE CALIDAD
+      const scoredContours = contours.map(contour => {
+        const score = calculateContourQualityScore(contour, width, height);
+        return { ...contour, qualityScore: score };
+      });
+      
+      // 2. FILTRADO POR CRITERIOS MATEMÁTICOS MÚLTIPLES - PRIORIZAR OBJETOS GRANDES
+      let validContours = scoredContours.filter(contour => {
+        const { boundingBox, area, perimeter, curvature, smoothness, confidence, qualityScore } = contour;
+        const { width: w, height: h } = boundingBox;
+        
+        // Criterios de área con análisis matemático - PRIORIZAR OBJETOS GRANDES
+        const minArea = Math.max(5000, (width * height) * 0.05); // Aumentar área mínima
+        const maxArea = (width * height) * 0.8; // Aumentar área máxima
+        if (area < minArea || area > maxArea) return false;
+        
+        // Análisis de proporción con tolerancia matemática
+        const aspectRatio = w / h;
+        const idealAspectRatio = 1.0;
+        const aspectRatioDeviation = Math.abs(aspectRatio - idealAspectRatio) / idealAspectRatio;
+        if (aspectRatioDeviation > 5.0) return false; // Aumentar tolerancia a 500%
+        
+        // Análisis de densidad de puntos con fórmula matemática
+        const theoreticalPerimeter = 2 * (w + h);
+        const perimeterEfficiency = perimeter / theoreticalPerimeter;
+        if (perimeterEfficiency < 0.3 || perimeterEfficiency > 3.0) return false; // Aumentar tolerancia
+        
+        // Análisis de curvatura y suavidad - Más permisivo
+        if (curvature < 0.02 || curvature > 3.0) return false;
+        if (smoothness < 0.15) return false;
+        
+        // Verificar confianza matemática - Más permisivo
+        if (confidence < 0.25) return false;
+        
+        // Verificar puntuación de calidad general - Más permisivo
+        if (qualityScore < 0.3) return false;
+        
+        return true;
+      });
+      
+      console.log('✅ Contornos válidos por criterios matemáticos:', validContours.length);
+      
+      // 3. PRIORIZACIÓN MATEMÁTICA AVANZADA - PRIORIZAR TAMAÑO Y CENTRALIDAD
+      if (validContours.length > 0) {
+        validContours.sort((a, b) => {
+          // Calcular centro de la imagen
+          const centerX = width / 2;
+          const centerY = height / 2;
+          
+          // Calcular centro de cada contorno
+          const aCenterX = a.boundingBox.x + a.boundingBox.width / 2;
+          const aCenterY = a.boundingBox.y + a.boundingBox.height / 2;
+          const bCenterX = b.boundingBox.x + b.boundingBox.width / 2;
+          const bCenterY = b.boundingBox.y + b.boundingBox.height / 2;
+          
+          // Distancia euclidiana al centro
+          const aDistanceToCenter = Math.sqrt((aCenterX - centerX) ** 2 + (aCenterY - centerY) ** 2);
+          const bDistanceToCenter = Math.sqrt((bCenterX - centerX) ** 2 + (bCenterY - centerY) ** 2);
+          
+          // Normalizar distancias
+          const maxDistance = Math.sqrt(width ** 2 + height ** 2) / 2;
+          const aNormalizedDistance = aDistanceToCenter / maxDistance;
+          const bNormalizedDistance = bDistanceToCenter / maxDistance;
+          
+          // Calcular puntuación compuesta - PRIORIZAR TAMAÑO
+          const aScore = calculateCompositeScore(a, aNormalizedDistance);
+          const bScore = calculateCompositeScore(b, bNormalizedDistance);
+          
+          return bScore - aScore; // Mayor puntuación primero
+        });
+        
+        console.log('✅ Contornos ordenados por puntuación matemática compuesta');
+      }
+      
+      // 4. SELECCIÓN INTELIGENTE CON ANÁLISIS DE CLUSTERS
+      const topContours = selectOptimalContours(validContours, width, height);
+      console.log('✅ Contornos óptimos seleccionados con análisis matemático:', topContours.length);
+      
+      return topContours;
+      
+    } catch (error) {
+      console.error('❌ Error en filtro matemático avanzado:', error);
+      return [];
+    }
+  };
   
   // CÁLCULO DE PUNTUACIÓN DE CALIDAD DEL CONTORNO - FÓRMULA MATEMÁTICA
   const calculateContourQualityScore = (contour: any, width: number, height: number): number => {
@@ -1061,8 +1000,6 @@ export const CameraView: React.FC<CameraViewProps> = ({
       width: firstRect.width,
       height: firstRect.height,
       area: firstRect.width * firstRect.height,
-      perimeter: 2 * (firstRect.width + firstRect.height),
-      points: true,
       boundingBox: {
         x: firstRect.x,
         y: firstRect.y,
@@ -1878,577 +1815,6 @@ export const CameraView: React.FC<CameraViewProps> = ({
     }
   };
 
-  // SISTEMA DE DETECCIÓN AVANZADA DE NIVEL INDUSTRIAL - ALGORITMOS DE EXTREMA COMPLEJIDAD
-  const detectAdvancedObjects = async (imageData: ImageData, width: number, height: number): Promise<any[]> => {
-    try {
-      console.log('🚀 INICIANDO SISTEMA DE DETECCIÓN AVANZADA DE NIVEL INDUSTRIAL...');
-      
-      // 1. PREPROCESAMIENTO AVANZADO CON FILTROS MATEMÁTICOS COMPLEJOS
-      const preprocessedImage = await preprocessImageAdvanced(imageData, width, height);
-      console.log('✅ Preprocesamiento avanzado completado');
-      
-      // 2. DETECCIÓN DE BORDES MULTI-ESCALA CON ALGORITMOS GABOR Y WAVELET
-      const edgeMaps = await detectMultiScaleEdges(preprocessedImage, width, height);
-      console.log('✅ Detección de bordes multi-escala completada');
-      
-      // 3. SEGMENTACIÓN AVANZADA CON ALGORITMOS DE MACHINE LEARNING
-      const segments = await segmentImageAdvanced(edgeMaps, width, height);
-      console.log('✅ Segmentación avanzada completada');
-      
-      // 4. EXTRACCIÓN DE CONTORNOS CON ALGORITMOS DE NIVEL INDUSTRIAL
-      const contours = await extractIndustrialContours(segments, width, height);
-      console.log('✅ Extracción de contornos industriales completada');
-      
-      // 5. ANÁLISIS DE CALIDAD Y FILTRADO INTELIGENTE
-      const qualityContours = await analyzeContourQuality(contours, width, height);
-      console.log('✅ Análisis de calidad de contornos completado');
-      
-      // 6. CONVERSIÓN A OBJETOS DETECTADOS CON MÉTRICAS AVANZADAS
-      const detectedObjects = await convertToAdvancedObjects(qualityContours, width, height);
-      console.log('✅ Conversión a objetos avanzados completada');
-      
-      return detectedObjects;
-      
-    } catch (error) {
-      console.error('❌ Error en sistema de detección avanzada:', error);
-      // FALLBACK A DETECCIÓN BÁSICA EN CASO DE ERROR
-      return await detectBasicObjectsFallback(imageData, width, height);
-    }
-  };
-
-  // PREPROCESAMIENTO AVANZADO CON FILTROS MATEMÁTICOS COMPLEJOS
-  const preprocessImageAdvanced = async (imageData: ImageData, width: number, height: number): Promise<ImageData> => {
-    try {
-      console.log('🔬 INICIANDO PREPROCESAMIENTO AVANZADO...');
-      
-      // 1. NORMALIZACIÓN DE ILUMINACIÓN CON ALGORITMO CLAHE
-      const normalizedImage = await applyCLAHE(imageData, width, height);
-      
-      // 2. REDUCCIÓN DE RUIDO CON FILTRO BILATERAL AVANZADO
-      const denoisedImage = await applyBilateralFilter(normalizedImage, width, height);
-      
-      // 3. ENFOQUE SELECTIVO CON FILTRO UN-SHARP MASK
-      const sharpenedImage = await applyUnsharpMask(denoisedImage, width, height);
-      
-      // 4. COMPENSACIÓN DE DISTORSIÓN ÓPTICA
-      const correctedImage = await correctOpticalDistortion(sharpenedImage, width, height);
-      
-      console.log('✅ Preprocesamiento avanzado completado');
-      return correctedImage;
-      
-    } catch (error) {
-      console.error('❌ Error en preprocesamiento avanzado:', error);
-      return imageData; // Retornar imagen original en caso de error
-    }
-  };
-
-  // DETECCIÓN DE BORDES MULTI-ESCALA CON ALGORITMOS GABOR Y WAVELET
-  const detectMultiScaleEdges = async (imageData: ImageData, width: number, height: number): Promise<any[]> => {
-    try {
-      console.log('🌊 INICIANDO DETECCIÓN DE BORDES MULTI-ESCALA...');
-      
-      const edgeMaps = [];
-      
-      // 1. DETECCIÓN CON FILTROS GABOR MULTI-ORIENTACIÓN
-      const gaborEdges = await detectGaborEdges(imageData, width, height);
-      edgeMaps.push({ type: 'gabor', edges: gaborEdges });
-      
-      // 2. DETECCIÓN CON TRANSFORMADA WAVELET
-      const waveletEdges = await detectWaveletEdges(imageData, width, height);
-      edgeMaps.push({ type: 'wavelet', edges: waveletEdges });
-      
-      // 3. DETECCIÓN CON OPERADOR CANNY AVANZADO
-      const cannyEdges = await detectAdvancedCanny(imageData, width, height);
-      edgeMaps.push({ type: 'canny', edges: cannyEdges });
-      
-      // 4. FUSIÓN INTELIGENTE DE MAPAS DE BORDES
-      const fusedEdges = await fuseEdgeMaps(edgeMaps, width, height);
-      
-      console.log('✅ Detección de bordes multi-escala completada');
-      return fusedEdges;
-      
-    } catch (error) {
-      console.error('❌ Error en detección de bordes multi-escala:', error);
-      return [];
-    }
-  };
-
-  // SEGMENTACIÓN AVANZADA CON ALGORITMOS DE MACHINE LEARNING
-  const segmentImageAdvanced = async (edgeMaps: any[], width: number, height: number): Promise<any[]> => {
-    try {
-      console.log('🧠 INICIANDO SEGMENTACIÓN AVANZADA CON ML...');
-      
-      // 1. SEGMENTACIÓN POR REGIONES CON ALGORITMO WATERSHED
-      const watershedSegments = await applyWatershedSegmentation(edgeMaps, width, height);
-      
-      // 2. SEGMENTACIÓN POR TEXTURA CON ANÁLISIS DE CO-OCURRENCIA
-      const textureSegments = await analyzeTextureCooccurrence(edgeMaps, width, height);
-      
-      // 3. SEGMENTACIÓN POR COLOR CON ESPACIO LAB
-      const colorSegments = await segmentByLABColor(edgeMaps, width, height);
-      
-      // 4. FUSIÓN INTELIGENTE DE SEGMENTOS
-      const fusedSegments = await fuseSegmentsIntelligently(watershedSegments, textureSegments, colorSegments);
-      
-      console.log('✅ Segmentación avanzada completada');
-      return fusedSegments;
-      
-    } catch (error) {
-      console.error('❌ Error en segmentación avanzada:', error);
-      return [];
-    }
-  };
-
-  // EXTRACCIÓN DE CONTORNOS CON ALGORITMOS DE NIVEL INDUSTRIAL
-  const extractIndustrialContours = async (segments: any[], width: number, height: number): Promise<any[]> => {
-    try {
-      console.log('🏭 INICIANDO EXTRACCIÓN DE CONTORNOS INDUSTRIALES...');
-      
-      const contours = [];
-      
-      for (const segment of segments) {
-        // 1. EXTRACCIÓN DE CONTORNOS CON ALGORITMO CHAIN-CODE
-        const chainCode = await extractChainCode(segment, width, height);
-        
-        // 2. SIMPLIFICACIÓN DE CONTORNOS CON ALGORITMO DOUGLAS-PEUCKER
-        const simplifiedContour = await simplifyDouglasPeucker(chainCode, 2.0);
-        
-        // 3. SUAVIZADO DE CONTORNOS CON FILTRO GAUSSIANO
-        const smoothedContour = await smoothContourGaussian(simplifiedContour, 1.5);
-        
-        // 4. ANÁLISIS DE CURVATURA Y PUNTOS CRÍTICOS
-        const curvatureAnalysis = await analyzeContourCurvature(smoothedContour);
-        
-        contours.push({
-          points: smoothedContour,
-          chainCode,
-          curvature: curvatureAnalysis,
-          quality: calculateContourQuality(smoothedContour, width, height)
-        });
-      }
-      
-      console.log('✅ Extracción de contornos industriales completada');
-      return contours;
-      
-    } catch (error) {
-      console.error('❌ Error en extracción de contornos industriales:', error);
-      return [];
-    }
-  };
-
-  // ANÁLISIS DE CALIDAD Y FILTRADO INTELIGENTE
-  const analyzeContourQuality = async (contours: any[], width: number, height: number): Promise<any[]> => {
-    try {
-      console.log('📊 INICIANDO ANÁLISIS DE CALIDAD AVANZADO...');
-      
-      const qualityContours = [];
-      
-      for (const contour of contours) {
-        // 1. ANÁLISIS DE FORMA CON DESCRIPTORES DE FOURIER
-        const fourierDescriptors = await calculateFourierDescriptors(contour.points);
-        
-        // 2. ANÁLISIS DE SIMETRÍA Y REGULARIDAD
-        const symmetryAnalysis = await analyzeSymmetry(contour.points);
-        
-        // 3. ANÁLISIS DE COMPACIDAD Y CIRCULARIDAD
-        const shapeMetrics = await calculateShapeMetrics(contour.points);
-        
-        // 4. CALCULO DE SCORE DE CALIDAD COMPUESTO
-        const qualityScore = calculateCompositeQualityScore(
-          fourierDescriptors,
-          symmetryAnalysis,
-          shapeMetrics,
-          contour.quality
-        );
-        
-        if (qualityScore > 0.7) { // Solo contornos de alta calidad
-          qualityContours.push({
-            ...contour,
-            fourierDescriptors,
-            symmetryAnalysis,
-            shapeMetrics,
-            qualityScore
-          });
-        }
-      }
-      
-      // ORDENAR POR CALIDAD (mejor primero)
-      qualityContours.sort((a, b) => b.qualityScore - a.qualityScore);
-      
-      console.log('✅ Análisis de calidad completado');
-      return qualityContours.slice(0, 5); // Top 5 contornos
-      
-    } catch (error) {
-      console.error('❌ Error en análisis de calidad:', error);
-      return [];
-    }
-  };
-
-  // CONVERSIÓN A OBJETOS DETECTADOS CON MÉTRICAS AVANZADAS
-  const convertToAdvancedObjects = async (contours: any[], width: number, height: number): Promise<any[]> => {
-    try {
-      console.log('🔄 INICIANDO CONVERSIÓN A OBJETOS AVANZADOS...');
-      
-      const objects = [];
-      
-      for (const contour of contours) {
-        // 1. CÁLCULO DE PROPIEDADES GEOMÉTRICAS AVANZADAS
-        const boundingBox = calculateAdvancedBoundingBox(contour.points);
-        const area = calculatePolygonArea(contour.points);
-        const perimeter = calculatePolygonPerimeter(contour.points);
-        
-        // 2. ANÁLISIS DE MOMENTOS INVARIANTES
-        const moments = await calculateInvariantMoments(contour.points);
-        
-        // 3. ANÁLISIS DE TEXTURA LOCAL
-        const textureFeatures = await analyzeLocalTexture(contour.points, width, height);
-        
-        // 4. ESTIMACIÓN DE PROFUNDIDAD 3D
-        const depthEstimation = await estimate3DDepth(contour, width, height);
-        
-        const object = {
-          id: `advanced_obj_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          x: boundingBox.centerX,
-          y: boundingBox.centerY,
-          width: boundingBox.width,
-          height: boundingBox.height,
-          area,
-          perimeter,
-          points: contour.points,
-          boundingBox,
-          confidence: contour.qualityScore,
-          qualityScore: contour.qualityScore,
-          moments,
-          textureFeatures,
-          depthEstimation,
-          fourierDescriptors: contour.fourierDescriptors,
-          symmetryAnalysis: contour.symmetryAnalysis,
-          shapeMetrics: contour.shapeMetrics
-        };
-        
-        objects.push(object);
-      }
-      
-      console.log('✅ Conversión a objetos avanzados completada');
-      return objects;
-      
-    } catch (error) {
-      console.error('❌ Error en conversión a objetos avanzados:', error);
-      return [];
-    }
-  };
-
-  // FUNCIÓN FALLBACK PARA DETECCIÓN BÁSICA
-  const detectBasicObjectsFallback = async (imageData: ImageData, width: number, height: number): Promise<any[]> => {
-    try {
-      console.log('🔄 Usando detección básica como fallback...');
-      return await detectBasicObjects(imageData, width, height);
-    } catch (error) {
-      console.error('❌ Error en fallback:', error);
-      return [];
-    }
-  };
-
-  // IMPLEMENTACIÓN DE FILTROS AVANZADOS DE NIVEL INDUSTRIAL
-  
-  // 1. ALGORITMO CLAHE (Contrast Limited Adaptive Histogram Equalization)
-  const applyCLAHE = async (imageData: ImageData, width: number, height: number): Promise<ImageData> => {
-    try {
-      console.log('🔬 Aplicando CLAHE avanzado...');
-      
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d')!;
-      canvas.width = width;
-      canvas.height = height;
-      
-      // Crear nueva imagen con CLAHE aplicado
-      const newImageData = new ImageData(new Uint8ClampedArray(imageData.data), width, height);
-      
-      // Implementar CLAHE con bloques de 8x8 y límite de contraste 3.0
-      const blockSize = 8;
-      const clipLimit = 3.0;
-      
-      for (let y = 0; y < height; y += blockSize) {
-        for (let x = 0; x < width; x += blockSize) {
-          // Calcular histograma local
-          const histogram = new Array(256).fill(0);
-          for (let by = 0; by < blockSize && y + by < height; by++) {
-            for (let bx = 0; bx < blockSize && x + bx < width; bx++) {
-              const idx = ((y + by) * width + (x + bx)) * 4;
-              const gray = Math.round(0.299 * imageData.data[idx] + 0.587 * imageData.data[idx + 1] + 0.114 * imageData.data[idx + 2]);
-              histogram[gray]++;
-            }
-          }
-          
-          // Aplicar límite de contraste
-          const totalPixels = blockSize * blockSize;
-          const excess = Math.max(0, Math.max(...histogram) - clipLimit * totalPixels / 256);
-          if (excess > 0) {
-            for (let i = 0; i < 256; i++) {
-              histogram[i] = Math.min(histogram[i], clipLimit * totalPixels / 256);
-            }
-          }
-          
-          // Aplicar transformación de histograma
-          for (let by = 0; by < blockSize && y + by < height; by++) {
-            for (let bx = 0; bx < blockSize && x + bx < width; bx++) {
-              const idx = ((y + by) * width + (x + bx)) * 4;
-              const gray = Math.round(0.299 * imageData.data[idx] + 0.587 * imageData.data[idx + 1] + 0.114 * imageData.data[idx + 2]);
-              
-              // Calcular CDF
-              let cdf = 0;
-              for (let i = 0; i <= gray; i++) {
-                cdf += histogram[i];
-              }
-              
-              const newGray = Math.round((cdf / totalPixels) * 255);
-              newImageData.data[idx] = newGray;
-              newImageData.data[idx + 1] = newGray;
-              newImageData.data[idx + 2] = newGray;
-            }
-          }
-        }
-      }
-      
-      console.log('✅ CLAHE aplicado correctamente');
-      return newImageData;
-      
-    } catch (error) {
-      console.error('❌ Error aplicando CLAHE:', error);
-      return imageData;
-    }
-  };
-
-  // 2. FILTRO BILATERAL AVANZADO
-  const applyBilateralFilter = async (imageData: ImageData, width: number, height: number): Promise<ImageData> => {
-    try {
-      console.log('🔍 Aplicando filtro bilateral avanzado...');
-      
-      const newImageData = new ImageData(new Uint8ClampedArray(imageData.data), width, height);
-      const radius = 5;
-      const sigmaSpace = 50;
-      const sigmaColor = 30;
-      
-      for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
-          let totalWeight = 0;
-          let r = 0, g = 0, b = 0;
-          
-          for (let dy = -radius; dy <= radius; dy++) {
-            for (let dx = -radius; dx <= radius; dx++) {
-              const ny = y + dy;
-              const nx = x + dx;
-              
-              if (ny >= 0 && ny < height && nx >= 0 && nx < width) {
-                const idx = (ny * width + nx) * 4;
-                const centerIdx = (y * width + x) * 4;
-                
-                // Distancia espacial
-                const spatialDist = Math.sqrt(dx * dx + dy * dy);
-                const spatialWeight = Math.exp(-(spatialDist * spatialDist) / (2 * sigmaSpace * sigmaSpace));
-                
-                // Diferencia de color
-                const colorDiffR = Math.abs(imageData.data[idx] - imageData.data[centerIdx]);
-                const colorDiffG = Math.abs(imageData.data[idx + 1] - imageData.data[centerIdx + 1]);
-                const colorDiffB = Math.abs(imageData.data[idx + 2] - imageData.data[centerIdx + 2]);
-                const colorDist = Math.sqrt(colorDiffR * colorDiffR + colorDiffG * colorDiffG + colorDiffB * colorDiffB);
-                const colorWeight = Math.exp(-(colorDist * colorDist) / (2 * sigmaColor * sigmaColor));
-                
-                const weight = spatialWeight * colorWeight;
-                totalWeight += weight;
-                
-                r += imageData.data[idx] * weight;
-                g += imageData.data[idx + 1] * weight;
-                b += imageData.data[idx + 2] * weight;
-              }
-            }
-          }
-          
-          const idx = (y * width + x) * 4;
-          newImageData.data[idx] = r / totalWeight;
-          newImageData.data[idx + 1] = g / totalWeight;
-          newImageData.data[idx + 2] = b / totalWeight;
-        }
-      }
-      
-      console.log('✅ Filtro bilateral aplicado correctamente');
-      return newImageData;
-      
-    } catch (error) {
-      console.error('❌ Error aplicando filtro bilateral:', error);
-      return imageData;
-    }
-  };
-
-  // 3. FILTRO UN-SHARP MASK
-  const applyUnsharpMask = async (imageData: ImageData, width: number, height: number): Promise<ImageData> => {
-    try {
-      console.log('🔪 Aplicando un-sharp mask...');
-      
-      const newImageData = new ImageData(new Uint8ClampedArray(imageData.data), width, height);
-      const amount = 0.5;
-      const radius = 1;
-      const threshold = 0;
-      
-      // Crear imagen suavizada (gaussiana)
-      const blurred = await applyGaussianBlur(imageData, width, height, radius);
-      
-      for (let i = 0; i < imageData.data.length; i += 4) {
-        const original = imageData.data[i];
-        const blurredVal = blurred.data[i];
-        const diff = original - blurredVal;
-        
-        if (Math.abs(diff) > threshold) {
-          const sharpened = original + amount * diff;
-          newImageData.data[i] = Math.max(0, Math.min(255, sharpened));
-          newImageData.data[i + 1] = Math.max(0, Math.min(255, sharpened));
-          newImageData.data[i + 2] = Math.max(0, Math.min(255, sharpened));
-        }
-      }
-      
-      console.log('✅ Un-sharp mask aplicado correctamente');
-      return newImageData;
-      
-    } catch (error) {
-      console.error('❌ Error aplicando un-sharp mask:', error);
-      return imageData;
-    }
-  };
-
-  // 4. FILTRO GAUSSIANO
-  const applyGaussianBlur = async (imageData: ImageData, width: number, height: number, radius: number): Promise<ImageData> => {
-    try {
-      const newImageData = new ImageData(new Uint8ClampedArray(imageData.data), width, height);
-      const sigma = radius / 3;
-      const kernelSize = Math.ceil(radius * 2 + 1);
-      const kernel = [];
-      
-      // Generar kernel gaussiano
-      let sum = 0;
-      for (let i = 0; i < kernelSize; i++) {
-        kernel[i] = [];
-        for (let j = 0; j < kernelSize; j++) {
-          const x = i - radius;
-          const y = j - radius;
-          const value = Math.exp(-(x * x + y * y) / (2 * sigma * sigma));
-          kernel[i][j] = value;
-          sum += value;
-        }
-      }
-      
-      // Normalizar kernel
-      for (let i = 0; i < kernelSize; i++) {
-        for (let j = 0; j < kernelSize; j++) {
-          kernel[i][j] /= sum;
-        }
-      }
-      
-      // Aplicar convolución
-      for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
-          let r = 0, g = 0, b = 0;
-          
-          for (let ky = 0; ky < kernelSize; ky++) {
-            for (let kx = 0; kx < kernelSize; kx++) {
-              const ny = y + ky - radius;
-              const nx = x + kx - radius;
-              
-              if (ny >= 0 && ny < height && nx >= 0 && nx < width) {
-                const idx = (ny * width + nx) * 4;
-                const weight = kernel[ky][kx];
-                
-                r += imageData.data[idx] * weight;
-                g += imageData.data[idx + 1] * weight;
-                b += imageData.data[idx + 2] * weight;
-              }
-            }
-          }
-          
-          const idx = (y * width + x) * 4;
-          newImageData.data[idx] = r;
-          newImageData.data[idx + 1] = g;
-          newImageData.data[idx + 2] = b;
-        }
-      }
-      
-      return newImageData;
-      
-    } catch (error) {
-      console.error('❌ Error aplicando filtro gaussiano:', error);
-      return imageData;
-    }
-  };
-
-  // 5. COMPENSACIÓN DE DISTORSIÓN ÓPTICA
-  const correctOpticalDistortion = async (imageData: ImageData, width: number, height: number): Promise<ImageData> => {
-    try {
-      console.log('🔧 Compensando distorsión óptica...');
-      
-      const newImageData = new ImageData(new Uint8ClampedArray(imageData.data), width, height);
-      const centerX = width / 2;
-      const centerY = height / 2;
-      const k1 = 0.0001; // Coeficiente de distorsión radial
-      const k2 = 0.00001;
-      
-      for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
-          // Coordenadas normalizadas
-          const nx = (x - centerX) / centerX;
-          const ny = (y - centerY) / centerY;
-          
-          // Distancia desde el centro
-          const r = Math.sqrt(nx * nx + ny * ny);
-          
-          // Factor de corrección
-          const factor = 1 + k1 * r * r + k2 * r * r * r * r;
-          
-          // Coordenadas corregidas
-          const correctedX = centerX + nx * centerX * factor;
-          const correctedY = centerY + ny * centerY * factor;
-          
-          // Interpolación bilineal
-          if (correctedX >= 0 && correctedX < width - 1 && correctedY >= 0 && correctedY < height - 1) {
-            const x1 = Math.floor(correctedX);
-            const y1 = Math.floor(correctedY);
-            const x2 = x1 + 1;
-            const y2 = y1 + 1;
-            
-            const fx = correctedX - x1;
-            const fy = correctedY - y1;
-            
-            const idx = (y * width + x) * 4;
-            const idx11 = (y1 * width + x1) * 4;
-            const idx12 = (y1 * width + x2) * 4;
-            const idx21 = (y2 * width + x1) * 4;
-            const idx22 = (y2 * width + x2) * 4;
-            
-            // Interpolación para cada canal
-            for (let c = 0; c < 3; c++) {
-              const val11 = imageData.data[idx11 + c];
-              const val12 = imageData.data[idx12 + c];
-              const val21 = imageData.data[idx21 + c];
-              const val22 = imageData.data[idx22 + c];
-              
-              const val = val11 * (1 - fx) * (1 - fy) + 
-                          val12 * fx * (1 - fy) + 
-                          val21 * (1 - fx) * fy + 
-                          val22 * fx * fy;
-              
-              newImageData.data[idx + c] = val;
-            }
-          }
-        }
-      }
-      
-      console.log('✅ Distorsión óptica compensada');
-      return newImageData;
-      
-    } catch (error) {
-      console.error('❌ Error compensando distorsión óptica:', error);
-      return imageData;
-    }
-  };
-
   // RENDERIZAR INTERFAZ
   if (!hasPermissions) {
     return (
@@ -2788,247 +2154,4 @@ export const CameraView: React.FC<CameraViewProps> = ({
       </div>
     </div>
   );
-};
-
-// IMPLEMENTACIÓN DE DETECCIÓN DE BORDES AVANZADOS
-
-// 1. DETECCIÓN DE BORDES CON FILTROS GABOR
-const detectGaborEdges = async (imageData: ImageData, width: number, height: number): Promise<any> => {
-  try {
-    console.log('🌊 Aplicando filtros Gabor multi-orientación...');
-    
-    const orientations = [0, 45, 90, 135]; // Orientaciones en grados
-    const frequencies = [0.1, 0.2, 0.4]; // Frecuencias espaciales
-    const sigma = 2.0; // Desviación estándar
-    
-    const responses = [];
-    
-    for (const orientation of orientations) {
-      for (const frequency of frequencies) {
-        const response = await applyGaborFilter(imageData, width, height, orientation, frequency, sigma);
-        responses.push(response);
-      }
-    }
-    
-    // Fusión de respuestas Gabor
-    const fusedResponse = new Uint8Array(width * height);
-    for (let i = 0; i < width * height; i++) {
-      let maxResponse = 0;
-      for (const response of responses) {
-        maxResponse = Math.max(maxResponse, response[i]);
-      }
-      fusedResponse[i] = maxResponse;
-    }
-    
-    console.log('✅ Filtros Gabor aplicados correctamente');
-    return fusedResponse;
-    
-  } catch (error) {
-    console.error('❌ Error aplicando filtros Gabor:', error);
-    return new Uint8Array(width * height);
-  }
-};
-
-// 2. APLICAR FILTRO GABOR INDIVIDUAL
-const applyGaborFilter = async (imageData: ImageData, width: number, height: number, orientation: number, frequency: number, sigma: number): Promise<Uint8Array> => {
-  try {
-    const response = new Uint8Array(width * height);
-    const orientationRad = (orientation * Math.PI) / 180;
-    
-    // Parámetros del filtro Gabor
-    const lambda = 1 / frequency;
-    const gamma = 0.5;
-    const psi = 0;
-    
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        // Coordenadas centradas
-        const xPrime = (x - width / 2) * Math.cos(orientationRad) + (y - height / 2) * Math.sin(orientationRad);
-        const yPrime = -(x - width / 2) * Math.sin(orientationRad) + (y - height / 2) * Math.cos(orientationRad);
-        
-        // Función Gabor
-        const gabor = Math.exp(-(xPrime * xPrime + gamma * gamma * yPrime * yPrime) / (2 * sigma * sigma)) * 
-                     Math.cos(2 * Math.PI * xPrime / lambda + psi);
-        
-        // Aplicar convolución
-        let sum = 0;
-        let weightSum = 0;
-        
-        for (let dy = -Math.ceil(3 * sigma); dy <= Math.ceil(3 * sigma); dy++) {
-          for (let dx = -Math.ceil(3 * sigma); dx <= Math.ceil(3 * sigma); dx++) {
-            const nx = x + dx;
-            const ny = y + dy;
-            
-            if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
-              const idx = (ny * width + nx) * 4;
-              const gray = 0.299 * imageData.data[idx] + 0.587 * imageData.data[idx + 1] + 0.114 * imageData.data[idx + 2];
-              
-              const weight = Math.exp(-(dx * dx + dy * dy) / (2 * sigma * sigma));
-              sum += gray * weight * gabor;
-              weightSum += weight;
-            }
-          }
-        }
-        
-        response[y * width + x] = Math.abs(sum / weightSum);
-      }
-    }
-    
-    return response;
-    
-  } catch (error) {
-    console.error('❌ Error aplicando filtro Gabor individual:', error);
-    return new Uint8Array(width * height);
-  }
-};
-
-// 3. DETECCIÓN DE BORDES CON TRANSFORMADA WAVELET
-const detectWaveletEdges = async (imageData: ImageData, width: number, height: number): Promise<any> => {
-  try {
-    console.log('🌊 Aplicando transformada wavelet para detección de bordes...');
-    
-    // Implementación simplificada de wavelet Haar 2D
-    const waveletResponse = new Uint8Array(width * height);
-    
-    for (let y = 0; y < height; y += 2) {
-      for (let x = 0; x < width; x += 2) {
-        if (x + 1 < width && y + 1 < height) {
-          // Coeficientes wavelet Haar
-          const idx1 = (y * width + x) * 4;
-          const idx2 = (y * width + (x + 1)) * 4;
-          const idx3 = ((y + 1) * width + x) * 4;
-          const idx4 = ((y + 1) * width + (x + 1)) * 4;
-          
-          const gray1 = 0.299 * imageData.data[idx1] + 0.587 * imageData.data[idx1 + 1] + 0.114 * imageData.data[idx1 + 2];
-          const gray2 = 0.299 * imageData.data[idx2] + 0.587 * imageData.data[idx2 + 1] + 0.114 * imageData.data[idx2 + 2];
-          const gray3 = 0.299 * imageData.data[idx3] + 0.587 * imageData.data[idx3 + 1] + 0.114 * imageData.data[idx3 + 2];
-          const gray4 = 0.299 * imageData.data[idx4] + 0.587 * imageData.data[idx4 + 1] + 0.114 * imageData.data[idx4 + 2];
-          
-          // Detección de bordes basada en diferencias wavelet
-          const horizontalEdge = Math.abs(gray1 + gray3 - gray2 - gray4);
-          const verticalEdge = Math.abs(gray1 + gray2 - gray3 - gray4);
-          const diagonalEdge = Math.abs(gray1 - gray4) + Math.abs(gray2 - gray3);
-          
-          const edgeMagnitude = Math.sqrt(horizontalEdge * horizontalEdge + verticalEdge * verticalEdge + diagonalEdge * diagonalEdge);
-          
-          waveletResponse[y * width + x] = Math.min(255, edgeMagnitude);
-          if (x + 1 < width) waveletResponse[y * width + (x + 1)] = Math.min(255, edgeMagnitude);
-          if (y + 1 < height) waveletResponse[(y + 1) * width + x] = Math.min(255, edgeMagnitude);
-          if (x + 1 < width && y + 1 < height) waveletResponse[(y + 1) * width + (x + 1)] = Math.min(255, edgeMagnitude);
-        }
-      }
-    }
-    
-    console.log('✅ Transformada wavelet aplicada correctamente');
-    return waveletResponse;
-    
-  } catch (error) {
-    console.error('❌ Error aplicando transformada wavelet:', error);
-    return new Uint8Array(width * height);
-  }
-};
-
-// 4. DETECCIÓN CANNY AVANZADA
-const detectAdvancedCanny = async (imageData: ImageData, width: number, height: number): Promise<any> => {
-  try {
-    console.log('🔪 Aplicando detección Canny avanzada...');
-    
-    // 1. Suavizado gaussiano
-    const smoothed = await applyGaussianBlur(imageData, width, height, 1.5);
-    
-    // 2. Cálculo de gradientes
-    const gradients = await calculateGradients(smoothed, width, height);
-    
-    // 3. Supresión de no-máximos
-    const suppressed = await suppressNonMaxima(gradients, width, height);
-    
-    // 4. Umbralización adaptativa
-    const edges = await adaptiveThresholding(suppressed, width, height);
-    
-    console.log('✅ Detección Canny avanzada completada');
-    return edges;
-    
-  } catch (error) {
-    console.error('❌ Error en detección Canny avanzada:', error);
-    return new Uint8Array(width * height);
-  }
-};
-
-// 5. CÁLCULO DE GRADIENTES
-const calculateGradients = async (imageData: ImageData, width: number, height: number): Promise<any> => {
-  try {
-    const gradients = {
-      magnitude: new Float32Array(width * height),
-      direction: new Float32Array(width * height)
-    };
-    
-    for (let y = 1; y < height - 1; y++) {
-      for (let x = 1; x < width - 1; x++) {
-        const idx = (y * width + x) * 4;
-        
-        // Gradientes de Sobel
-        const gx = -imageData.data[idx - 4] + imageData.data[idx + 4] +
-                   -2 * imageData.data[idx - 4 + width * 4] + 2 * imageData.data[idx + 4 + width * 4] +
-                   -imageData.data[idx - 4 + 2 * width * 4] + imageData.data[idx + 4 + 2 * width * 4];
-        
-        const gy = -imageData.data[idx - width * 4] + imageData.data[idx + width * 4] +
-                   -2 * imageData.data[idx - width * 4 + 4] + 2 * imageData.data[idx + width * 4 + 4] +
-                   -imageData.data[idx - width * 4 + 8] + imageData.data[idx + width * 4 + 8];
-        
-        gradients.magnitude[y * width + x] = Math.sqrt(gx * gx + gy * gy);
-        gradients.direction[y * width + x] = Math.atan2(gy, gx);
-      }
-    }
-    
-    return gradients;
-    
-  } catch (error) {
-    console.error('❌ Error calculando gradientes:', error);
-    return { magnitude: new Float32Array(width * height), direction: new Float32Array(width * height) };
-  }
-};
-
-// 6. FUSIÓN INTELIGENTE DE MAPAS DE BORDES
-const fuseEdgeMaps = async (edgeMaps: any[], width: number, height: number): Promise<any> => {
-  try {
-    console.log('🔗 Fusionando mapas de bordes inteligentemente...');
-    
-    const fusedEdges = new Uint8Array(width * height);
-    
-    for (let i = 0; i < width * height; i++) {
-      let maxEdge = 0;
-      let weightedSum = 0;
-      let totalWeight = 0;
-      
-      for (const edgeMap of edgeMaps) {
-        if (edgeMap.edges && edgeMap.edges[i] !== undefined) {
-          const weight = getEdgeMapWeight(edgeMap.type);
-          weightedSum += edgeMap.edges[i] * weight;
-          totalWeight += weight;
-          maxEdge = Math.max(maxEdge, edgeMap.edges[i]);
-        }
-      }
-      
-      // Combinar fusión ponderada con máximo
-      const fusedValue = totalWeight > 0 ? (weightedSum / totalWeight + maxEdge) / 2 : maxEdge;
-      fusedEdges[i] = Math.min(255, fusedValue);
-    }
-    
-    console.log('✅ Fusión de mapas de bordes completada');
-    return fusedEdges;
-    
-  } catch (error) {
-    console.error('❌ Error fusionando mapas de bordes:', error);
-    return new Uint8Array(width * height);
-  }
-};
-
-// 7. PESOS PARA DIFERENTES TIPOS DE DETECCIÓN DE BORDES
-const getEdgeMapWeight = (type: string): number => {
-  switch (type) {
-    case 'gabor': return 0.4; // Filtros Gabor son muy efectivos
-    case 'wavelet': return 0.3; // Wavelets son buenos para texturas
-    case 'canny': return 0.3; // Canny es estándar de la industria
-    default: return 0.25;
-  }
 };

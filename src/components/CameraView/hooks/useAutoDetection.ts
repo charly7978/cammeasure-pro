@@ -14,6 +14,8 @@ export const useAutoDetection = (
   const [detectedObjects, setDetectedObjects] = useState<DetectedObject[]>([]);
   const [currentMeasurement, setCurrentMeasurement] = useState<any>(null);
   const [frameCount, setFrameCount] = useState(0);
+  
+  // ELIMINAR INTERVALO INNECESARIO - SOLO PROCESAR CUANDO SE SOLICITE
   const processingInterval = useRef<NodeJS.Timeout | null>(null);
 
   const processFrameAutomatically = useCallback(async () => {
@@ -27,7 +29,7 @@ export const useAutoDetection = (
       }
 
       setIsProcessing(true);
-      console.log('🔍 INICIANDO DETECCIÓN AUTOMÁTICA REAL...');
+      console.log('🔍 INICIANDO DETECCIÓN AUTOMÁTICA OPTIMIZADA...');
 
       const canvas = overlayCanvasRef.current;
       const ctx = canvas.getContext('2d');
@@ -40,11 +42,11 @@ export const useAutoDetection = (
 
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
       
-      // DETECCIÓN REAL CON ALGORITMOS AVANZADOS
+      // DETECCIÓN OPTIMIZADA - UN SOLO OBJETO PREDOMINANTE
       const detectedObjects = await detectBasicObjects(imageData, canvas.width, canvas.height);
       
       if (detectedObjects.length > 0) {
-        const mainObject = detectedObjects[0];
+        const mainObject = detectedObjects[0]; // SOLO EL PRIMERO (MÁS PREDOMINANTE)
         
         // CALCULAR MEDICIONES REALES
         const realMeasurements = await calculateRealMeasurements(mainObject, imageData);
@@ -58,18 +60,18 @@ export const useAutoDetection = (
         };
 
         setCurrentMeasurement(measurement);
-        setDetectedObjects([mainObject]);
+        setDetectedObjects([mainObject]); // SOLO UN OBJETO
         onRealTimeObjects([mainObject]);
 
-        // DIBUJAR OVERLAY CON MEDICIONES REALES
+        // DIBUJAR OVERLAY OPTIMIZADO
         drawObjectOverlay(ctx, mainObject, realMeasurements);
-        console.log('✅ DETECCIÓN AUTOMÁTICA COMPLETADA - MEDICIONES REALES');
+        console.log('✅ DETECCIÓN AUTOMÁTICA OPTIMIZADA COMPLETADA - UN SOLO OBJETO');
       }
 
       setFrameCount(prev => prev + 1);
 
     } catch (error) {
-      console.error('❌ Error en detección automática:', error);
+      console.error('❌ Error en detección automática optimizada:', error);
     } finally {
       setIsProcessing(false);
     }

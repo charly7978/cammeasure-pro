@@ -100,61 +100,33 @@ export const CameraView: React.FC<CameraViewProps> = ({
     handleCapture
   } = useMeasurementDisplay(videoRef, overlayCanvasRef, onImageCapture);
 
-  // INICIALIZACIÓN INMEDIATA DE CÁMARA - SIN DEPENDER DE isActive
+  // INICIALIZACIÓN INMEDIATA DE CÁMARA - SIN INTERVALOS LENTOS
   useEffect(() => {
     let isMounted = true;
-    let intervalId: NodeJS.Timeout | null = null;
     let resizeHandler: (() => void) | null = null;
     
     const initialize = async () => {
       try {
-        console.log('🚀 INICIANDO INICIALIZACIÓN DE CÁMARA');
+        console.log('🚀 INICIANDO CÁMARA');
         
-        // 1. SOLICITAR PERMISOS INMEDIATAMENTE
         const granted = await requestCameraPermissions();
         if (!isMounted) return;
         
-        console.log('📱 Permisos de cámara:', granted ? 'CONCEDIDOS' : 'DENEGADOS');
         setHasPermissions(granted);
         
         if (granted) {
-          // 2. INICIAR CÁMARA INMEDIATAMENTE
-          console.log('📹 INICIANDO CÁMARA...');
           await startCamera();
-          console.log('✅ CÁMARA INICIADA EXITOSAMENTE');
           
-          // 3. ACTUALIZAR DIMENSIONES
           if (containerRef.current) {
             const rect = containerRef.current.getBoundingClientRect();
             setVideoContainer({ width: rect.width, height: rect.height });
           }
-          
-          // 4. INICIAR MEDICIÓN AUTOMÁTICA CON RETRASO
-          setTimeout(() => {
-            if (!isMounted || !videoRef?.current || !overlayCanvasRef?.current) return;
-            
-            console.log('🎯 INICIANDO MEDICIÓN AUTOMÁTICA ESTABLE');
-            
-            // Procesar cada 2000ms para máxima estabilidad
-            intervalId = setInterval(() => {
-              if (!isMounted || !videoRef?.current || !overlayCanvasRef?.current || isProcessing) return;
-              
-              try {
-                processFrameAutomatically();
-              } catch (error) {
-                console.error('Error en procesamiento automático:', error);
-              }
-            }, 2000); // MUY LENTO PARA ESTABILIDAD
-          }, 3000);
-        } else {
-          console.error('❌ PERMISOS DE CÁMARA DENEGADOS');
         }
       } catch (error) {
-        console.error('❌ Error en inicialización de cámara:', error);
+        console.error('❌ Error en inicialización:', error);
       }
     };
     
-    // MANEJADOR DE RESIZE
     resizeHandler = () => {
       if (containerRef.current && isMounted) {
         const rect = containerRef.current.getBoundingClientRect();
@@ -163,30 +135,16 @@ export const CameraView: React.FC<CameraViewProps> = ({
     };
     
     window.addEventListener('resize', resizeHandler);
-    
-    // INICIAR TODO INMEDIATAMENTE
-    console.log('🎬 EJECUTANDO INICIALIZACIÓN INMEDIATA');
     initialize();
     
-    // LIMPIEZA COMPLETA
     return () => {
-      console.log('🧹 LIMPIANDO RECURSOS DE CÁMARA');
       isMounted = false;
-      
-      // Detener cámara
       stopCamera();
-      
-      // Limpiar intervalos
-      if (intervalId) {
-        clearInterval(intervalId);
-      }
-      
-      // Limpiar event listeners
       if (resizeHandler) {
         window.removeEventListener('resize', resizeHandler);
       }
     };
-  }, []); // SIN DEPENDENCIAS - SOLO UNA VEZ AL MONTAR
+  }, []);
 
   // MANEJAR CAMBIOS DE isActive SEPARADAMENTE
   useEffect(() => {

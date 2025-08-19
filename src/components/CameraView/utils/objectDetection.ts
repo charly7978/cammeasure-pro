@@ -86,10 +86,10 @@ export const detectBasicObjects = async (imageData: ImageData, width: number, he
   }
 };
 
-// DETECCIÓN REAL DE BORDES CON OPERADOR SOBEL - FÓRMULAS MATEMÁTICAS COMPLETAS
+// DETECCIÓN REAL DE BORDES CON OPERADOR SOBEL - OPTIMIZADA PARA RENDIMIENTO
 const detectEdgesWithSobel = (grayData: Uint8Array, width: number, height: number): Uint8Array => {
   try {
-    console.log('🔍 Aplicando operador Sobel con fórmulas matemáticas completas...');
+    console.log('🔍 Aplicando operador Sobel optimizado...');
     const edges = new Uint8Array(width * height);
     
     // Kernels Sobel optimizados para detección de bordes centrales
@@ -104,12 +104,15 @@ const detectEdgesWithSobel = (grayData: Uint8Array, width: number, height: numbe
       [1, 2, 1]
     ];
     
-    // Aplicar convolución 2D con kernels Sobel
-    for (let y = 1; y < height - 1; y++) {
-      for (let x = 1; x < width - 1; x++) {
+    // OPTIMIZACIÓN: Procesar solo cada 2 píxeles para mejorar rendimiento
+    const step = 2;
+    
+    // Aplicar convolución 2D con kernels Sobel - OPTIMIZADA
+    for (let y = step; y < height - step; y += step) {
+      for (let x = step; x < width - step; x += step) {
         let gx = 0, gy = 0;
         
-        // Convolución con kernel X
+        // Convolución con kernel X - OPTIMIZADA
         for (let ky = -1; ky <= 1; ky++) {
           for (let kx = -1; kx <= 1; kx++) {
             const pixel = grayData[(y + ky) * width + (x + kx)];
@@ -118,7 +121,7 @@ const detectEdgesWithSobel = (grayData: Uint8Array, width: number, height: numbe
           }
         }
         
-        // Convolución con kernel Y
+        // Convolución con kernel Y - OPTIMIZADA
         for (let ky = -1; ky <= 1; ky++) {
           for (let kx = -1; kx <= 1; kx++) {
             const pixel = grayData[(y + ky) * width + (x + kx)];
@@ -129,47 +132,64 @@ const detectEdgesWithSobel = (grayData: Uint8Array, width: number, height: numbe
         
         // Cálculo de magnitud del gradiente con normalización
         const magnitude = Math.sqrt(gx * gx + gy * gy);
-        const normalizedMagnitude = Math.min(255, Math.round(magnitude * 0.5));
+        const normalizedMagnitude = Math.min(255, Math.round(magnitude * 0.3)); // Reducir factor para más bordes
         
-        // Aplicar umbral adaptativo para bordes centrales
-        const threshold = 30 + (normalizedMagnitude * 0.3);
+        // Umbral más permisivo para detectar más objetos
+        const threshold = 20 + (normalizedMagnitude * 0.2);
         edges[y * width + x] = normalizedMagnitude > threshold ? normalizedMagnitude : 0;
+        
+        // Rellenar píxeles intermedios para mantener continuidad
+        if (step > 1) {
+          for (let dy = 0; dy < step; dy++) {
+            for (let dx = 0; dx < step; dx++) {
+              const ny = y + dy;
+              const nx = x + dx;
+              if (ny < height && nx < width) {
+                edges[ny * width + nx] = edges[y * width + x];
+              }
+            }
+          }
+        }
       }
     }
     
-    console.log('✅ Operador Sobel con fórmulas matemáticas aplicado correctamente');
+    console.log('✅ Operador Sobel optimizado aplicado correctamente');
     return edges;
   } catch (error) {
-    console.error('❌ Error en operador Sobel matemático:', error);
+    console.error('❌ Error en operador Sobel optimizado:', error);
     return new Uint8Array(width * height);
   }
 };
 
-// DETECCIÓN REAL DE CONTORNOS - ALGORITMO MATEMÁTICO COMPLETO
+// DETECCIÓN REAL DE CONTORNOS - ALGORITMO MATEMÁTICO OPTIMIZADO
 const findContoursFromEdges = (edges: Uint8Array, width: number, height: number): any[] => {
   try {
-    console.log('🔍 Aplicando algoritmo matemático de detección de contornos...');
+    console.log('🔍 Aplicando algoritmo matemático de detección de contornos optimizado...');
     const visited = new Set<number>();
     const contours: any[] = [];
     
-    // Umbral adaptativo basado en estadísticas de la imagen
+    // Umbral adaptativo simplificado para mejor rendimiento
     const edgeValues = Array.from(edges).filter(v => v > 0);
+    if (edgeValues.length === 0) return [];
+    
     const meanEdge = edgeValues.reduce((sum, val) => sum + val, 0) / edgeValues.length;
-    const stdEdge = Math.sqrt(edgeValues.reduce((sum, val) => sum + Math.pow(val - meanEdge, 2), 0) / edgeValues.length);
-    const adaptiveThreshold = Math.max(40, meanEdge - 0.5 * stdEdge);
+    const adaptiveThreshold = Math.max(30, meanEdge * 0.6); // Umbral más permisivo
     
-    console.log('📊 Umbral adaptativo calculado:', { meanEdge, stdEdge, adaptiveThreshold });
+    console.log('📊 Umbral adaptativo optimizado:', { meanEdge, adaptiveThreshold });
     
-    // Algoritmo de detección de contornos con análisis de conectividad
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
+    // OPTIMIZACIÓN: Procesar solo cada 3 píxeles para mejorar rendimiento
+    const step = 3;
+    
+    // Algoritmo de detección de contornos optimizado
+    for (let y = 0; y < height; y += step) {
+      for (let x = 0; x < width; x += step) {
         const index = y * width + x;
         
         if (edges[index] > adaptiveThreshold && !visited.has(index)) {
-          // Aplicar algoritmo de seguimiento de contorno con análisis matemático
+          // Aplicar algoritmo de seguimiento de contorno optimizado
           const contour = analyzeContourMathematically(edges, width, height, x, y, visited, adaptiveThreshold);
           
-          // Filtrar por criterios matemáticos de calidad
+          // Filtrar por criterios matemáticos de calidad básicos
           if (isValidContourMathematically(contour, width, height)) {
             contours.push(contour);
           }
@@ -177,10 +197,10 @@ const findContoursFromEdges = (edges: Uint8Array, width: number, height: number)
       }
     }
     
-    console.log('✅ Contornos detectados con algoritmo matemático:', contours.length);
+    console.log('✅ Contornos detectados con algoritmo matemático optimizado:', contours.length);
     return contours;
   } catch (error) {
-    console.error('❌ Error en algoritmo matemático de contornos:', error);
+    console.error('❌ Error en algoritmo matemático de contornos optimizado:', error);
     return [];
   }
 };
@@ -299,7 +319,9 @@ const isValidContourMathematically = (contour: any, width: number, height: numbe
   }
 };
 
-// CÁLCULO DE CURVATURA DEL CONTORNO - FÓRMULA MATEMÁTICA
+// ELIMINAR FUNCIONES INNECESARIAS QUE RALENTIZAN - MANTENER SOLO LO ESENCIAL
+
+// CÁLCULO DE CURVATURA DEL CONTORNO - MANTENER FÓRMULA MATEMÁTICA
 const calculateContourCurvature = (points: { x: number; y: number }[]): number => {
   try {
     if (points.length < 3) return 0;
@@ -329,7 +351,7 @@ const calculateContourCurvature = (points: { x: number; y: number }[]): number =
   }
 };
 
-// CÁLCULO DE SUAVIDAD DEL CONTORNO - FÓRMULA MATEMÁTICA
+// CÁLCULO DE SUAVIDAD DEL CONTORNO - MANTENER FÓRMULA MATEMÁTICA
 const calculateContourSmoothness = (points: { x: number; y: number }[]): number => {
   try {
     if (points.length < 2) return 0;
@@ -353,7 +375,7 @@ const calculateContourSmoothness = (points: { x: number; y: number }[]): number 
   }
 };
 
-// CÁLCULO DE CONFIANZA MATEMÁTICA - FÓRMULA COMPUESTA
+// CÁLCULO DE CONFIANZA MATEMÁTICA - MANTENER FÓRMULA COMPUESTA
 const calculateMathematicalConfidence = (area: number, perimeter: number, intensity: number, curvature: number, smoothness: number, width: number, height: number): number => {
   try {
     // Factores de confianza
@@ -379,207 +401,43 @@ const calculateMathematicalConfidence = (area: number, perimeter: number, intens
   }
 };
 
-// FILTRO MATEMÁTICO AVANZADO DE CONTORNOS - ALGORITMO REAL
+// FILTRO PARA UN SOLO OBJETO PREDOMINANTE
 const filterValidContours = (contours: any[], width: number, height: number): any[] => {
   try {
-    console.log('🔍 Aplicando filtro matemático avanzado de contornos...');
+    if (contours.length === 0) return [];
     
-    // 1. ANÁLISIS MATEMÁTICO DE CALIDAD
+    // CALCULAR PUNTUACIÓN SIMPLE PARA CADA CONTORNO
     const scoredContours = contours.map(contour => {
-      const score = calculateContourQualityScore(contour, width, height);
-      return { ...contour, qualityScore: score };
+      const { area, perimeter, confidence } = contour;
+      const areaScore = Math.min(1.0, area / (width * height * 0.05));
+      const perimeterScore = Math.min(1.0, perimeter / 200);
+      const qualityScore = (areaScore * 0.7) + (perimeterScore * 0.3);
+      return { ...contour, qualityScore };
     });
     
-    // 2. FILTRADO POR CRITERIOS MATEMÁTICOS MÚLTIPLES - PRIORIZAR OBJETOS GRANDES
+    // FILTRAR POR CRITERIOS BÁSICOS
     let validContours = scoredContours.filter(contour => {
-      const { boundingBox, area, perimeter, curvature, smoothness, confidence, qualityScore } = contour;
-      const { width: w, height: h } = boundingBox;
-      
-      // Criterios de área con análisis matemático - PRIORIZAR OBJETOS GRANDES
-      const minArea = Math.max(5000, (width * height) * 0.05); // Aumentar área mínima
-      const maxArea = (width * height) * 0.8; // Aumentar área máxima
-      if (area < minArea || area > maxArea) return false;
-      
-      // Análisis de proporción con tolerancia matemática
-      const aspectRatio = w / h;
-      const idealAspectRatio = 1.0;
-      const aspectRatioDeviation = Math.abs(aspectRatio - idealAspectRatio) / idealAspectRatio;
-      if (aspectRatioDeviation > 5.0) return false; // Aumentar tolerancia a 500%
-      
-      // Análisis de densidad de puntos con fórmula matemática
-      const theoreticalPerimeter = 2 * (w + h);
-      const perimeterEfficiency = perimeter / theoreticalPerimeter;
-      if (perimeterEfficiency < 0.3 || perimeterEfficiency > 3.0) return false; // Aumentar tolerancia
-      
-      // Análisis de curvatura y suavidad - Más permisivo
-      if (curvature < 0.02 || curvature > 3.0) return false;
-      if (smoothness < 0.15) return false;
-      
-      // Verificar confianza matemática - Más permisivo
-      if (confidence < 0.25) return false;
-      
-      // Verificar puntuación de calidad general - Más permisivo
-      if (qualityScore < 0.3) return false;
-      
-      return true;
+      const { area, qualityScore } = contour;
+      const minArea = Math.max(2000, (width * height) * 0.02);
+      const maxArea = (width * height) * 0.9;
+      return area >= minArea && area <= maxArea && qualityScore >= 0.2;
     });
     
-    console.log('✅ Contornos válidos por criterios matemáticos:', validContours.length);
+    if (validContours.length === 0) return [];
     
-    // 3. PRIORIZACIÓN MATEMÁTICA AVANZADA - PRIORIZAR TAMAÑO Y CENTRALIDAD
-    if (validContours.length > 0) {
-      validContours.sort((a, b) => {
-        // Calcular centro de la imagen
-        const centerX = width / 2;
-        const centerY = height / 2;
-        
-        // Calcular centro de cada contorno
-        const aCenterX = a.boundingBox.x + a.boundingBox.width / 2;
-        const aCenterY = a.boundingBox.y + a.boundingBox.height / 2;
-        const bCenterX = b.boundingBox.x + b.boundingBox.width / 2;
-        const bCenterY = b.boundingBox.y + b.boundingBox.height / 2;
-        
-        // Distancia euclidiana al centro
-        const aDistanceToCenter = Math.sqrt((aCenterX - centerX) ** 2 + (aCenterY - centerY) ** 2);
-        const bDistanceToCenter = Math.sqrt((bCenterX - centerX) ** 2 + (bCenterY - centerY) ** 2);
-        
-        // Normalizar distancias
-        const maxDistance = Math.sqrt(width ** 2 + height ** 2) / 2;
-        const aNormalizedDistance = aDistanceToCenter / maxDistance;
-        const bNormalizedDistance = bDistanceToCenter / maxDistance;
-        
-        // Calcular puntuación compuesta - PRIORIZAR TAMAÑO
-        const aScore = calculateCompositeScore(a, aNormalizedDistance);
-        const bScore = calculateCompositeScore(b, bNormalizedDistance);
-        
-        return bScore - aScore; // Mayor puntuación primero
-      });
-      
-      console.log('✅ Contornos ordenados por puntuación matemática compuesta');
-    }
+    // ORDENAR POR PUNTUACIÓN Y RETORNAR SOLO EL MEJOR
+    validContours.sort((a, b) => b.qualityScore - a.qualityScore);
     
-    // 4. SELECCIÓN INTELIGENTE CON ANÁLISIS DE CLUSTERS
-    const topContours = selectOptimalContours(validContours, width, height);
-    console.log('✅ Contornos óptimos seleccionados con análisis matemático:', topContours.length);
-    
-    return topContours;
+    // RETORNAR SOLO UN OBJETO - EL MÁS PREDOMINANTE
+    return [validContours[0]];
     
   } catch (error) {
-    console.error('❌ Error en filtro matemático avanzado:', error);
+    console.error('❌ Error en filtro:', error);
     return [];
   }
 };
 
-// CÁLCULO DE PUNTUACIÓN DE CALIDAD DEL CONTORNO - FÓRMULA MATEMÁTICA
-const calculateContourQualityScore = (contour: any, width: number, height: number): number => {
-  try {
-    const { area, perimeter, curvature, smoothness, confidence, averageIntensity } = contour;
-    const { width: w, height: h } = contour.boundingBox;
-    
-    // Factores de calidad normalizados
-    const areaScore = Math.min(1.0, area / (width * height * 0.1));
-    const perimeterScore = Math.min(1.0, perimeter / 200);
-    const curvatureScore = Math.min(1.0, curvature / 1.0);
-    const smoothnessScore = smoothness;
-    const confidenceScore = confidence;
-    const intensityScore = Math.min(1.0, averageIntensity / 255);
-    
-    // Fórmula de puntuación ponderada
-    const qualityScore = (
-      areaScore * 0.20 +
-      perimeterScore * 0.15 +
-      curvatureScore * 0.15 +
-      smoothnessScore * 0.20 +
-      confidenceScore * 0.20 +
-      intensityScore * 0.10
-    );
-    
-    return Math.min(1.0, Math.max(0.0, qualityScore));
-  } catch (error) {
-    console.error('❌ Error calculando puntuación de calidad:', error);
-    return 0.5;
-  }
-};
-
-// CÁLCULO DE PUNTUACIÓN COMPUESTA - FÓRMULA MATEMÁTICA AVANZADA
-const calculateCompositeScore = (contour: any, normalizedDistance: number): number => {
-  try {
-    const { qualityScore, area, confidence } = contour;
-    
-    // Factores de puntuación - PRIORIZAR TAMAÑO
-    const qualityFactor = qualityScore;
-    const sizeFactor = Math.min(1.0, area / 5000); // Reducir divisor para priorizar objetos grandes
-    const confidenceFactor = confidence;
-    const centralityFactor = 1.0 - normalizedDistance;
-    
-    // Fórmula de puntuación compuesta con pesos optimizados - PRIORIZAR TAMAÑO
-    const compositeScore = (
-      qualityFactor * 0.20 +      // Reducir peso de calidad
-      sizeFactor * 0.40 +         // Aumentar peso del tamaño
-      confidenceFactor * 0.25 +   // Mantener confianza
-      centralityFactor * 0.15     // Reducir peso de centralidad
-    );
-    
-    return Math.min(1.0, Math.max(0.0, compositeScore));
-  } catch (error) {
-    console.error('❌ Error calculando puntuación compuesta:', error);
-    return 0.5;
-  }
-};
-
-// SELECCIÓN ÓPTIMA DE CONTORNOS - ALGORITMO DE CLUSTERING
-const selectOptimalContours = (contours: any[], width: number, height: number): any[] => {
-  try {
-    if (contours.length === 0) return [];
-    
-    // Aplicar algoritmo de selección inteligente
-    const maxContours = 3;
-    const selectedContours: any[] = [];
-    
-    for (const contour of contours) {
-      if (selectedContours.length >= maxContours) break;
-      
-      // Verificar que no haya superposición significativa con contornos ya seleccionados
-      const hasSignificantOverlap = selectedContours.some(selected => {
-        const overlap = calculateContourOverlap(contour, selected);
-        return overlap > 0.3; // Máximo 30% de superposición
-      });
-      
-      if (!hasSignificantOverlap) {
-        selectedContours.push(contour);
-      }
-    }
-    
-    return selectedContours;
-  } catch (error) {
-    console.error('❌ Error en selección óptima de contornos:', error);
-    return contours.slice(0, 3);
-  }
-};
-
-// CÁLCULO DE SUPERPOSICIÓN ENTRE CONTORNOS - FÓRMULA MATEMÁTICA
-const calculateContourOverlap = (contour1: any, contour2: any): number => {
-  try {
-    const { boundingBox: box1 } = contour1;
-    const { boundingBox: box2 } = contour2;
-    
-    // Calcular intersección de bounding boxes
-    const left = Math.max(box1.x, box2.x);
-    const top = Math.max(box1.y, box2.y);
-    const right = Math.min(box1.x + box1.width, box2.x + box2.width);
-    const bottom = Math.min(box1.y + box1.height, box2.y + box2.height);
-    
-    if (left >= right || top >= bottom) return 0; // Sin superposición
-    
-    const intersectionArea = (right - left) * (bottom - top);
-    const unionArea = (box1.width * box1.height) + (box2.width * box2.height) - intersectionArea;
-    
-    return intersectionArea / unionArea; // Coeficiente de Jaccard
-  } catch (error) {
-    console.error('❌ Error calculando superposición:', error);
-    return 0;
-  }
-};
+// FUNCIONES ELIMINADAS PARA OPTIMIZAR RENDIMIENTO - MANTENER SOLO LO ESENCIAL
 
 // CALCULAR MEDICIONES REALES EN UNIDADES FÍSICAS
 export const calculateRealMeasurements = async (object: any, imageData: ImageData): Promise<any> => {
@@ -709,38 +567,38 @@ const calculateSolidityReal = (object: any): number => {
   }
 };
 
-// DIBUJAR OVERLAY CON MEDICIONES REALES
+// DIBUJAR OVERLAY CON MEDICIONES REALES - CORREGIDO
 export const drawObjectOverlay = (ctx: CanvasRenderingContext2D, object: any, measurements: any) => {
   try {
     const { x, y, width, height } = object.boundingBox;
     
-    // Configurar estilo del contexto
+    // LIMPIAR CANVAS COMPLETAMENTE
+    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    
+    // DIBUJAR SOLO EL CONTORNO VERDE - SIN RELLENO BLANCO
     ctx.strokeStyle = '#00ff00';
     ctx.lineWidth = 3;
-    ctx.fillStyle = 'rgba(0, 255, 0, 0.1)';
-    ctx.font = '16px Arial';
-    ctx.fillStyle = '#ffffff';
-    
-    // Dibujar rectángulo de selección
     ctx.strokeRect(x, y, width, height);
-    ctx.fillRect(x, y, width, height);
     
-    // Dibujar medidas principales
+    // DIBUJAR CENTRO DEL OBJETO
+    ctx.fillStyle = '#ff0000';
+    ctx.beginPath();
+    ctx.arc(x + width / 2, y + height / 2, 5, 0, 2 * Math.PI);
+    ctx.fill();
+    
+    // DIMENSIONES EXACTAS EN MM
     ctx.fillStyle = '#00ff00';
-    ctx.fillText(`${measurements.width.toFixed(1)} mm`, x + 5, y - 10);
-    ctx.fillText(`${measurements.height.toFixed(1)} mm`, x + width + 5, y + height/2);
+    ctx.font = 'bold 18px Arial';
+    ctx.fillText(`📏 ${measurements.width.toFixed(1)}mm`, x, y - 20);
+    ctx.fillText(`📐 ${measurements.height.toFixed(1)}mm`, x + width + 10, y + height/2);
+    ctx.fillText(`📊 ${measurements.area.toFixed(1)}mm²`, x, y + height + 25);
     
-    // Dibujar área
-    ctx.fillStyle = '#ffff00';
-    ctx.fillText(`Área: ${measurements.area.toFixed(1)} mm²`, x + 5, y + height + 20);
-    
-    // Dibujar profundidad si está disponible
     if (measurements.depth) {
       ctx.fillStyle = '#00ffff';
-      ctx.fillText(`Prof: ${measurements.depth.toFixed(1)} mm`, x + 5, y + height + 40);
+      ctx.fillText(`🔍 ${measurements.depth.toFixed(1)}mm`, x, y + height + 45);
     }
     
-    console.log('✅ Overlay dibujado con mediciones reales');
+    console.log('✅ Overlay corregido - sin recuadro blanco');
     
   } catch (error) {
     console.error('❌ Error dibujando overlay:', error);

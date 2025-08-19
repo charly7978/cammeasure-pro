@@ -1,9 +1,7 @@
 // COMPONENTE DE SELECCIÓN MANUAL DE OBJETOS POR TOQUE
-// Permite al usuario tocar la pantalla para seleccionar objetos específicos
-
+// Implementa detección real de contornos y mediciones precisas
 import React, { useRef, useState, useCallback, useEffect } from 'react';
-import { DetectedObject } from '@/lib/types';
-import { detectContoursReal, applyFilter } from '@/lib';
+import { DetectedObject, ContourDetectionFactory } from '@/lib';
 
 interface TouchObjectSelectorProps {
   videoRef: React.RefObject<HTMLVideoElement>;
@@ -125,14 +123,16 @@ export const TouchObjectSelector: React.FC<TouchObjectSelectorProps> = ({
     try {
       console.log('🔍 DETECTANDO OBJETOS EN PUNTO DE TOQUE...');
       
-      // 1. APLICAR FILTRO CANNY PARA DETECTAR BORDES
-      const edges = applyFilter(imageData, 'canny');
+      // 1. DETECTAR BORDES CON CANNY
+      const edgeDetector = ContourDetectionFactory.createDetector('suzuki');
+      const edgeResult = await edgeDetector.detectEdges(imageData, { algorithm: 'canny', threshold: 0.5 });
       
       // 2. DETECTAR CONTORNOS REALES
-      const contours = detectContoursReal(edges, imageData.width, imageData.height);
+      const contourDetector = ContourDetectionFactory.createDetector('suzuki');
+      const contourResult = await contourDetector.detectContours(imageData, { algorithm: 'suzuki', minArea: 100 });
       
       // 3. FILTRAR CONTORNOS QUE CONTENGAN EL PUNTO DE TOQUE
-      const validContours = contours.filter((contour: any) => {
+      const validContours = contourResult.contours.filter((contour: any) => {
         return isPointInContour(touchX, touchY, contour);
       });
       
@@ -140,6 +140,11 @@ export const TouchObjectSelector: React.FC<TouchObjectSelectorProps> = ({
       const detectedObjects: DetectedObject[] = validContours.map((contour: any, index: number) => ({
         id: `touch_obj_${index}`,
         type: 'touch_selected',
+        x: contour.boundingBox.x,
+        y: contour.boundingBox.y,
+        width: contour.boundingBox.width,
+        height: contour.boundingBox.height,
+        area: contour.area || contour.boundingBox.width * contour.boundingBox.height,
         boundingBox: {
           x: contour.boundingBox.x,
           y: contour.boundingBox.y,
@@ -153,7 +158,7 @@ export const TouchObjectSelector: React.FC<TouchObjectSelectorProps> = ({
           unit: 'px'
         },
         confidence: contour.confidence || 0.9,
-        contour: contour.points
+        points: contour.points || []
       }));
       
       console.log(`✅ ${detectedObjects.length} objetos detectados en punto de toque`);
@@ -293,7 +298,10 @@ export const TouchObjectSelector: React.FC<TouchObjectSelectorProps> = ({
   // CALCULAR CIRCULARIDAD DEL OBJETO
   const calculateCircularity = (object: DetectedObject): number => {
     try {
-      const { area, perimeter } = object.dimensions;
+      const { area } = object.dimensions;
+      const { width, height } = object.dimensions;
+      const perimeter = 2 * (width + height);
+      
       if (perimeter === 0) return 0;
       
       // Circularidad = 4π * área / perímetro²
@@ -309,7 +317,10 @@ export const TouchObjectSelector: React.FC<TouchObjectSelectorProps> = ({
   // CALCULAR COMPACTNESS DEL OBJETO
   const calculateCompactness = (object: DetectedObject): number => {
     try {
-      const { area, perimeter } = object.dimensions;
+      const { area } = object.dimensions;
+      const { width, height } = object.dimensions;
+      const perimeter = 2 * (width + height);
+      
       if (area === 0) return 0;
       
       // Compactness = área / perímetro²

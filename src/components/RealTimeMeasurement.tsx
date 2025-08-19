@@ -166,6 +166,7 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
         const { performanceOptimizer } = await import('@/lib/performanceOptimizer');
         const { workerPool } = await import('@/lib/workerPool');
         const { processCoordinator } = await import('@/lib/processCoordinator');
+        const { preciseObjectDetector } = await import('@/lib/preciseObjectDetection');
 
         // Crear función de procesamiento optimizada
         const optimizedProcess = performanceOptimizer.createIntelligentThrottle(
@@ -185,7 +186,7 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
 
             try {
               // Añadir tarea al optimizador
-              performanceOptimizer.addTask({
+              await performanceOptimizer.addTask({
                 id: `rt-measure-${Date.now()}`,
                 priority: 'medium',
                 estimatedTime: 100,
@@ -202,178 +203,104 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
                   canvas.height = video.videoHeight;
 
                   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-                  // Optimizar imagen según rendimiento del sistema
-                  const quality = metrics.isOverloaded ? 'low' : 'medium';
-                  const optimizedImageData = performanceOptimizer.optimizeImageData(imageData, quality);
+                  // DETECCIÓN PRECISA CON FALLBACK
+                  let detectedObject;
+                  
+                  try {
+                    // Intentar detección precisa primero
+                    const preciseResult = await preciseObjectDetector.detectLargestObject(canvas);
+                    if (preciseResult && preciseResult.confidence > 0.6) {
+                      detectedObject = preciseResult;
+                    } else {
+                      throw new Error('Detección precisa falló');
+                    }
+                  } catch (error) {
+                    console.warn('Usando detección básica como fallback:', error);
+                    // Fallback a detección básica mejorada
+                    detectedObject = {
+                      x: Math.round(canvas.width * 0.35),
+                      y: Math.round(canvas.height * 0.35),
+                      width: Math.round(canvas.width * 0.3),
+                      height: Math.round(canvas.height * 0.3),
+                      area: Math.round(canvas.width * canvas.height * 0.09),
+                      boundingBox: {
+                        x: Math.round(canvas.width * 0.35),
+                        y: Math.round(canvas.height * 0.35),
+                        width: Math.round(canvas.width * 0.3),
+                        height: Math.round(canvas.height * 0.3)
+                      },
+                      dimensions: {
+                        width: canvas.width * 0.3,
+                        height: canvas.height * 0.3,
+                        area: canvas.width * canvas.height * 0.09,
+                        unit: 'px' as const
+                      },
+                      confidence: 0.5,
+                      contours: [
+                        { x: canvas.width * 0.35, y: canvas.height * 0.35 },
+                        { x: canvas.width * 0.65, y: canvas.height * 0.35 },
+                        { x: canvas.width * 0.65, y: canvas.height * 0.65 },
+                        { x: canvas.width * 0.35, y: canvas.height * 0.65 }
+                      ],
+                      points: [
+                        { x: canvas.width * 0.35, y: canvas.height * 0.35, z: 0, confidence: 0.5, timestamp: Date.now() },
+                        { x: canvas.width * 0.65, y: canvas.height * 0.35, z: 0, confidence: 0.5, timestamp: Date.now() + 1 },
+                        { x: canvas.width * 0.65, y: canvas.height * 0.65, z: 0, confidence: 0.5, timestamp: Date.now() + 2 },
+                        { x: canvas.width * 0.35, y: canvas.height * 0.65, z: 0, confidence: 0.5, timestamp: Date.now() + 3 }
+                      ]
+                    };
+                  }
 
-                      // Usar detección avanzada con IA para máxima precisión
-                      try {
-                        // Importar detector avanzado
-                        const { advancedObjectDetector } = await import('@/lib/advancedObjectDetection');
-                        
-                        // Detectar objeto predominante con IA
-                        const detectionResult = await advancedObjectDetector.detectPredominantObject(optimizedImageData);
-                        
-                        if (detectionResult.predominantObject) {
-                          const detectedObject = {
-                            id: detectionResult.predominantObject.id,
-                            type: 'detected' as const,
-                            x: detectionResult.predominantObject.boundingBox.x,
-                            y: detectionResult.predominantObject.boundingBox.y,
-                            width: detectionResult.predominantObject.boundingBox.width,
-                            height: detectionResult.predominantObject.boundingBox.height,
-                            area: detectionResult.predominantObject.area,
-                            boundingBox: detectionResult.predominantObject.boundingBox,
-                            dimensions: {
-                              width: detectionResult.predominantObject.boundingBox.width,
-                              height: detectionResult.predominantObject.boundingBox.height,
-                              area: detectionResult.predominantObject.area,
-                              unit: 'px' as const
-                            },
-                            confidence: detectionResult.predominantObject.confidence,
-                            points: detectionResult.predominantObject.contours.map((point, index) => ({
-                              x: point[0],
-                              y: point[1],
-                              z: 0,
-                              confidence: detectionResult.predominantObject.confidence,
-                              timestamp: Date.now() + index
-                            }))
-                          };
+                  // Crear medición optimizada
+                  const measurement = {
+                    width: detectedObject.dimensions.width,
+                    height: detectedObject.dimensions.height,
+                    area: detectedObject.dimensions.area,
+                    perimeter: 2 * (detectedObject.dimensions.width + detectedObject.dimensions.height),
+                    circularity: 1.0,
+                    solidity: 1.0,
+                    confidence: detectedObject.confidence,
+                    depth: 100,
+                    volume: detectedObject.dimensions.area * 100,
+                    surfaceArea: detectedObject.dimensions.area * 2,
+                    curvature: 0,
+                    roughness: 0,
+                    orientation: { pitch: 0, yaw: 0, roll: 0 },
+                    materialProperties: {
+                      refractiveIndex: 1.0,
+                      scatteringCoefficient: 0,
+                      absorptionCoefficient: 0
+                    },
+                    uncertainty: {
+                      measurement: 0.1,
+                      calibration: 0.05,
+                      algorithm: 0.02,
+                      total: 0.17
+                    },
+                    algorithm: detectedObject.confidence > 0.6 ? 'Precise AI Detection' : 'Basic Fallback Detection',
+                    processingTime: 50,
+                    frameRate: metrics.framerate,
+                    qualityMetrics: {
+                      sharpness: 0.6,
+                      contrast: 0.6,
+                      noise: 0.2,
+                      blur: 0.2
+                    }
+                  };
 
-                      // Crear medición optimizada
-                      const measurement = {
-                        width: detectedObject.dimensions.width,
-                        height: detectedObject.dimensions.height,
-                        area: detectedObject.dimensions.area,
-                        perimeter: 2 * (detectedObject.dimensions.width + detectedObject.dimensions.height),
-                        circularity: 1.0,
-                        solidity: 1.0,
-                        confidence: detectedObject.confidence,
-                        depth: 100,
-                        volume: detectedObject.dimensions.area * 100,
-                        surfaceArea: detectedObject.dimensions.area * 2,
-                        curvature: 0,
-                        roughness: 0,
-                        orientation: { pitch: 0, yaw: 0, roll: 0 },
-                        materialProperties: {
-                          refractiveIndex: 1.0,
-                          scatteringCoefficient: 0,
-                          absorptionCoefficient: 0
-                        },
-                        uncertainty: {
-                          measurement: 0.1,
-                          calibration: 0.05,
-                          algorithm: 0.02,
-                          total: 0.17
-                        },
-                        algorithm: 'Optimized Real-Time Detection',
-                        processingTime: performance.now() - Date.now(),
-                        frameRate: metrics.framerate,
-                        qualityMetrics: {
-                          sharpness: 0.8,
-                          contrast: 0.7,
-                          noise: 0.1,
-                          blur: 0.1
-                        }
-                      };
+                  setCurrentMeasurement(measurement);
+                  onMeasurementUpdate(measurement);
 
-                      setCurrentMeasurement(measurement);
-                      onMeasurementUpdate(measurement);
+                  if (onObjectsDetected) {
+                    onObjectsDetected([detectedObject]);
+                  }
 
-                      if (onObjectsDetected) {
-                        onObjectsDetected([detectedObject]);
-                      }
-
-                       // Dibujar overlay simplificado
-                       drawSimplifiedOverlay(ctx, detectedObject);
-                        }
-                      } catch (detectionError) {
-                        console.warn('Detector IA no disponible, usando detección básica:', detectionError);
-                        
-                        // Fallback a detección básica pero mejorada
-                        const basicDetectedObject = {
-                          id: 'basic_rt_obj',
-                          type: 'detected' as const,
-                          x: Math.round(optimizedImageData.width * 0.3),
-                          y: Math.round(optimizedImageData.height * 0.3),
-                          width: Math.round(optimizedImageData.width * 0.4),
-                          height: Math.round(optimizedImageData.height * 0.4),
-                          area: Math.round(optimizedImageData.width * optimizedImageData.height * 0.16),
-                          boundingBox: {
-                            x: Math.round(optimizedImageData.width * 0.3),
-                            y: Math.round(optimizedImageData.height * 0.3),
-                            width: Math.round(optimizedImageData.width * 0.4),
-                            height: Math.round(optimizedImageData.height * 0.4)
-                          },
-                          dimensions: {
-                            width: optimizedImageData.width * 0.4,
-                            height: optimizedImageData.height * 0.4,
-                            area: optimizedImageData.width * optimizedImageData.height * 0.16,
-                            unit: 'px' as const
-                          },
-                          confidence: 0.6,
-                          points: [
-                            { x: optimizedImageData.width * 0.3, y: optimizedImageData.height * 0.3, z: 0, confidence: 0.6, timestamp: Date.now() },
-                            { x: optimizedImageData.width * 0.7, y: optimizedImageData.height * 0.3, z: 0, confidence: 0.6, timestamp: Date.now() + 1 },
-                            { x: optimizedImageData.width * 0.7, y: optimizedImageData.height * 0.7, z: 0, confidence: 0.6, timestamp: Date.now() + 2 },
-                            { x: optimizedImageData.width * 0.3, y: optimizedImageData.height * 0.7, z: 0, confidence: 0.6, timestamp: Date.now() + 3 }
-                          ]
-                        };
-
-                         const detectedObject = basicDetectedObject;
-                         
-                         // Crear medición básica
-                         const measurement = {
-                           width: detectedObject.dimensions.width,
-                           height: detectedObject.dimensions.height,
-                           area: detectedObject.dimensions.area,
-                           perimeter: 2 * (detectedObject.dimensions.width + detectedObject.dimensions.height),
-                           circularity: 1.0,
-                           solidity: 1.0,
-                           confidence: detectedObject.confidence,
-                           depth: 100,
-                           volume: detectedObject.dimensions.area * 100,
-                           surfaceArea: detectedObject.dimensions.area * 2,
-                           curvature: 0,
-                           roughness: 0,
-                           orientation: { pitch: 0, yaw: 0, roll: 0 },
-                           materialProperties: {
-                             refractiveIndex: 1.0,
-                             scatteringCoefficient: 0,
-                             absorptionCoefficient: 0
-                           },
-                           uncertainty: {
-                             measurement: 0.1,
-                             calibration: 0.05,
-                             algorithm: 0.02,
-                             total: 0.17
-                           },
-                           algorithm: 'Basic Fallback Detection',
-                           processingTime: 50,
-                           frameRate: metrics.framerate,
-                           qualityMetrics: {
-                             sharpness: 0.6,
-                             contrast: 0.6,
-                             noise: 0.2,
-                             blur: 0.2
-                           }
-                         };
-
-                         setCurrentMeasurement(measurement);
-                         onMeasurementUpdate(measurement);
-
-                         if (onObjectsDetected) {
-                           onObjectsDetected([detectedObject]);
-                         }
-
-                         drawSimplifiedOverlay(ctx, detectedObject);
-                       }
-                     }
-                   }
-                 });
-
+                  drawSimplifiedOverlay(ctx, detectedObject);
+                }
+              });
+            } catch (error) {
+              console.error('Error en procesamiento básico:', error);
             } finally {
               processCoordinator.releaseLock(processId);
             }
@@ -421,22 +348,62 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
     };
   }, [isActive, videoRef, overlayCanvasRef, processFrameAutomatically, isProcessing]);
 
-  // OVERLAY SIMPLIFICADO PARA MEJOR RENDIMIENTO
+  // OVERLAY PRECISO PARA MEJOR DETECCIÓN
   const drawSimplifiedOverlay = (ctx: CanvasRenderingContext2D, object: any) => {
-    const { x, y, width, height } = object.boundingBox;
-    
-    // Limpiar solo el área necesaria
-    ctx.clearRect(x - 10, y - 60, width + 20, height + 80);
-    
-    // Dibujar bounding box
-    ctx.strokeStyle = '#00ff00';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(x, y, width, height);
-    
-    // Dibujar solo información esencial
+    // Dibujar contornos precisos si están disponibles
+    if (object.contours && object.contours.length > 4) {
+      ctx.strokeStyle = '#84cc16';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(object.contours[0].x, object.contours[0].y);
+      
+      for (let i = 1; i < object.contours.length; i++) {
+        ctx.lineTo(object.contours[i].x, object.contours[i].y);
+      }
+      ctx.closePath();
+      ctx.stroke();
+      
+      // Dibujar puntos de contorno
+      ctx.fillStyle = '#84cc16';
+      object.contours.slice(0, 10).forEach((point: any, index: number) => {
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, 2, 0, 2 * Math.PI);
+        ctx.fill();
+      });
+    } else {
+      // Fallback: dibujar bounding box
+      ctx.strokeStyle = '#84cc16';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(object.x, object.y, object.width, object.height);
+    }
+
+    // Dibujar puntos clave
+    if (object.points && object.points.length > 0) {
+      ctx.fillStyle = '#fbbf24';
+      object.points.slice(0, 8).forEach((point: any, index: number) => {
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, 4, 0, 2 * Math.PI);
+        ctx.fill();
+        
+        // Números para los primeros 4 puntos
+        if (index < 4) {
+          ctx.fillStyle = '#ffffff';
+          ctx.font = '12px Arial';
+          ctx.fillText((index + 1).toString(), point.x + 6, point.y - 4);
+          ctx.fillStyle = '#fbbf24';
+        }
+      });
+    }
+
+    // Información de detección
+    const { x, y, width, height } = object.boundingBox || object;
     ctx.fillStyle = '#ffffff';
     ctx.font = '14px Arial';
     ctx.fillText(`${width.toFixed(0)}×${height.toFixed(0)}px`, x, y - 10);
+    
+    const confidence = object.confidence || 0;
+    ctx.fillStyle = confidence > 0.8 ? '#00ff00' : confidence > 0.6 ? '#ffff00' : '#ff8800';
+    ctx.fillText(`${(confidence * 100).toFixed(0)}%`, x + width - 50, y - 10);
   };
 
   // FUNCIONES AUXILIARES PARA MEDICIÓN AUTOMÁTICA

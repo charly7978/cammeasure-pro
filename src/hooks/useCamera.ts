@@ -669,13 +669,27 @@ export function useCamera() {
     };
   }, [initializeCamera]);
 
-  // ACTUALIZACIÓN PERIÓDICA DEL ESTADO
+  // ACTUALIZACIÓN OPTIMIZADA DEL ESTADO (RequestAnimationFrame)
   useEffect(() => {
-    const interval = setInterval(() => {
-      setCameraStatus(cameraManager.getCameraStatus());
-    }, 1000);
+    let rafId: number;
+    let lastUpdateTime = 0;
+    const UPDATE_INTERVAL = 1000; // 1 segundo
     
-    return () => clearInterval(interval);
+    const updateStatus = (currentTime: number) => {
+      if (currentTime - lastUpdateTime >= UPDATE_INTERVAL) {
+        setCameraStatus(cameraManager.getCameraStatus());
+        lastUpdateTime = currentTime;
+      }
+      
+      rafId = requestAnimationFrame(updateStatus);
+    };
+    
+    rafId = requestAnimationFrame(updateStatus);
+    return () => {
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+      }
+    };
   }, []);
 
   return {

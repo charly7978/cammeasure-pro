@@ -151,18 +151,42 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
     }
   }, [videoRef, overlayCanvasRef, isActive, isProcessing, frameCount, fps, onMeasurementUpdate, onObjectsDetected, onError]);
 
-  // INICIAR PROCESAMIENTO AUTOMÁTICO
+  // SISTEMA INTELIGENTE DE PROCESAMIENTO (Sin múltiples setInterval)
   useEffect(() => {
     if (isActive && videoRef?.current && overlayCanvasRef?.current) {
-      // Procesar cada 300ms para mejor fluidez
-      processingInterval.current = setInterval(() => {
-        if (!isProcessing) {
-          processFrameAutomatically();
-        }
-      }, 300);
+      let isComponentActive = true;
+      let rafId: number;
+      let lastProcessTime = 0;
+      const PROCESS_INTERVAL = 300; // 300ms entre procesamiento
+      
+      // Usar requestAnimationFrame para mejor fluidez
+      const scheduleNext = () => {
+        if (!isComponentActive) return;
+        
+        rafId = requestAnimationFrame((currentTime) => {
+          // Throttle inteligente: solo procesar si ha pasado suficiente tiempo
+          if (currentTime - lastProcessTime >= PROCESS_INTERVAL && !isProcessing) {
+            lastProcessTime = currentTime;
+            processFrameAutomatically().finally(() => {
+              // Programar siguiente ejecución después de completar
+              scheduleNext();
+            });
+          } else {
+            // Si no es tiempo de procesar, programar siguiente check
+            scheduleNext();
+          }
+        });
+      };
+      
+      // Iniciar ciclo de procesamiento
+      scheduleNext();
 
       // Limpiar al desmontar
       return () => {
+        isComponentActive = false;
+        if (rafId) {
+          cancelAnimationFrame(rafId);
+        }
         if (processingInterval.current) {
           clearInterval(processingInterval.current);
         }

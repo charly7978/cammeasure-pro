@@ -456,15 +456,41 @@ export const MeasurementEngine: React.FC<MeasurementEngineProps> = ({
     // Procesar frame inmediatamente
     processFrame();
     
-    // Configurar procesamiento continuo si está activo
-    let intervalId: NodeJS.Timeout;
-    if (isActive) {
-      intervalId = setInterval(processFrame, 150); // ~6.7 FPS máximo
-    }
+    // Sistema de cola inteligente para evitar superposición
+    let isComponentActive = true;
+    let processingQueue = false;
+    let rafId: number;
+    let lastProcessTime = 0;
+    const MIN_PROCESS_INTERVAL = 150; // Mínimo 150ms entre procesos
+    
+    const scheduleNextProcess = () => {
+      if (!isComponentActive || !isActive) return;
+      
+      rafId = requestAnimationFrame((currentTime) => {
+        // Solo procesar si no hay procesamiento en cola y ha pasado suficiente tiempo
+        if (!processingQueue && currentTime - lastProcessTime >= MIN_PROCESS_INTERVAL) {
+          processingQueue = true;
+          lastProcessTime = currentTime;
+          
+          processFrame().finally(() => {
+            processingQueue = false;
+            // Programar siguiente procesamiento
+            scheduleNextProcess();
+          });
+        } else {
+          // Reprogramar si no es tiempo de procesar
+          scheduleNextProcess();
+        }
+      });
+    };
+    
+    // Iniciar sistema de cola
+    scheduleNextProcess();
     
     return () => {
-      if (intervalId) {
-        clearInterval(intervalId);
+      isComponentActive = false;
+      if (rafId) {
+        cancelAnimationFrame(rafId);
       }
     };
   }, [imageData, isActive, opencvLoaded, processMeasurement, onMeasurementComplete, onError, isProcessing]);

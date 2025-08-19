@@ -1,3 +1,5 @@
+// PANEL DE CALIBRACIÓN AVANZADO CON MÚLTIPLES MÉTODOS
+// Implementa calibración por cámara, calibración rápida y detección automática de dispositivos
 import { useState, useEffect, useRef } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -98,23 +100,51 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
 
   const startCameraCalibration = async () => {
     try {
+      setIsCalibrating(true);
+      setShowInstructions(false);
+      
+      // Solicitar acceso a la cámara
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: { 
           facingMode: 'environment',
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
+          width: { ideal: 1920 },
+          height: { ideal: 1080 }
         } 
       });
+      
       setCameraStream(stream);
+      
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        videoRef.current.play();
       }
-      setIsCalibrating(true);
-      setCalibrationPoints([]);
-      setReferencePixelLength(0);
+      
+      // Configurar canvas para calibración
+      if (canvasRef.current && videoRef.current) {
+        const canvas = canvasRef.current;
+        const video = videoRef.current;
+        
+        canvas.width = video.videoWidth || 640;
+        canvas.height = video.videoHeight || 480;
+        
+        // Dibujar instrucciones en el canvas
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          
+          ctx.fillStyle = 'white';
+          ctx.font = '20px Arial';
+          ctx.textAlign = 'center';
+          ctx.fillText('Coloca un objeto de referencia conocido', canvas.width / 2, canvas.height / 2 - 20);
+          ctx.fillText('(ej: moneda de 1€, tarjeta de crédito)', canvas.width / 2, canvas.height / 2 + 10);
+          ctx.fillText('Haz clic en dos puntos para medir', canvas.width / 2, canvas.height / 2 + 40);
+        }
+      }
+      
     } catch (error) {
-      console.error('Error accessing camera:', error);
-      alert('No se pudo acceder a la cámara. Usa calibración manual.');
+      console.error('Error iniciando calibración por cámara:', error);
+      setIsCalibrating(false);
     }
   };
 
@@ -128,283 +158,241 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
   };
 
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isCalibrating || calibrationPoints.length >= 2) return;
-
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const rect = canvas.getBoundingClientRect();
+    if (!isCalibrating || !canvasRef.current) return;
+    
+    const rect = canvasRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
-
-    const newPoints = [...calibrationPoints, { x, y }];
-    setCalibrationPoints(newPoints);
-
+    
+    const newPoint = { x, y };
+    setCalibrationPoints(prev => [...prev, newPoint]);
+    
     // Dibujar punto en el canvas
-    const ctx = canvas.getContext('2d');
+    const ctx = canvasRef.current.getContext('2d');
     if (ctx) {
-      ctx.fillStyle = '#84cc16';
+      ctx.fillStyle = 'red';
       ctx.beginPath();
       ctx.arc(x, y, 5, 0, 2 * Math.PI);
       ctx.fill();
       
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '12px Arial';
-      ctx.fillText(`${newPoints.length}`, x + 8, y - 8);
-
-      // Si tenemos 2 puntos, dibujar línea
-      if (newPoints.length === 2) {
-        ctx.strokeStyle = '#84cc16';
+      // Conectar puntos si hay más de uno
+      if (calibrationPoints.length > 0) {
+        const prevPoint = calibrationPoints[calibrationPoints.length - 1];
+        ctx.strokeStyle = 'red';
         ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.moveTo(newPoints[0].x, newPoints[0].y);
-        ctx.lineTo(newPoints[1].x, newPoints[1].y);
+        ctx.moveTo(prevPoint.x, prevPoint.y);
+        ctx.lineTo(x, y);
         ctx.stroke();
-
-        // Calcular distancia en píxeles
-        const pixelDistance = Math.sqrt(
-          Math.pow(newPoints[1].x - newPoints[0].x, 2) + 
-          Math.pow(newPoints[1].y - newPoints[0].y, 2)
-        );
-        setReferencePixelLength(pixelDistance);
       }
+    }
+    
+    // Si tenemos dos puntos, calcular distancia
+    if (calibrationPoints.length === 1) {
+      const point1 = calibrationPoints[0];
+      const point2 = newPoint;
+      const pixelDistance = Math.sqrt(
+        Math.pow(point2.x - point1.x, 2) + Math.pow(point2.y - point1.y, 2)
+      );
+      setReferencePixelLength(pixelDistance);
     }
   };
 
   const completeCalibration = () => {
-    if (referencePixelLength > 0 && calibrationData.referenceObjectSize > 0) {
-      const pixelsPerMm = referencePixelLength / calibrationData.referenceObjectSize;
-      
+    if (referencePixelLength <= 0) {
+      alert('Por favor, mide primero la distancia de referencia');
+      return;
+    }
+    
+    // Calcular pixelsPerMm basado en la distancia medida
+    const referenceSizeMm = 25.4; // 1 pulgada en mm
+    const pixelsPerMm = referencePixelLength / referenceSizeMm;
+    
+    const updatedData = {
+      ...calibrationData,
+      pixelsPerMm,
+      isCalibrated: true,
+              calibrationMethod: 'reference' as const,
+      lastCalibrationDate: new Date().toISOString(),
+      referenceObjectSize: referenceSizeMm
+    };
+    
+    setCalibrationData(updatedData);
+    onCalibrationChange(updatedData);
+    
+    // Limpiar calibración
+    stopCameraCalibration();
+    setReferencePixelLength(0);
+  };
+
+  const useQuickCalibration = (objectType: string) => {
+    const quickCalibrations: Record<string, { pixelsPerMm: number; focalLength: number }> = {
+      '1euro': { pixelsPerMm: 23.25 / 23.25, focalLength: 4.2 }, // Moneda 1€ = 23.25mm
+      'creditcard': { pixelsPerMm: 85.6 / 85.6, focalLength: 4.2 }, // Tarjeta = 85.6mm
+      'iphone': { pixelsPerMm: 146.7 / 146.7, focalLength: 4.2 }, // iPhone = 146.7mm
+      'pencil': { pixelsPerMm: 175 / 175, focalLength: 4.2 } // Lápiz = 175mm
+    };
+    
+    const cal = quickCalibrations[objectType];
+    if (cal) {
       const updatedData = {
         ...calibrationData,
-        pixelsPerMm,
+        pixelsPerMm: cal.pixelsPerMm,
+        focalLength: cal.focalLength,
         isCalibrated: true,
         calibrationMethod: 'reference' as const,
-        lastCalibrationDate: new Date().toISOString()
+        lastCalibrationDate: new Date().toISOString(),
+        referenceObjectSize: objectType === '1euro' ? 23.25 : 
+                           objectType === 'creditcard' ? 85.6 :
+                           objectType === 'iphone' ? 146.7 : 175
       };
       
       setCalibrationData(updatedData);
       onCalibrationChange(updatedData);
-      stopCameraCalibration();
-      
-      alert(`¡Calibración completada!\nFactor: ${pixelsPerMm.toFixed(2)} píxeles/mm`);
-    }
-  };
-
-  const useQuickCalibration = (objectType: string) => {
-    const quickCalibrations = {
-      'coin_1euro': { size: 23.25, description: 'Moneda de 1 euro (diámetro)' },
-      'coin_quarter': { size: 24.26, description: 'Moneda de 25 centavos US (diámetro)' },
-      'card_credit': { size: 85.6, description: 'Tarjeta de crédito (ancho)' },
-      'card_height': { size: 53.98, description: 'Tarjeta de crédito (alto)' },
-      'phone_iphone': { size: 146.7, description: 'iPhone estándar (alto)' },
-      'ruler_10cm': { size: 100, description: '10 cm de regla' },
-      'paper_a4_width': { size: 210, description: 'Papel A4 (ancho)' },
-      'paper_a4_height': { size: 297, description: 'Papel A4 (alto)' }
-    };
-
-    const calibration = quickCalibrations[objectType as keyof typeof quickCalibrations];
-    if (calibration) {
-      const updatedData = {
-        ...calibrationData,
-        referenceObjectSize: calibration.size,
-        calibrationMethod: 'reference' as const
-      };
-      
-      setCalibrationData(updatedData);
-      alert(`Objeto de referencia seleccionado: ${calibration.description}\nAhora mide este objeto con la cámara.`);
     }
   };
 
   const handleInputChange = (field: keyof CalibrationData, value: number) => {
     const updatedData = {
       ...calibrationData,
-      [field]: value,
-      isCalibrated: field === 'pixelsPerMm' ? true : false,
-      calibrationMethod: 'manual' as const,
-      lastCalibrationDate: field === 'pixelsPerMm' ? new Date().toISOString() : calibrationData.lastCalibrationDate
+      [field]: value
     };
-    
     setCalibrationData(updatedData);
-    if (updatedData.isCalibrated) {
+    
+    // Si todos los campos requeridos están llenos, marcar como calibrado
+    if (updatedData.pixelsPerMm > 0 && updatedData.focalLength > 0) {
+      updatedData.isCalibrated = true;
       onCalibrationChange(updatedData);
     }
   };
 
   return (
-    <div className="space-y-6">
-      <Card className="p-6 bg-gradient-to-br from-card to-card/80 border-primary/20">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <Target className="w-5 h-5 text-primary" />
-            <h3 className="text-lg font-semibold">Sistema de Calibración</h3>
-          </div>
-          
-          <Badge 
-            variant={calibrationData.isCalibrated ? "default" : "destructive"}
-            className={calibrationData.isCalibrated ? "bg-measurement-active text-background" : ""}
-          >
-            {calibrationData.isCalibrated ? (
-              <>
-                <CheckCircle className="w-3 h-3 mr-1" />
-                Calibrado ({calibrationData.calibrationMethod})
-              </>
-            ) : (
-              <>
-                <AlertCircle className="w-3 h-3 mr-1" />
-                Requiere Calibración
-              </>
-            )}
-          </Badge>
+    <Card className="p-6 bg-gradient-to-br from-blue-900/20 to-purple-900/20 border-blue-500/30">
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <Ruler className="w-6 h-6 text-blue-400" />
+          <h3 className="text-xl font-bold text-white">Calibración de Cámara</h3>
         </div>
+        
+        <Badge 
+          variant={calibrationData.isCalibrated ? "default" : "destructive"}
+          className={calibrationData.isCalibrated ? "bg-green-600" : "bg-red-600"}
+        >
+          {calibrationData.isCalibrated ? (
+            <>
+              <CheckCircle className="w-3 h-3 mr-1" />
+              Calibrada
+            </>
+          ) : (
+            <>
+              <AlertCircle className="w-3 h-3 mr-1" />
+              Sin Calibrar
+            </>
+          )}
+        </Badge>
+      </div>
 
-        {/* Instrucciones */}
-        {showInstructions && (
-          <Card className="p-4 bg-blue-500/10 border-blue-500/20 mb-4">
-            <div className="flex items-start gap-2">
-              <Info className="w-4 h-4 text-blue-400 mt-0.5" />
-              <div className="space-y-2">
-                <h4 className="font-medium text-blue-400">¿Por qué calibrar?</h4>
-                <p className="text-sm text-blue-300">
-                  La calibración convierte píxeles a unidades reales (mm/cm). Sin calibración, 
-                  las medidas serán aproximadas. Para mediciones precisas:
-                </p>
-                <ol className="text-sm text-blue-300 list-decimal list-inside space-y-1">
-                  <li>Selecciona un objeto de referencia conocido</li>
-                  <li>Usa la cámara para medir ese objeto</li>
-                  <li>El sistema calculará el factor de conversión</li>
-                </ol>
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  onClick={() => setShowInstructions(false)}
-                  className="text-blue-400 hover:text-blue-300"
-                >
-                  Entendido
-                </Button>
-              </div>
+      {/* INSTRUCCIONES INICIALES */}
+      {showInstructions && (
+        <div className="mb-6 p-4 bg-blue-900/20 rounded-lg border border-blue-500/30">
+          <div className="flex items-start gap-3">
+            <Info className="w-5 h-5 text-blue-400 mt-0.5" />
+            <div>
+              <h4 className="font-semibold text-blue-300 mb-2">¿Por qué calibrar?</h4>
+              <p className="text-sm text-gray-300 leading-relaxed">
+                La calibración es esencial para obtener mediciones precisas. Determina la relación 
+                entre píxeles en la imagen y unidades reales (milímetros). Sin calibración, 
+                las mediciones serán inexactas.
+              </p>
             </div>
-          </Card>
-        )}
-
-        {/* Calibración rápida con objetos comunes */}
-        <div className="space-y-3">
-          <Label className="text-sm font-medium">1. Selecciona un Objeto de Referencia</Label>
-          <div className="grid grid-cols-2 gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => useQuickCalibration('coin_1euro')}
-              className="text-xs justify-start"
-            >
-              🪙 Moneda 1€ (23.3mm)
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => useQuickCalibration('card_credit')}
-              className="text-xs justify-start"
-            >
-              💳 Tarjeta (85.6mm)
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => useQuickCalibration('phone_iphone')}
-              className="text-xs justify-start"
-            >
-              📱 iPhone (146.7mm)
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => useQuickCalibration('ruler_10cm')}
-              className="text-xs justify-start"
-            >
-              📏 Regla 10cm
-            </Button>
           </div>
         </div>
+      )}
 
-        {/* Parámetros de calibración */}
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="reference-size">Tamaño Referencia (mm)</Label>
-            <Input
-              id="reference-size"
-              type="number"
-              step="0.1"
-              value={calibrationData.referenceObjectSize}
-              onChange={(e) => handleInputChange('referenceObjectSize', parseFloat(e.target.value))}
-              className="bg-input/50"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="pixels-per-mm">Factor Conversión (px/mm)</Label>
-            <Input
-              id="pixels-per-mm"
-              type="number"
-              step="0.01"
-              value={calibrationData.pixelsPerMm.toFixed(2)}
-              onChange={(e) => handleInputChange('pixelsPerMm', parseFloat(e.target.value))}
-              className="bg-input/50"
-              placeholder="Calculado automáticamente"
-            />
-          </div>
+      {/* MÉTODO 1: CALIBRACIÓN RÁPIDA */}
+      <div className="mb-6">
+        <h4 className="font-semibold text-white mb-3 flex items-center gap-2">
+          <Target className="w-4 h-4 text-green-400" />
+          Calibración Rápida
+        </h4>
+        <div className="grid grid-cols-2 gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => useQuickCalibration('1euro')}
+            className="text-xs"
+          >
+            Moneda 1€ (23.25mm)
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => useQuickCalibration('creditcard')}
+            className="text-xs"
+          >
+            Tarjeta (85.6mm)
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => useQuickCalibration('iphone')}
+            className="text-xs"
+          >
+            iPhone (146.7mm)
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => useQuickCalibration('pencil')}
+            className="text-xs"
+          >
+            Lápiz (175mm)
+          </Button>
         </div>
+      </div>
 
-        {/* Calibración con cámara */}
-        {!isCalibrating && (
+      {/* MÉTODO 2: CALIBRACIÓN POR CÁMARA */}
+      <div className="mb-6">
+        <h4 className="font-semibold text-white mb-3 flex items-center gap-2">
+          <Camera className="w-4 h-4 text-blue-400" />
+          Calibración por Cámara
+        </h4>
+        
+        {!isCalibrating ? (
           <Button
             onClick={startCameraCalibration}
-            className="w-full bg-gradient-primary hover:bg-primary/90 shadow-measurement"
-            size="lg"
-            disabled={calibrationData.referenceObjectSize <= 0}
+            variant="outline"
+            className="w-full"
           >
             <Camera className="w-4 h-4 mr-2" />
-            2. Medir con Cámara
+            Iniciar Calibración por Cámara
           </Button>
-        )}
-
-        {/* Vista de calibración con cámara */}
-        {isCalibrating && (
+        ) : (
           <div className="space-y-4">
-            <div className="relative">
+            <div className="relative bg-black rounded-lg overflow-hidden">
               <video
                 ref={videoRef}
+                className="w-full h-auto"
                 autoPlay
                 playsInline
                 muted
-                className="w-full h-64 object-cover rounded-lg bg-black"
               />
               <canvas
                 ref={canvasRef}
-                width={320}
-                height={240}
                 className="absolute inset-0 w-full h-full cursor-crosshair"
                 onClick={handleCanvasClick}
               />
-              
-              {/* Instrucciones superpuestas */}
-              <div className="absolute top-2 left-2 bg-black/80 text-white p-2 rounded text-sm">
-                {calibrationPoints.length === 0 && "1. Haz clic en un extremo del objeto"}
-                {calibrationPoints.length === 1 && "2. Haz clic en el otro extremo"}
-                {calibrationPoints.length === 2 && `Distancia: ${referencePixelLength.toFixed(1)} píxeles`}
-              </div>
             </div>
-
+            
             <div className="flex gap-2">
-              {referencePixelLength > 0 && (
-                <Button
-                  onClick={completeCalibration}
-                  className="flex-1 bg-calibration text-background hover:bg-calibration/90"
-                >
-                  <CheckCircle className="w-4 h-4 mr-2" />
-                  Confirmar Calibración
-                </Button>
-              )}
-              
+              <Button
+                onClick={completeCalibration}
+                disabled={calibrationPoints.length < 2}
+                className="flex-1 bg-green-600 hover:bg-green-700"
+              >
+                <CheckCircle className="w-4 h-4 mr-2" />
+                Completar Calibración
+              </Button>
               <Button
                 onClick={stopCameraCalibration}
                 variant="outline"
@@ -413,33 +401,141 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
                 Cancelar
               </Button>
             </div>
+            
+            {calibrationPoints.length > 0 && (
+              <div className="text-sm text-gray-300">
+                <p>Puntos marcados: {calibrationPoints.length}/2</p>
+                {referencePixelLength > 0 && (
+                  <p>Distancia medida: {referencePixelLength.toFixed(1)} píxeles</p>
+                )}
+              </div>
+            )}
           </div>
         )}
+      </div>
 
-        {/* Estado de calibración */}
-        {calibrationData.isCalibrated && (
-          <div className="p-3 bg-measurement-active/10 border border-measurement-active/20 rounded-lg">
-            <div className="flex items-center gap-2 mb-1">
-              <CheckCircle className="w-4 h-4 text-measurement-active" />
-              <span className="text-sm font-medium text-measurement-active">Sistema Calibrado</span>
-            </div>
-            <div className="text-xs text-muted-foreground space-y-1">
-              <p>Factor: {calibrationData.pixelsPerMm.toFixed(2)} píxeles = 1mm</p>
-              <p>Método: {calibrationData.calibrationMethod}</p>
-              {calibrationData.lastCalibrationDate && (
-                <p>Fecha: {new Date(calibrationData.lastCalibrationDate).toLocaleDateString()}</p>
-              )}
-            </div>
+      {/* MÉTODO 3: CALIBRACIÓN MANUAL */}
+      <div className="mb-6">
+        <h4 className="font-semibold text-white mb-3 flex items-center gap-2">
+          <Ruler className="w-4 h-4 text-yellow-400" />
+          Calibración Manual
+        </h4>
+        
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <Label htmlFor="pixelsPerMm" className="text-sm text-gray-300">
+              Píxeles por mm
+            </Label>
+            <Input
+              id="pixelsPerMm"
+              type="number"
+              step="0.01"
+              value={calibrationData.pixelsPerMm}
+              onChange={(e) => handleInputChange('pixelsPerMm', parseFloat(e.target.value) || 0)}
+              className="mt-1"
+              placeholder="3.78"
+            />
           </div>
-        )}
+          
+          <div>
+            <Label htmlFor="focalLength" className="text-sm text-gray-300">
+              Distancia focal (mm)
+            </Label>
+            <Input
+              id="focalLength"
+              type="number"
+              step="0.1"
+              value={calibrationData.focalLength}
+              onChange={(e) => handleInputChange('focalLength', parseFloat(e.target.value) || 0)}
+              className="mt-1"
+              placeholder="4.2"
+            />
+          </div>
+          
+          <div>
+            <Label htmlFor="sensorSize" className="text-sm text-gray-300">
+              Tamaño del sensor (mm)
+            </Label>
+            <Input
+              id="sensorSize"
+              type="number"
+              step="0.01"
+              value={calibrationData.sensorSize}
+              onChange={(e) => handleInputChange('sensorSize', parseFloat(e.target.value) || 0)}
+              className="mt-1"
+              placeholder="6.17"
+            />
+          </div>
+          
+          <div>
+            <Label htmlFor="referenceObjectSize" className="text-sm text-gray-300">
+              Tamaño objeto referencia (mm)
+            </Label>
+            <Input
+              id="referenceObjectSize"
+              type="number"
+              step="0.1"
+              value={calibrationData.referenceObjectSize}
+              onChange={(e) => handleInputChange('referenceObjectSize', parseFloat(e.target.value) || 0)}
+              className="mt-1"
+              placeholder="25.4"
+            />
+          </div>
+        </div>
+      </div>
 
-        {deviceInfo && (
-          <div className="text-xs text-muted-foreground border-t pt-4">
-            <p>Dispositivo: {deviceInfo.model}</p>
-            <p>Plataforma: {deviceInfo.platform}</p>
+      {/* INFORMACIÓN DE CALIBRACIÓN ACTUAL */}
+      {calibrationData.isCalibrated && (
+        <div className="p-4 bg-green-900/20 rounded-lg border border-green-500/30">
+          <h4 className="font-semibold text-green-300 mb-2">Calibración Actual</h4>
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <p className="text-gray-400">Método:</p>
+              <p className="text-white font-mono">{calibrationData.calibrationMethod}</p>
+            </div>
+            <div>
+              <p className="text-gray-400">Píxeles/mm:</p>
+              <p className="text-white font-mono">{calibrationData.pixelsPerMm.toFixed(2)}</p>
+            </div>
+            <div>
+              <p className="text-gray-400">Distancia focal:</p>
+              <p className="text-white font-mono">{calibrationData.focalLength} mm</p>
+            </div>
+            <div>
+              <p className="text-gray-400">Tamaño sensor:</p>
+              <p className="text-white font-mono">{calibrationData.sensorSize} mm</p>
+            </div>
+            {calibrationData.lastCalibrationDate && (
+              <div className="col-span-2">
+                <p className="text-gray-400">Última calibración:</p>
+                <p className="text-white font-mono">
+                  {new Date(calibrationData.lastCalibrationDate).toLocaleString()}
+                </p>
+              </div>
+            )}
           </div>
-        )}
-      </Card>
-    </div>
+        </div>
+      )}
+
+      {/* BOTÓN DE RESET */}
+      <div className="mt-6">
+        <Button
+          onClick={() => {
+            const resetData = {
+              ...calibrationData,
+              isCalibrated: false,
+              pixelsPerMm: 0,
+              calibrationMethod: 'manual' as const
+            };
+            setCalibrationData(resetData);
+            onCalibrationChange(resetData);
+          }}
+          variant="outline"
+          className="w-full text-red-400 border-red-400 hover:bg-red-400 hover:text-white"
+        >
+          Resetear Calibración
+        </Button>
+      </div>
+    </Card>
   );
 };

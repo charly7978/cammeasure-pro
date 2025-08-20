@@ -41,40 +41,6 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
   const [calibrationQuality, setCalibrationQuality] = useState<any>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
-  
-  // Efecto para redibujar los puntos en el canvas sin temblor
-  useEffect(() => {
-    if (!canvasRef.current || !isCalibrating) return;
-    
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    
-    // Limpiar canvas
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // Redibujar puntos
-    calibrationPoints.forEach((point, index) => {
-      ctx.fillStyle = '#84cc16';
-      ctx.beginPath();
-      ctx.arc(point.x, point.y, 5, 0, 2 * Math.PI);
-      ctx.fill();
-      
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '12px Arial';
-      ctx.fillText(`${index + 1}`, point.x + 8, point.y - 8);
-    });
-    
-    // Dibujar línea si hay 2 puntos
-    if (calibrationPoints.length === 2) {
-      ctx.strokeStyle = '#84cc16';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(calibrationPoints[0].x, calibrationPoints[0].y);
-      ctx.lineTo(calibrationPoints[1].x, calibrationPoints[1].y);
-      ctx.stroke();
-    }
-  }, [calibrationPoints, isCalibrating]);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
 
   useEffect(() => {
@@ -163,28 +129,47 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
     setCalibrationPoints([]);
   };
 
-  const handleCanvasClick = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!isCalibrating || calibrationPoints.length >= 2) return;
 
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const rect = e.currentTarget.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    const x = (e.clientX - rect.left) * scaleX;
-    const y = (e.clientY - rect.top) * scaleY;
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
 
     const newPoints = [...calibrationPoints, { x, y }];
     setCalibrationPoints(newPoints);
 
-    // Si tenemos 2 puntos, calcular distancia
-    if (newPoints.length === 2) {
-      const pixelDistance = Math.sqrt(
-        Math.pow(newPoints[1].x - newPoints[0].x, 2) + 
-        Math.pow(newPoints[1].y - newPoints[0].y, 2)
-      );
-      setReferencePixelLength(pixelDistance);
+    // Dibujar punto en el canvas
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.fillStyle = '#84cc16';
+      ctx.beginPath();
+      ctx.arc(x, y, 5, 0, 2 * Math.PI);
+      ctx.fill();
+      
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '12px Arial';
+      ctx.fillText(`${newPoints.length}`, x + 8, y - 8);
+
+      // Si tenemos 2 puntos, dibujar línea
+      if (newPoints.length === 2) {
+        ctx.strokeStyle = '#84cc16';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(newPoints[0].x, newPoints[0].y);
+        ctx.lineTo(newPoints[1].x, newPoints[1].y);
+        ctx.stroke();
+
+        // Calcular distancia en píxeles
+        const pixelDistance = Math.sqrt(
+          Math.pow(newPoints[1].x - newPoints[0].x, 2) + 
+          Math.pow(newPoints[1].y - newPoints[0].y, 2)
+        );
+        setReferencePixelLength(pixelDistance);
+      }
     }
   };
 
@@ -409,12 +394,8 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
               />
               <canvas
                 ref={canvasRef}
-                width={1280}
-                height={720}
-                className="absolute inset-0 w-full h-full cursor-crosshair pointer-events-none"
-                style={{ mixBlendMode: 'normal' }}
-              />
-              <div 
+                width={320}
+                height={240}
                 className="absolute inset-0 w-full h-full cursor-crosshair"
                 onClick={handleCanvasClick}
               />

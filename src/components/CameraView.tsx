@@ -27,12 +27,12 @@ interface CameraViewProps {
   onRealTimeObjects: (objects: DetectedObject[]) => void;
 }
 
-export const CameraView = ({
+export const CameraView: React.FC<CameraViewProps> = ({
   onImageCapture,
   isActive,
   calibrationData,
   onRealTimeObjects
-}: CameraViewProps) => {
+}) => {
   const { 
     videoRef, 
     cameraStream, 
@@ -60,9 +60,57 @@ export const CameraView = ({
   const [frameCount, setFrameCount] = useState(0);
   const processingInterval = useRef<NodeJS.Timeout | null>(null);
 
+  // INICIALIZACIÓN INMEDIATA DE CÁMARA
+  useEffect(() => {
+    let isMounted = true;
+    let intervalId: NodeJS.Timeout | null = null;
+    
+    const initialize = async () => {
+      try {
+        console.log('🚀 INICIALIZANDO CÁMARA...');
+        
+        const permissions = await requestCameraPermissions();
+        if (!isMounted) return;
+        
+        setHasPermissions(permissions);
+        console.log(`📋 Permisos de cámara: ${permissions ? '✅' : '❌'}`);
+        
+        if (permissions) {
+          await startCamera({ facingMode: 'environment' });
+          if (!isMounted) return;
+          
+          console.log('✅ CÁMARA INICIADA CORRECTAMENTE');
+          
+          // INICIAR DETECCIÓN AUTOMÁTICA CUANDO LA CÁMARA ESTÉ LISTA
+          if (isActive && isRealTimeMeasurement) {
+            intervalId = setInterval(async () => {
+              if (isMounted && videoRef.current && videoRef.current.readyState === 4) {
+                await processVideoFrame();
+              }
+            }, 3000); // Procesar cada 3 segundos para mejor estabilidad
+          }
+        }
+      } catch (error) {
+        console.error('❌ Error inicializando cámara:', error);
+        if (isMounted) {
+          setHasPermissions(false);
+        }
+      }
+    };
+
+    initialize();
+    
+    return () => {
+      isMounted = false;
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
+  }, [isActive, isRealTimeMeasurement]);
+
   // PROCESAR FRAME DE VIDEO CON OPENCV AVANZADO Y DEBUG
-  const processVideoFrame = useCallback(async () => {
-    if (!videoRef.current || !canvasRef.current || isProcessing) return;
+  const processVideoFrame = async () => {
+    if (!videoRef.current || !canvasRef.current) return;
     
     try {
       setIsProcessing(true);
@@ -123,55 +171,7 @@ export const CameraView = ({
     } finally {
       setIsProcessing(false);
     }
-  }, [calibrationData, onRealTimeObjects]);
-
-  // INICIALIZACIÓN INMEDIATA DE CÁMARA
-  useEffect(() => {
-    let isMounted = true;
-    let intervalId: NodeJS.Timeout | null = null;
-    
-    const initialize = async () => {
-      try {
-        console.log('🚀 INICIALIZANDO CÁMARA...');
-        
-        const permissions = await requestCameraPermissions();
-        if (!isMounted) return;
-        
-        setHasPermissions(permissions);
-        console.log(`📋 Permisos de cámara: ${permissions ? '✅' : '❌'}`);
-        
-        if (permissions) {
-          await startCamera({ facingMode: 'environment' });
-          if (!isMounted) return;
-          
-          console.log('✅ CÁMARA INICIADA CORRECTAMENTE');
-          
-          // INICIAR DETECCIÓN AUTOMÁTICA CUANDO LA CÁMARA ESTÉ LISTA
-          if (isActive && isRealTimeMeasurement) {
-            intervalId = setInterval(async () => {
-              if (isMounted && videoRef.current && videoRef.current.readyState === 4) {
-                await processVideoFrame();
-              }
-            }, 500); // Procesar cada 500ms (2 FPS) para detección ágil
-          }
-        }
-      } catch (error) {
-        console.error('❌ Error inicializando cámara:', error);
-        if (isMounted) {
-          setHasPermissions(false);
-        }
-      }
-    };
-
-    initialize();
-    
-    return () => {
-      isMounted = false;
-      if (intervalId) {
-        clearInterval(intervalId);
-      }
-    };
-  }, [isActive, isRealTimeMeasurement, requestCameraPermissions, startCamera, processVideoFrame]);
+  };
 
   // CONFIGURAR CANVAS OVERLAY CUANDO CAMBIE EL TAMAÑO DE VIDEO
   useEffect(() => {
@@ -191,7 +191,7 @@ export const CameraView = ({
       video.addEventListener('loadedmetadata', updateCanvasSize);
       return () => video.removeEventListener('loadedmetadata', updateCanvasSize);
     }
-  }, []);
+  }, [videoRef.current]);
 
   // CAPTURAR IMAGEN
   const captureImage = useCallback(async () => {
@@ -379,36 +379,6 @@ export const CameraView = ({
                     {Math.round(obj.confidence * 100)}%
                   </span>
                 </div>
-                
-                {/* MEDICIONES 3D AVANZADAS */}
-                {obj.depth3D && (
-                  <>
-                    <div className="flex justify-between">
-                      <span>Distancia:</span>
-                      <span className="font-mono text-purple-400">
-                        {obj.depth3D.distance > 1000 
-                          ? `${(obj.depth3D.distance / 1000).toFixed(1)} m`
-                          : `${Math.round(obj.depth3D.distance)} mm`
-                        }
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Volumen:</span>
-                      <span className="font-mono text-orange-400">
-                        {obj.depth3D.volume > 1000000 
-                          ? `${(obj.depth3D.volume / 1000000).toFixed(1)} cm³`
-                          : `${Math.round(obj.depth3D.volume)} mm³`
-                        }
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Profundidad:</span>
-                      <span className="font-mono text-teal-400">
-                        {obj.depth3D.depth.toFixed(1)} mm
-                      </span>
-                    </div>
-                  </>
-                )}
                 {calibrationData?.isCalibrated && (
                   <div className="mt-2 pt-2 border-t border-white/20 text-xs text-green-300">
                     ✅ Medición calibrada en {obj.dimensions.unit}

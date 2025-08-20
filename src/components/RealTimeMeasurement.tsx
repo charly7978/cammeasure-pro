@@ -229,16 +229,12 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
     }, 500); // Intervalo optimizado
 
     return () => {
-      isActive_internal = false;
       clearInterval(intervalId);
-      if (processingInterval.current) {
-        clearInterval(processingInterval.current);
-      }
       if (animationFrameId.current) {
         cancelAnimationFrame(animationFrameId.current);
       }
     };
-  }, [isActive, processFrameAutomatically, isProcessing]);
+  }, [isActive, processFrameAutomatically]);
 
   // OVERLAY SIMPLIFICADO PARA INFORMACIÓN
   const drawSimpleOverlay = (ctx: CanvasRenderingContext2D, object: any, measurement: RealTimeMeasurementType) => {

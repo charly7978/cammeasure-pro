@@ -58,74 +58,8 @@ export const CameraView: React.FC<CameraViewProps> = ({
   
 
 
-  // INICIALIZACIÓN INMEDIATA DE CÁMARA
-  useEffect(() => {
-    let isMounted = true;
-    let intervalId: NodeJS.Timeout | null = null;
-    
-    const initialize = async () => {
-      try {
-        console.log('🚀 INICIALIZANDO CÁMARA...');
-        
-        const permissions = await requestCameraPermissions();
-        if (!isMounted) return;
-        
-        setHasPermissions(permissions);
-        console.log(`📋 Permisos de cámara: ${permissions ? '✅' : '❌'}`);
-        
-        if (permissions) {
-          await startCamera({ facingMode: 'environment' });
-          if (!isMounted) return;
-          
-          console.log('✅ CÁMARA INICIADA CORRECTAMENTE');
-        }
-      } catch (error) {
-        console.error('❌ Error inicializando cámara:', error);
-        if (isMounted) {
-          setHasPermissions(false);
-        }
-      }
-    };
-
-    initialize();
-    
-    return () => {
-      isMounted = false;
-      if (intervalId) {
-        clearInterval(intervalId);
-      }
-    };
-  }, [isActive]);
-
-  // DETECCIÓN AUTOMÁTICA RESTAURADA
-  useEffect(() => {
-    let isMounted = true;
-    let intervalId: NodeJS.Timeout | null = null;
-    
-    if (isActive && isRealTimeMeasurement && hasPermissions && videoRef.current) {
-      console.log('🔄 INICIANDO DETECCIÓN AUTOMÁTICA...');
-      
-      // Procesar frame inmediatamente
-      setTimeout(() => processVideoFrame(), 1000);
-      
-      // Luego procesar cada 2 segundos (más frecuente)
-      intervalId = setInterval(async () => {
-        if (isMounted && videoRef.current && videoRef.current.readyState === 4) {
-          await processVideoFrame();
-        }
-      }, 2000);
-    }
-    
-    return () => {
-      isMounted = false;
-      if (intervalId) {
-        clearInterval(intervalId);
-      }
-    };
-  }, [isActive, isRealTimeMeasurement, hasPermissions]);
-
   // PROCESAR FRAME DE VIDEO CON OPENCV - SOLO DETECCIÓN AUTOMÁTICA DEL CENTRO
-  const processVideoFrame = async () => {
+  const processVideoFrame = useCallback(async () => {
     if (!videoRef.current || !canvasRef.current) return;
     
     try {
@@ -198,7 +132,73 @@ export const CameraView: React.FC<CameraViewProps> = ({
     } finally {
       setIsProcessing(false);
     }
-  };
+  }, [calibrationData, onRealTimeObjects]);
+
+  // INICIALIZACIÓN INMEDIATA DE CÁMARA
+  useEffect(() => {
+    let isMounted = true;
+    let intervalId: NodeJS.Timeout | null = null;
+    
+    const initialize = async () => {
+      try {
+        console.log('🚀 INICIALIZANDO CÁMARA...');
+        
+        const permissions = await requestCameraPermissions();
+        if (!isMounted) return;
+        
+        setHasPermissions(permissions);
+        console.log(`📋 Permisos de cámara: ${permissions ? '✅' : '❌'}`);
+        
+        if (permissions) {
+          await startCamera({ facingMode: 'environment' });
+          if (!isMounted) return;
+          
+          console.log('✅ CÁMARA INICIADA CORRECTAMENTE');
+        }
+      } catch (error) {
+        console.error('❌ Error inicializando cámara:', error);
+        if (isMounted) {
+          setHasPermissions(false);
+        }
+      }
+    };
+
+    initialize();
+    
+    return () => {
+      isMounted = false;
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
+  }, [isActive]);
+
+  // DETECCIÓN AUTOMÁTICA RESTAURADA
+  useEffect(() => {
+    let isMounted = true;
+    let intervalId: NodeJS.Timeout | null = null;
+    
+    if (isActive && isRealTimeMeasurement && hasPermissions && videoRef.current) {
+      console.log('🔄 INICIANDO DETECCIÓN AUTOMÁTICA...');
+      
+      // Procesar frame inmediatamente
+      setTimeout(() => processVideoFrame(), 1000);
+      
+      // Luego procesar cada 2 segundos (más frecuente)
+      intervalId = setInterval(async () => {
+        if (isMounted && videoRef.current && videoRef.current.readyState === 4) {
+          await processVideoFrame();
+        }
+      }, 2000);
+    }
+    
+    return () => {
+      isMounted = false;
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
+  }, [isActive, isRealTimeMeasurement, hasPermissions, processVideoFrame]);
 
   // CONFIGURAR CANVAS OVERLAY CUANDO CAMBIE EL TAMAÑO DE VIDEO
   useEffect(() => {

@@ -108,7 +108,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
     };
   }, [isActive, isRealTimeMeasurement]);
 
-  // PROCESAR FRAME DE VIDEO CON OPENCV AVANZADO
+  // PROCESAR FRAME DE VIDEO CON OPENCV AVANZADO Y DEBUG
   const processVideoFrame = async () => {
     if (!videoRef.current || !canvasRef.current) return;
     
@@ -124,15 +124,25 @@ export const CameraView: React.FC<CameraViewProps> = ({
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
       
+      if (canvas.width === 0 || canvas.height === 0) {
+        console.log('❌ Canvas sin dimensiones válidas');
+        return;
+      }
+      
       // Capturar frame
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      
+      console.log(`📏 Procesando imagen: ${imageData.width}x${imageData.height}, calibrado: ${calibrationData?.isCalibrated ? 'SÍ' : 'NO'}`);
       
       // DETECCIÓN AVANZADA CON OPENCV UNIFICADO Y CALIBRACIÓN APLICADA
       const result = await unifiedOpenCV.detectObjectSilhouettes(imageData, calibrationData);
       
       if (result.objects.length > 0) {
-        console.log(`✅ OpenCV detectó ${result.objects.length} objetos calibrados en ${result.processingTime.toFixed(1)}ms`);
+        const obj = result.objects[0];
+        console.log(`✅ OpenCV detectó ${result.objects.length} objetos en ${result.processingTime.toFixed(1)}ms`);
+        console.log(`📊 Objeto principal: ${obj.dimensions.width.toFixed(1)}x${obj.dimensions.height.toFixed(1)} ${obj.dimensions.unit}, área: ${obj.dimensions.area.toFixed(0)} ${obj.dimensions.unit}²`);
+        
         setDetectedObjects(result.objects);
         onRealTimeObjects(result.objects);
         
@@ -141,7 +151,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
           unifiedOpenCV.drawDetectionOverlay(overlayCanvasRef.current, result);
         }
       } else {
-        console.log('❌ No se detectaron objetos');
+        console.log('❌ No se detectaron objetos - reintentando con parámetros más sensibles...');
         setDetectedObjects([]);
         onRealTimeObjects([]);
         

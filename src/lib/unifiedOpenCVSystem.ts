@@ -34,7 +34,7 @@ class UnifiedOpenCVSystem {
   }
 
   /**
-   * DETECTAR SILUETAS CON PRIORIDAD EN OBJETOS CENTRALES
+   * DETECTAR SILUETAS CON CONFIGURACIÓN MÁS PERMISIVA
    */
   async detectObjectSilhouettes(
     imageData: ImageData, 
@@ -49,21 +49,27 @@ class UnifiedOpenCVSystem {
 
     try {
       const { width, height, data } = imageData;
+      console.log(`🔍 Iniciando detección OpenCV en imagen ${width}x${height}`);
       
       // 1. CONVERSIÓN A ESCALA DE GRISES OPTIMIZADA
       const grayData = this.convertToGrayscale(data, width, height);
+      console.log('✅ Conversión a escala de grises completada');
       
       // 2. FILTRO GAUSSIANO PARA REDUCIR RUIDO
-      const blurredData = this.applyGaussianBlur(grayData, width, height, 1.4);
+      const blurredData = this.applyGaussianBlur(grayData, width, height, 1.2);
+      console.log('✅ Filtro Gaussiano aplicado');
       
-      // 3. DETECCIÓN DE BORDES CANNY AVANZADA - CONFIGURADA PARA OBJETOS CENTRALES
-      const edgeData = this.cannyEdgeDetection(blurredData, width, height, 30, 120);
+      // 3. DETECCIÓN DE BORDES CANNY MÁS PERMISIVA
+      const edgeData = this.cannyEdgeDetection(blurredData, width, height, 20, 100);
+      console.log('✅ Detección Canny completada');
       
-      // 4. ENCONTRAR CONTORNOS REALES PRIORIZANDO EL CENTRO
-      const contours = this.findContoursWithCentralPriority(edgeData, width, height);
+      // 4. ENCONTRAR CONTORNOS CON MEJOR ALCANCE
+      const contours = this.findContoursImproved(edgeData, width, height);
+      console.log(`✅ Encontrados ${contours.length} contornos`);
       
-      // 5. FILTRAR Y ANALIZAR CONTORNOS SIGNIFICATIVOS
-      const significantContours = this.filterSignificantContours(contours, width, height);
+      // 5. FILTRAR CONTORNOS MÁS PERMISIVO
+      const significantContours = this.filterContoursImproved(contours, width, height);
+      console.log(`✅ Filtrados a ${significantContours.length} contornos significativos`);
       
       // 6. CREAR OBJETOS DETECTADOS CON MEDICIONES REALES EN MM/CM
       const objects = this.createDetectedObjects(
@@ -74,6 +80,7 @@ class UnifiedOpenCVSystem {
       );
 
       const processingTime = performance.now() - startTime;
+      console.log(`✅ Detección completada en ${processingTime.toFixed(1)}ms con ${objects.length} objetos`);
 
       return {
         objects,
@@ -364,9 +371,9 @@ class UnifiedOpenCVSystem {
   }
 
   /**
-   * ENCONTRAR CONTORNOS CON PRIORIDAD CENTRAL
+   * ENCONTRAR CONTORNOS MEJORADO (MÁS PERMISIVO)
    */
-  private findContoursWithCentralPriority(edgeData: Uint8Array, width: number, height: number): ContourPoint[][] {
+  private findContoursImproved(edgeData: Uint8Array, width: number, height: number): ContourPoint[][] {
     const contours: ContourPoint[][] = [];
     const visited = new Array(width * height).fill(false);
     
@@ -382,44 +389,97 @@ class UnifiedOpenCVSystem {
       {dx: 1, dy: -1}   // NE
     ];
 
-    // PRIORIZAR BÚSQUEDA DESDE EL CENTRO
+    // Buscar contornos en toda la imagen pero priorizando el centro
     const centerX = Math.floor(width / 2);
     const centerY = Math.floor(height / 2);
-    const searchRadius = Math.min(width, height) / 3;
 
-    // Crear lista de puntos ordenados por distancia al centro
-    const searchPoints: Array<{x: number, y: number, distance: number}> = [];
+    // Lista de puntos candidatos
+    const candidates: Array<{x: number, y: number, distance: number}> = [];
     
     for (let y = 1; y < height - 1; y++) {
       for (let x = 1; x < width - 1; x++) {
         const idx = y * width + x;
         if (edgeData[idx] === 255) {
           const distance = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2);
-          searchPoints.push({x, y, distance});
+          candidates.push({x, y, distance});
         }
       }
     }
 
-    // Ordenar por distancia al centro (más cerca primero)
-    searchPoints.sort((a, b) => a.distance - b.distance);
+    // Ordenar candidatos por proximidad al centro
+    candidates.sort((a, b) => a.distance - b.distance);
 
-    // Buscar contornos priorizando los más centrales
-    for (const point of searchPoints) {
-      const idx = point.y * width + point.x;
+    // Procesar candidatos
+    for (const candidate of candidates) {
+      const idx = candidate.y * width + candidate.x;
       
       if (!visited[idx] && edgeData[idx] === 255) {
-        const contour = this.traceContour(edgeData, visited, point.x, point.y, width, height, directions);
+        const contour = this.traceContour(edgeData, visited, candidate.x, candidate.y, width, height, directions);
         
-        if (contour.length > 20) { // Filtrar contornos más grandes
+        if (contour.length > 8) { // Contornos más pequeños permitidos
           contours.push(contour);
           
-          // Limitar a máximo 5 contornos para mejor rendimiento
-          if (contours.length >= 5) break;
+          // Permitir más contornos
+          if (contours.length >= 10) break;
         }
       }
     }
     
+    console.log(`🔍 Encontrados ${contours.length} contornos en búsqueda mejorada`);
     return contours;
+  }
+
+  /**
+   * FILTRAR CONTORNOS MEJORADO (MÁS PERMISIVO)
+   */
+  private filterContoursImproved(
+    contours: ContourPoint[][], 
+    width: number, 
+    height: number
+  ): ContourPoint[][] {
+    const totalArea = width * height;
+    const minArea = totalArea * 0.0001; // Área mínima más pequeña (0.01%)
+    const maxArea = totalArea * 0.9;    // Área máxima más grande
+    
+    const filtered = contours
+      .filter(contour => {
+        const area = this.calculateContourArea(contour);
+        return area >= minArea && area <= maxArea;
+      })
+      .sort((a, b) => {
+        // Ordenar por combinación de área y proximidad al centro
+        const areaA = this.calculateContourArea(a);
+        const areaB = this.calculateContourArea(b);
+        const centerA = this.getContourCenter(a);
+        const centerB = this.getContourCenter(b);
+        const distA = Math.sqrt((centerA.x - width/2)**2 + (centerA.y - height/2)**2);
+        const distB = Math.sqrt((centerB.x - width/2)**2 + (centerB.y - height/2)**2);
+        
+        // Score combinado: área grande + proximidad al centro
+        const scoreA = areaA / (1 + distA / Math.max(width, height));
+        const scoreB = areaB / (1 + distB / Math.max(width, height));
+        
+        return scoreB - scoreA;
+      })
+      .slice(0, 5); // Mantener máximo 5 contornos
+    
+    console.log(`🔍 Filtrados ${filtered.length} de ${contours.length} contornos`);
+    return filtered;
+  }
+
+  /**
+   * OBTENER CENTRO DE CONTORNO
+   */
+  private getContourCenter(contour: ContourPoint[]): {x: number, y: number} {
+    if (contour.length === 0) return {x: 0, y: 0};
+    
+    const sumX = contour.reduce((sum, point) => sum + point.x, 0);
+    const sumY = contour.reduce((sum, point) => sum + point.y, 0);
+    
+    return {
+      x: sumX / contour.length,
+      y: sumY / contour.length
+    };
   }
 
   /**

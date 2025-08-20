@@ -607,14 +607,115 @@ class NativeOpenCV {
       const thresholded = this.applyBinaryThreshold(grayData, width, height);
       
       // Encontrar contornos reales
-      const contours = this.findContoursReal(thresholded, width, height);
+      const allContours = this.findContoursReal(thresholded, width, height);
       
-      return contours;
+      // FILTRAR SOLO EL OBJETO CENTRAL Y PREDOMINANTE
+      const centralContour = this.filterCentralDominantContour(allContours, width, height);
+      
+      return centralContour ? [centralContour] : [];
       
     } catch (error) {
       console.error('❌ Error en búsqueda de contornos:', error);
       return [];
     }
+  }
+
+  // FILTRO PARA OBJETO CENTRAL Y PREDOMINANTE
+  private filterCentralDominantContour(contours: any[], width: number, height: number): any | null {
+    if (contours.length === 0) return null;
+    
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const screenArea = width * height;
+    
+    // Filtrar contornos por criterios de calidad
+    const validContours = contours.filter(contour => {
+      const { area, boundingBox, points } = contour;
+      
+      // 1. FILTRAR POR TAMAÑO MÍNIMO (eliminar objetos muy pequeños)
+      const minAreaThreshold = screenArea * 0.01; // 1% de la pantalla
+      if (area < minAreaThreshold) return false;
+      
+      // 2. FILTRAR POR TAMAÑO MÁXIMO (eliminar objetos que ocupan toda la pantalla)
+      const maxAreaThreshold = screenArea * 0.8; // 80% de la pantalla
+      if (area > maxAreaThreshold) return false;
+      
+      // 3. FILTRAR POR RELACIÓN DE ASPECTO (eliminar objetos muy alargados)
+      const aspectRatio = boundingBox.width / boundingBox.height;
+      if (aspectRatio < 0.2 || aspectRatio > 5.0) return false;
+      
+      // 4. FILTRAR POR PERÍMETRO MÍNIMO (eliminar objetos con contornos muy simples)
+      const minPerimeter = Math.sqrt(area) * 2; // Perímetro mínimo esperado
+      if (points.length < minPerimeter) return false;
+      
+      return true;
+    });
+    
+    if (validContours.length === 0) return null;
+    
+    // CALCULAR PUNTUACIÓN PARA CADA CONTORNO VÁLIDO
+    const scoredContours = validContours.map(contour => {
+      const { area, boundingBox, points, confidence } = contour;
+      
+      // Calcular centro del contorno
+      const contourCenterX = boundingBox.x + boundingBox.width / 2;
+      const contourCenterY = boundingBox.y + boundingBox.height / 2;
+      
+      // 1. PUNTUACIÓN POR DISTANCIA AL CENTRO DE LA PANTALLA
+      const distanceToCenter = Math.sqrt(
+        Math.pow(contourCenterX - centerX, 2) + 
+        Math.pow(contourCenterY - centerY, 2)
+      );
+      const maxDistance = Math.sqrt(centerX * centerX + centerY * centerY);
+      const centerScore = 1 - (distanceToCenter / maxDistance);
+      
+      // 2. PUNTUACIÓN POR TAMAÑO RELATIVO
+      const relativeArea = area / screenArea;
+      const sizeScore = Math.min(relativeArea * 10, 1); // Normalizar a [0,1]
+      
+      // 3. PUNTUACIÓN POR COMPLEJIDAD DEL CONTORNO
+      const complexityScore = Math.min(points.length / 100, 1); // Normalizar a [0,1]
+      
+      // 4. PUNTUACIÓN POR CONFIANZA
+      const confidenceScore = confidence || 0.5;
+      
+      // PUNTUACIÓN FINAL PONDERADA
+      const finalScore = (
+        centerScore * 0.4 +      // 40% peso a posición central
+        sizeScore * 0.3 +        // 30% peso a tamaño apropiado
+        complexityScore * 0.2 +  // 20% peso a complejidad
+        confidenceScore * 0.1    // 10% peso a confianza
+      );
+      
+      return {
+        ...contour,
+        score: finalScore,
+        centerDistance: distanceToCenter,
+        relativeArea: relativeArea
+      };
+    });
+    
+    // ORDENAR POR PUNTUACIÓN Y SELECCIONAR EL MEJOR
+    scoredContours.sort((a, b) => b.score - a.score);
+    
+    const bestContour = scoredContours[0];
+    
+    // VERIFICACIÓN FINAL: el contorno debe tener una puntuación mínima
+    if (bestContour.score < 0.3) {
+      console.log('⚠️ Ningún contorno cumple con los criterios mínimos de calidad');
+      return null;
+    }
+    
+    console.log('🎯 Contorno central seleccionado:', {
+      score: bestContour.score.toFixed(3),
+      area: bestContour.area,
+      centerDistance: Math.round(bestContour.centerDistance),
+      relativeArea: (bestContour.relativeArea * 100).toFixed(1) + '%'
+    });
+    
+    // Retornar solo el contorno seleccionado (sin información de puntuación)
+    const { score, centerDistance, relativeArea, ...cleanContour } = bestContour;
+    return cleanContour;
   }
 
   // UMBRAL BINARIO REAL

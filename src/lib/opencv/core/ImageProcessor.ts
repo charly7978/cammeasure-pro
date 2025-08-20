@@ -192,12 +192,12 @@ export class ImageProcessor {
   }
 
   /**
-   * MEJORA DE CONTRASTE ADAPTATIVA (CLAHE)
+   * MEJORA DE CONTRASTE ADAPTATIVA (CLAHE) MEJORADA
    */
   enhanceContrast(data: Uint8Array, width: number, height: number): Uint8Array {
     const result = new Uint8Array(width * height);
-    const tileSize = 64; // Tamaño de ventana adaptativa
-    const clipLimit = 2.0; // Límite de recorte
+    const tileSize = 32; // Ventana más pequeña para mejor detalle local
+    const clipLimit = 3.0; // Mayor límite para más contraste
     
     // Implementación CLAHE simplificada
     for (let y = 0; y < height; y += tileSize) {

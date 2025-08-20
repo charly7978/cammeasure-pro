@@ -82,7 +82,7 @@ export class ContourDetector {
           edges, visited, x, y, width, height, approximationMethod
         );
         
-        if (contour.length >= 5) { // Contornos muy pequeños permitidos
+        if (contour.length >= 10) { // Mínimo 10 puntos para contornos de calidad
           const properties = this.calculateContourProperties(contour, width, height);
           
           // Filtrar contornos por calidad
@@ -101,8 +101,8 @@ export class ContourDetector {
           }
         }
         
-        // Límite de contornos - SOLO DETECTAR 3 MÁXIMO
-        if (contours.length >= 3) break;
+        // Límite de contornos - SOLO DETECTAR 1 CONTORNO
+        if (contours.length >= 1) break;
       }
     }
     
@@ -638,8 +638,8 @@ export class ContourDetector {
     imgHeight: number
   ): boolean {
     const totalArea = imgWidth * imgHeight;
-    const minArea = totalArea * 0.05; // Área mínima 5% para objetos grandes SOLAMENTE
-    const maxArea = totalArea * 0.90;  // Área máxima 90%
+    const minArea = totalArea * 0.08; // Área mínima 8% - SOLO OBJETOS GRANDES
+    const maxArea = totalArea * 0.80;  // Área máxima 80% - evitar detectar toda la imagen
     
     return (
       properties.area >= minArea &&

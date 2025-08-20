@@ -87,7 +87,11 @@ export const CameraView: React.FC<CameraViewProps> = ({
               if (isMounted && videoRef.current && videoRef.current.readyState === 4) {
                 await processVideoFrame();
               }
+<<<<<<< Current (Your changes)
             }, 5000); // Procesar cada 5 segundos para evitar temblores
+=======
+            }, 500); // Procesar cada 500ms (2 FPS) para detección ágil
+>>>>>>> Incoming (Background Agent changes)
           }
         }
       } catch (error) {

@@ -60,9 +60,9 @@ export class SilhouetteDetector {
     console.log(`📏 Calibración: ${calibrationData?.isCalibrated ? 'SÍ' : 'NO'}, pixelsPerMm: ${calibrationData?.pixelsPerMm || 0}`);
     
     try {
-      // PASO 1: PROCESAMIENTO DE IMAGEN OPTIMIZADO
-      console.log('📷 Paso 1: Procesamiento de imagen...');
-      const processed = this.imageProcessor.processImage(imageData, 1.3); // Contraste aumentado
+      // PASO 1: PROCESAMIENTO DE IMAGEN OPTIMIZADO PARA OBJETOS GRANDES
+      console.log('📷 Paso 1: Procesamiento de imagen para objeto grande central...');
+      const processed = this.imageProcessor.processImage(imageData, 2.0); // Sigma mayor para objetos grandes
       
       // PASO 2: MEJORA DE CONTRASTE ADAPTATIVA  
       console.log('🌟 Paso 2: Mejora de contraste adaptativa...');
@@ -71,14 +71,36 @@ export class SilhouetteDetector {
       // PASO 3: DETECCIÓN DE BORDES OPTIMIZADA PARA OBJETOS GRANDES
       console.log('🔍 Paso 3: Detección de bordes para objetos grandes...');
       
-      // Parámetros optimizados para objetos grandes y centrales
-      const cannyResult = this.edgeDetector.detectEdges(enhanced, width, height, {
-        lowThreshold: 30,    // Umbral bajo balanceado
-        highThreshold: 90,   // Umbral alto para bordes definidos
-        sigma: 1.8,          // Sigma aumentado para suavizar ruido
-        sobelKernelSize: 3,  // Kernel estándar eficiente
-        l2Gradient: true     // Gradiente L2 para mayor precisión
-      });
+      // Parámetros optimizados para UN SOLO OBJETO GRANDE CENTRAL
+      const cannyParams = [
+        // Pasada única optimizada para objetos grandes
+        { lowThreshold: 50, highThreshold: 150, sigma: 2.5, sobelKernelSize: 5, l2Gradient: true }
+      ];
+      
+      // Ejecutar múltiples detecciones y combinar resultados
+      let bestEdgeMap: Uint8Array | null = null;
+      let bestEdgeCount = 0;
+      
+      for (const params of cannyParams) {
+        const result = this.edgeDetector.detectEdges(enhanced, width, height, params);
+        if (result.edgePixels > bestEdgeCount && result.edgePixels < width * height * 0.3) {
+          bestEdgeMap = result.edges;
+          bestEdgeCount = result.edgePixels;
+        }
+      }
+      
+      // Aplicar operaciones morfológicas para mejorar el calco
+      const morphedEdges = this.applyMorphologicalClose(
+        bestEdgeMap || new Uint8Array(width * height), 
+        width, 
+        height
+      );
+      
+      const cannyResult = {
+        edges: morphedEdges,
+        edgePixels: this.countEdgePixels(morphedEdges),
+        threshold: { low: 50, high: 150 }
+      };
       
       console.log(`✅ Bordes detectados: ${cannyResult.edgePixels} píxeles`);
       
@@ -152,8 +174,8 @@ export class SilhouetteDetector {
     // FILTRAR PARA DETECTAR SOLO EL OBJETO CENTRAL MÁS GRANDE
     const centerX = width / 2;
     const centerY = height / 2;
-    const minAreaPercentage = 0.02; // Mínimo 2% del área para no perder objetos
-    const maxDistanceFromCenter = Math.min(width, height) * 0.5; // 50% del tamaño (toda la zona central)
+    const minAreaPercentage = 0.10; // MÍNIMO 10% del área total - SOLO OBJETOS GRANDES
+    const maxDistanceFromCenter = Math.min(width, height) * 0.3; // 30% - SOLO ZONA CENTRAL
     
     // Calcular score para cada contorno basado en tamaño y centralidad
     const scoredContours = contours.map(contour => {
@@ -163,11 +185,11 @@ export class SilhouetteDetector {
       const distanceFromCenter = Math.sqrt((objCenterX - centerX) ** 2 + (objCenterY - centerY) ** 2);
       const areaPercentage = properties.area / (width * height);
       
-      // Score basado en área (80%) y centralidad (20%) - PRIORIZAR TAMAÑO
+      // Score basado en área (95%) y centralidad (5%) - PRIORIZAR TAMAÑO MÁXIMO
       const normalizedDistance = distanceFromCenter / Math.max(width, height);
-      const centralityScore = Math.max(0, 1 - normalizedDistance);
-      const areaScore = Math.min(1, areaPercentage * 10); // Más peso al área
-      const totalScore = areaScore * 0.8 + centralityScore * 0.2;
+      const centralityScore = Math.max(0, 1 - normalizedDistance * 2);
+      const areaScore = Math.min(1, areaPercentage * 3); // Multiplicar x3 para priorizar objetos grandes
+      const totalScore = areaScore * 0.95 + centralityScore * 0.05;
       
       return {
         contour,
@@ -455,11 +477,11 @@ export class SilhouetteDetector {
     // Estilo simple y no invasivo
     const color = '#00ff00';
     
-    // DIBUJAR SOLO EL CONTORNO SIMPLE
+    // DIBUJAR CALCO PRECISO DEL OBJETO
     if (obj.contours && obj.contours.length > 0) {
-      // Una sola línea delgada
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 2;
+      // Capa 1: Sombra gruesa para visibilidad
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
+      ctx.lineWidth = 6;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
       ctx.beginPath();
@@ -469,6 +491,20 @@ export class SilhouetteDetector {
       }
       ctx.closePath();
       ctx.stroke();
+      
+      // Capa 2: Borde blanco para contraste
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      
+      // Capa 3: Línea principal verde fluorescente
+      ctx.strokeStyle = '#00ff00';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      
+      // Relleno semi-transparente para visualizar el área
+      ctx.fillStyle = 'rgba(0, 255, 0, 0.05)';
+      ctx.fill();
     }
 
     // PANEL DE INFORMACIÓN PROFESIONAL
@@ -559,6 +595,15 @@ export class SilhouetteDetector {
       ctx.fillStyle = '#aaaaaa';
       ctx.fillText(`Confianza: ${(obj.confidence * 100).toFixed(0)}%`, x + padding, y + lineHeight);
     }
+  }
+  
+  /**
+   * APLICAR CIERRE MORFOLÓGICO PARA MEJORAR CALCO
+   */
+  private applyMorphologicalClose(edges: Uint8Array, width: number, height: number): Uint8Array {
+    // Dilatación seguida de erosión para cerrar gaps
+    const dilated = this.dilate(edges, width, height, 3);
+    return this.erode(dilated, width, height, 3);
   }
   
   /**

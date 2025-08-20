@@ -27,12 +27,12 @@ interface CameraViewProps {
   onRealTimeObjects: (objects: DetectedObject[]) => void;
 }
 
-export const CameraView: React.FC<CameraViewProps> = ({
+export const CameraView = ({
   onImageCapture,
   isActive,
   calibrationData,
   onRealTimeObjects
-}) => {
+}: CameraViewProps) => {
   const { 
     videoRef, 
     cameraStream, 
@@ -60,60 +60,8 @@ export const CameraView: React.FC<CameraViewProps> = ({
   const [frameCount, setFrameCount] = useState(0);
   const processingInterval = useRef<NodeJS.Timeout | null>(null);
 
-  // INICIALIZACIÓN INMEDIATA DE CÁMARA
-  useEffect(() => {
-    let isMounted = true;
-    let intervalId: NodeJS.Timeout | null = null;
-    
-    const initialize = async () => {
-      try {
-        console.log('🚀 INICIALIZANDO CÁMARA...');
-        
-        const permissions = await requestCameraPermissions();
-        if (!isMounted) return;
-        
-        setHasPermissions(permissions);
-        console.log(`📋 Permisos de cámara: ${permissions ? '✅' : '❌'}`);
-        
-        if (permissions) {
-          await startCamera({ facingMode: 'environment' });
-          if (!isMounted) return;
-          
-          console.log('✅ CÁMARA INICIADA CORRECTAMENTE');
-          
-          // INICIAR DETECCIÓN AUTOMÁTICA CUANDO LA CÁMARA ESTÉ LISTA
-          if (isActive && isRealTimeMeasurement) {
-            intervalId = setInterval(async () => {
-              if (isMounted && videoRef.current && videoRef.current.readyState === 4) {
-                await processVideoFrame();
-              }
-<<<<<<< Current (Your changes)
-            }, 5000); // Procesar cada 5 segundos para evitar temblores
-=======
-            }, 500); // Procesar cada 500ms (2 FPS) para detección ágil
->>>>>>> Incoming (Background Agent changes)
-          }
-        }
-      } catch (error) {
-        console.error('❌ Error inicializando cámara:', error);
-        if (isMounted) {
-          setHasPermissions(false);
-        }
-      }
-    };
-
-    initialize();
-    
-    return () => {
-      isMounted = false;
-      if (intervalId) {
-        clearInterval(intervalId);
-      }
-    };
-  }, [isActive, isRealTimeMeasurement]);
-
   // PROCESAR FRAME DE VIDEO CON OPENCV AVANZADO Y DEBUG
-  const processVideoFrame = async () => {
+  const processVideoFrame = useCallback(async () => {
     if (!videoRef.current || !canvasRef.current || isProcessing) return;
     
     try {
@@ -175,7 +123,55 @@ export const CameraView: React.FC<CameraViewProps> = ({
     } finally {
       setIsProcessing(false);
     }
-  };
+  }, [calibrationData, onRealTimeObjects]);
+
+  // INICIALIZACIÓN INMEDIATA DE CÁMARA
+  useEffect(() => {
+    let isMounted = true;
+    let intervalId: NodeJS.Timeout | null = null;
+    
+    const initialize = async () => {
+      try {
+        console.log('🚀 INICIALIZANDO CÁMARA...');
+        
+        const permissions = await requestCameraPermissions();
+        if (!isMounted) return;
+        
+        setHasPermissions(permissions);
+        console.log(`📋 Permisos de cámara: ${permissions ? '✅' : '❌'}`);
+        
+        if (permissions) {
+          await startCamera({ facingMode: 'environment' });
+          if (!isMounted) return;
+          
+          console.log('✅ CÁMARA INICIADA CORRECTAMENTE');
+          
+          // INICIAR DETECCIÓN AUTOMÁTICA CUANDO LA CÁMARA ESTÉ LISTA
+          if (isActive && isRealTimeMeasurement) {
+            intervalId = setInterval(async () => {
+              if (isMounted && videoRef.current && videoRef.current.readyState === 4) {
+                await processVideoFrame();
+              }
+            }, 500); // Procesar cada 500ms (2 FPS) para detección ágil
+          }
+        }
+      } catch (error) {
+        console.error('❌ Error inicializando cámara:', error);
+        if (isMounted) {
+          setHasPermissions(false);
+        }
+      }
+    };
+
+    initialize();
+    
+    return () => {
+      isMounted = false;
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
+  }, [isActive, isRealTimeMeasurement, requestCameraPermissions, startCamera, processVideoFrame]);
 
   // CONFIGURAR CANVAS OVERLAY CUANDO CAMBIE EL TAMAÑO DE VIDEO
   useEffect(() => {
@@ -195,7 +191,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
       video.addEventListener('loadedmetadata', updateCanvasSize);
       return () => video.removeEventListener('loadedmetadata', updateCanvasSize);
     }
-  }, [videoRef.current]);
+  }, []);
 
   // CAPTURAR IMAGEN
   const captureImage = useCallback(async () => {

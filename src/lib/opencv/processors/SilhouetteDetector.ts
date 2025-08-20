@@ -62,7 +62,7 @@ export class SilhouetteDetector {
     try {
       // PASO 1: PROCESAMIENTO DE IMAGEN OPTIMIZADO PARA OBJETOS GRANDES
       console.log('📷 Paso 1: Procesamiento de imagen para objeto grande central...');
-      const processed = this.imageProcessor.processImage(imageData, 2.0); // Sigma mayor para objetos grandes
+      const processed = this.imageProcessor.processImage(imageData, 4.0); // Sigma mucho mayor para suavizar y detectar solo objetos grandes
       
       // PASO 2: MEJORA DE CONTRASTE ADAPTATIVA  
       console.log('🌟 Paso 2: Mejora de contraste adaptativa...');
@@ -74,7 +74,7 @@ export class SilhouetteDetector {
       // Parámetros optimizados para UN SOLO OBJETO GRANDE CENTRAL
       const cannyParams = [
         // Pasada única optimizada para objetos grandes
-        { lowThreshold: 50, highThreshold: 150, sigma: 2.5, sobelKernelSize: 5, l2Gradient: true }
+        { lowThreshold: 40, highThreshold: 120, sigma: 3.0, sobelKernelSize: 7, l2Gradient: true }
       ];
       
       // Ejecutar múltiples detecciones y combinar resultados
@@ -98,10 +98,16 @@ export class SilhouetteDetector {
       
       const cannyResult = {
         edges: morphedEdges,
-        edgePixels: this.countEdgePixels(morphedEdges),
+        edgePixels: (() => {
+          // Como countEdgePixels es privado, implementamos aquí el conteo manual
+          let count = 0;
+          for (let i = 0; i < morphedEdges.length; i++) {
+            if (morphedEdges[i] !== 0) count++;
+          }
+          return count;
+        })(),
         threshold: { low: 50, high: 150 }
       };
-      
       console.log(`✅ Bordes detectados: ${cannyResult.edgePixels} píxeles`);
       
       // PASO 4: DETECCIÓN DE CONTORNOS AVANZADA
@@ -174,8 +180,8 @@ export class SilhouetteDetector {
     // FILTRAR PARA DETECTAR SOLO EL OBJETO CENTRAL MÁS GRANDE
     const centerX = width / 2;
     const centerY = height / 2;
-    const minAreaPercentage = 0.10; // MÍNIMO 10% del área total - SOLO OBJETOS GRANDES
-    const maxDistanceFromCenter = Math.min(width, height) * 0.3; // 30% - SOLO ZONA CENTRAL
+    const minAreaPercentage = 0.15; // MÍNIMO 15% del área total - SOLO OBJETOS GRANDES
+    const maxDistanceFromCenter = Math.min(width, height) * 0.25; // 25% - SOLO ZONA MUY CENTRAL
     
     // Calcular score para cada contorno basado en tamaño y centralidad
     const scoredContours = contours.map(contour => {

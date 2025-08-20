@@ -70,9 +70,9 @@ export class SilhouetteDetector {
       // PASO 3: DETECCIÓN DE BORDES CANNY OPTIMIZADA PARA OBJETOS GRANDES CENTRALES
       console.log('🔍 Paso 3: Detección de bordes Canny para objetos centrales...');
       const cannyResult = this.edgeDetector.detectEdges(enhanced, width, height, {
-        lowThreshold: 15,    // Reducir sensibilidad para objetos grandes
+        lowThreshold: 12,    // Reducir sensibilidad para objetos grandes
         highThreshold: 80,   // Mayor umbral para bordes más definidos
-        sigma: 2.0,          // Mayor sigma para suavizar detalles pequeños
+        sigma: 2.5,          // Mayor sigma para suavizar detalles pequeños
         sobelKernelSize: 5,  // Kernel más grande para detectar bordes de objetos grandes
         l2Gradient: true
       });
@@ -149,8 +149,8 @@ export class SilhouetteDetector {
     // FILTRAR POR OBJETOS CENTRALES GRANDES PRIMERO
     const centerX = width / 2;
     const centerY = height / 2;
-    const minAreaPercentage = 0.15; // Mínimo 15% del área total para objetos centrales
-    const maxDistanceFromCenter = Math.min(width, height) * 0.4; // Máximo 40% de distancia del centro
+    const minAreaPercentage = 0.35; // Mínimo 15% del área total para objetos centrales /// !!!!!!!!!!
+    const maxDistanceFromCenter = Math.min(width, height) * 0.3; // Máximo 40% de distancia del centro  // !!!!!
     
     const filteredContours = contours.filter(contour => {
       const { properties } = contour;
@@ -165,9 +165,9 @@ export class SilhouetteDetector {
     console.log(`🎯 Objetos filtrados para detección central: ${filteredContours.length} de ${contours.length}`);
     
     // Si no hay objetos centrales grandes, usar los 3 más grandes
-    const contoursToProcess = filteredContours.length > 0 ? filteredContours : contours.slice(0, 3);
+    const contoursToProcess = filteredContours.length > 0 ? filteredContours : contours.slice(0, 1);
     
-    for (let i = 0; i < Math.min(contoursToProcess.length, 3); i++) {
+    for (let i = 0; i < Math.min(contoursToProcess.length, 1); i++) {
       const contour = contoursToProcess[i];
       const { properties, confidence } = contour;
       

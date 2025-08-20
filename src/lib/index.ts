@@ -7,11 +7,19 @@
 export * from './types';
 
 // ============================================================================
-// EXPORTACIÓN DE ALGORITMOS UNIFICADOS
+// EXPORTACIÓN DEL NUEVO SISTEMA ULTRA AVANZADO
 // ============================================================================
-export { unifiedOpenCV } from './unifiedOpenCVSystem';
-export { detectObjectsWithOpenCV } from './opencv';
-export { real3DDepthCalculator, calculateDepthFromStereo, calculateObjectDepth, setSGBMParameters, calibrateSystem } from './realDepthCalculation';
+export { 
+  getUltraOpenCVSystem, 
+  detectSilhouettes, 
+  autoCalibrate, 
+  measureObject,
+  UltraOpenCVSystem,
+  UltraSilhouetteDetector,
+  UltraCalibrationSystem,
+  UltraMeasurementSystem
+} from './opencv';
+// Exportaciones del sistema ultra avanzado ya incluidas arriba
 
 // ============================================================================
 // EXPORTACIÓN DE CONTEXTO

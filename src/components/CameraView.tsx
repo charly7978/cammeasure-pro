@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { useCamera } from '@/hooks/useCamera';
 import { DetectedObject } from '@/lib/types';
-import { unifiedOpenCV } from '@/lib/unifiedOpenCVSystem';
+import { useOpenCV } from '@/hooks/useOpenCV';
 
 interface CameraViewProps {
   onImageCapture?: (imageData: ImageData) => void;
@@ -42,6 +42,46 @@ export const CameraView: React.FC<CameraViewProps> = ({
     switchCamera,
     requestCameraPermissions 
   } = useCamera();
+
+  // NUEVO SISTEMA ULTRA AVANZADO
+  const { 
+    isInitialized: openCVInitialized,
+    processRealTime,
+    detectObjectSilhouettes,
+    isProcessing: openCVProcessing
+  } = useOpenCV();
+
+  // FUNCIÓN PARA DIBUJAR OVERLAY DE DETECCIÓN
+  const drawDetectionOverlay = useCallback((canvas: HTMLCanvasElement, result: any) => {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Dibujar objetos detectados
+    result.objects.forEach((obj: DetectedObject, index: number) => {
+      const colors = ['#00ff41', '#ff6b35', '#4ecdc4', '#45b7d1', '#f9ca24'];
+      const color = colors[index % colors.length];
+      
+      ctx.strokeStyle = color;
+      ctx.fillStyle = color + '15';
+      ctx.lineWidth = 2;
+
+      // Dibujar bounding box
+      if (obj.boundingBox) {
+        ctx.strokeRect(obj.boundingBox.x, obj.boundingBox.y, obj.boundingBox.width, obj.boundingBox.height);
+        ctx.fillRect(obj.boundingBox.x, obj.boundingBox.y, obj.boundingBox.width, obj.boundingBox.height);
+      }
+
+      // Etiqueta con dimensiones
+      if (obj.dimensions) {
+        const text = `${obj.dimensions.width.toFixed(1)} × ${obj.dimensions.height.toFixed(1)} ${obj.dimensions.unit}`;
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+        ctx.font = 'bold 12px system-ui';
+        ctx.fillText(text, obj.boundingBox.x, Math.max(20, obj.boundingBox.y - 10));
+      }
+    });
+  }, []);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -136,7 +176,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
       console.log(`📏 Procesando imagen: ${imageData.width}x${imageData.height}, calibrado: ${calibrationData?.isCalibrated ? 'SÍ' : 'NO'}`);
       
       // DETECCIÓN AVANZADA CON OPENCV UNIFICADO Y CALIBRACIÓN APLICADA
-      const result = await unifiedOpenCV.detectObjectSilhouettes(imageData, calibrationData);
+              const result = await detectObjectSilhouettes(imageData);
       
       if (result.objects.length > 0) {
         const obj = result.objects[0];
@@ -148,7 +188,8 @@ export const CameraView: React.FC<CameraViewProps> = ({
         
         // Dibujar overlay con siluetas reales
         if (overlayCanvasRef.current) {
-          unifiedOpenCV.drawDetectionOverlay(overlayCanvasRef.current, result);
+          // Dibujar overlay usando el nuevo sistema
+        drawDetectionOverlay(overlayCanvasRef.current, result);
         }
       } else {
         console.log('❌ No se detectaron objetos - reintentando con parámetros más sensibles...');

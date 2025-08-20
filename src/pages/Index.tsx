@@ -18,7 +18,7 @@ import {
 import { CameraView } from '@/components/CameraView';
 import { CalibrationPanel } from '@/components/CalibrationPanel';
 import { MeasurementControls } from '@/components/MeasurementControls';
-import { MeasurementEngine } from '@/components/MeasurementEngine';
+// MeasurementEngine removido - usando sistema unificado
 import { useDeviceSensors } from '@/hooks/useDeviceSensors';
 import { useOpenCV } from '@/hooks/useOpenCV';
 import { useCalibration } from '@/hooks/useCalibration';
@@ -546,26 +546,13 @@ const Index = () => {
               <div className="space-y-4">
                 {capturedImage && (
                   <Card className="p-4">
-                    <h4 className="font-medium mb-3">Análisis - {measurementMode.toUpperCase()}</h4>
-                    <MeasurementEngine
-                      imageData={capturedImage}
-                      isActive={true}
-                      measurementMode={measurementMode}
-                      calibrationData={calibrationData}
-                      onMeasurementResult={handleMeasurementResult}
-                      onDetectedEdges={handleDetectedEdges}
-                      onMeasurementComplete={(measurement) => {
-                        console.log('Medición completada:', measurement);
-                      }}
-                      onError={(error) => {
-                        console.error('Error en medición:', error);
-                        toast({
-                          title: "Error",
-                          description: error,
-                          variant: "destructive"
-                        });
-                      }}
-                    />
+                    <h4 className="font-medium mb-3">Imagen Capturada - {measurementMode.toUpperCase()}</h4>
+                    <div className="text-center p-8 bg-muted/20 rounded-lg">
+                      <Camera className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                      <p className="text-muted-foreground">
+                        Imagen capturada. Ve a la cámara para mediciones automáticas en tiempo real.
+                      </p>
+                    </div>
                   </Card>
                 )}
                 

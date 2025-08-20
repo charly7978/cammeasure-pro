@@ -15,7 +15,6 @@ import {
 } from 'lucide-react';
 import { useCamera } from '@/hooks/useCamera';
 import { DetectedObject } from '@/lib/types';
-import { TouchObjectSelector } from './TouchObjectSelector';
 import { unifiedOpenCV } from '@/lib/unifiedOpenCVSystem';
 
 interface CameraViewProps {
@@ -58,35 +57,8 @@ export const CameraView: React.FC<CameraViewProps> = ({
   
   // ESTADOS PARA MEDICIÓN AUTOMÁTICA
   const [isProcessing, setIsProcessing] = useState(false);
-  const [currentMeasurement, setCurrentMeasurement] = useState<any>(null);
   const [frameCount, setFrameCount] = useState(0);
   const processingInterval = useRef<NodeJS.Timeout | null>(null);
-  
-  // ESTADOS PARA SELECCIÓN MANUAL POR TOQUE
-  const [isManualSelectionMode, setIsManualSelectionMode] = useState(false);
-  const [selectedObject, setSelectedObject] = useState<DetectedObject | null>(null);
-  const [manualMeasurements, setManualMeasurements] = useState<any>(null);
-
-  // MANEJAR OBJETO SELECCIONADO MANUALMENTE
-  const handleManualObjectSelection = useCallback((object: DetectedObject, measurements: any) => {
-    console.log('🎯 OBJETO SELECCIONADO MANUALMENTE:', object);
-    setSelectedObject(object);
-    setManualMeasurements(measurements);
-    
-    // Detener medición automática cuando se selecciona manualmente
-    if (processingInterval.current) {
-      clearInterval(processingInterval.current);
-      processingInterval.current = null;
-    }
-    
-    // Notificar al componente padre
-    onRealTimeObjects([object]);
-  }, [onRealTimeObjects]);
-
-  // MANEJAR ERROR EN SELECCIÓN MANUAL
-  const handleManualSelectionError = useCallback((error: string) => {
-    console.error('❌ Error en selección manual:', error);
-  }, []);
 
   // INICIALIZACIÓN INMEDIATA DE CÁMARA
   useEffect(() => {
@@ -109,14 +81,14 @@ export const CameraView: React.FC<CameraViewProps> = ({
           
           console.log('✅ CÁMARA INICIADA CORRECTAMENTE');
           
-          // Iniciar detección automática cuando la cámara esté lista
-            if (isActive && isRealTimeMeasurement) {
-              intervalId = setInterval(async () => {
-                if (isMounted && videoRef.current && videoRef.current.readyState === 4) {
-                  await processVideoFrame();
-                }
-              }, 2000); // Procesar cada 2 segundos para evitar congelamiento
-            }
+          // INICIAR DETECCIÓN AUTOMÁTICA CUANDO LA CÁMARA ESTÉ LISTA
+          if (isActive && isRealTimeMeasurement) {
+            intervalId = setInterval(async () => {
+              if (isMounted && videoRef.current && videoRef.current.readyState === 4) {
+                await processVideoFrame();
+              }
+            }, 3000); // Procesar cada 3 segundos para mejor estabilidad
+          }
         }
       } catch (error) {
         console.error('❌ Error inicializando cámara:', error);
@@ -156,11 +128,11 @@ export const CameraView: React.FC<CameraViewProps> = ({
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
       
-      // DETECCIÓN AVANZADA CON OPENCV UNIFICADO
+      // DETECCIÓN AVANZADA CON OPENCV UNIFICADO Y CALIBRACIÓN APLICADA
       const result = await unifiedOpenCV.detectObjectSilhouettes(imageData, calibrationData);
       
       if (result.objects.length > 0) {
-        console.log(`✅ OpenCV detectó ${result.objects.length} objetos en ${result.processingTime.toFixed(1)}ms`);
+        console.log(`✅ OpenCV detectó ${result.objects.length} objetos calibrados en ${result.processingTime.toFixed(1)}ms`);
         setDetectedObjects(result.objects);
         onRealTimeObjects(result.objects);
         
@@ -253,23 +225,6 @@ export const CameraView: React.FC<CameraViewProps> = ({
     }
   }, [currentCamera, switchCamera]);
 
-  // ACTIVAR/DESACTIVAR MODO MANUAL
-  const toggleManualMode = () => {
-    setIsManualSelectionMode(!isManualSelectionMode);
-    
-    if (!isManualSelectionMode) {
-      // Parar medición automática
-      if (processingInterval.current) {
-        clearInterval(processingInterval.current);
-        processingInterval.current = null;
-      }
-    } else {
-      // Reiniciar medición automática
-      setSelectedObject(null);
-      setManualMeasurements(null);
-    }
-  };
-
   // RENDERIZAR COMPONENTE
   return (
     <div className="relative w-full h-full bg-black" ref={containerRef}>
@@ -313,17 +268,6 @@ export const CameraView: React.FC<CameraViewProps> = ({
             </svg>
           </div>
         )}
-
-        {/* SELECTOR MANUAL DE OBJETOS */}
-        {isManualSelectionMode && (
-          <TouchObjectSelector
-            videoRef={videoRef}
-            overlayCanvasRef={overlayCanvasRef}
-            onObjectSelected={handleManualObjectSelection}
-            onError={handleManualSelectionError}
-            isActive={isActive}
-          />
-        )}
       </div>
 
       {/* CONTROLES */}
@@ -352,15 +296,6 @@ export const CameraView: React.FC<CameraViewProps> = ({
           className="bg-white text-black hover:bg-gray-200 rounded-full w-16 h-16"
         >
           <Camera className="h-6 w-6" />
-        </Button>
-
-        <Button
-          variant={isManualSelectionMode ? "default" : "secondary"}
-          size="icon"
-          onClick={toggleManualMode}
-          className="bg-black/50 hover:bg-black/70 text-white"
-        >
-          <Target className="h-5 w-5" />
         </Button>
 
         <Button
@@ -396,16 +331,16 @@ export const CameraView: React.FC<CameraViewProps> = ({
         </Badge>
       </div>
 
-        {/* INFORMACIÓN DE MEDICIÓN MEJORADA */}
-      {(selectedObject || (detectedObjects.length > 0)) && (
+      {/* INFORMACIÓN DE MEDICIÓN MEJORADA */}
+      {detectedObjects.length > 0 && (
         <div className="absolute top-4 right-4 bg-black/80 text-white p-3 rounded-lg text-sm max-w-64">
           <div className="font-semibold mb-2 flex items-center gap-2">
             <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-            {selectedObject ? '🎯 Objeto Seleccionado' : '🔍 Detección OpenCV'}
+            🔍 Detección OpenCV Avanzada
           </div>
           
           {(() => {
-            const obj = selectedObject || detectedObjects[0];
+            const obj = detectedObjects[0];
             if (!obj) return null;
             
             return (

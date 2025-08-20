@@ -57,8 +57,7 @@ export class ContourDetector {
     width: number,
     height: number,
     retrievalMode: 'external' | 'tree' | 'ccomp' | 'list' = 'external',
-    approximationMethod: 'none' | 'simple' | 'tc89_l1' | 'tc89_kcos' = 'simple',
-    touchPoint?: { x: number; y: number } | null
+    approximationMethod: 'none' | 'simple' | 'tc89_l1' | 'tc89_kcos' = 'simple'
   ): DetectedContour[] {
     console.log(`🔍 Iniciando detección de contornos ${width}x${height}, modo: ${retrievalMode}`);
     
@@ -70,10 +69,7 @@ export class ContourDetector {
     const centerY = Math.floor(height / 2);
     
     // Lista de puntos candidatos ordenados por proximidad al centro
-    // Encontrar puntos de inicio de contornos priorizando el centro o el punto de toque
-    const searchCenterX = touchPoint ? touchPoint.x : centerX;
-    const searchCenterY = touchPoint ? touchPoint.y : centerY;
-    const candidates = this.findContourStartPoints(edges, width, height, searchCenterX, searchCenterY, touchPoint);
+    const candidates = this.findContourStartPoints(edges, width, height, centerX, centerY);
     
     console.log(`📍 Encontrados ${candidates.length} puntos candidatos`);
     
@@ -86,10 +82,10 @@ export class ContourDetector {
           edges, visited, x, y, width, height, approximationMethod
         );
         
-        if (contour.length >= 20) { // Contornos muy pequeños NO permitidos (ultra estricto)
+        if (contour.length >= 5) { // Contornos muy pequeños permitidos
           const properties = this.calculateContourProperties(contour, width, height);
           
-          // FilTRAR CONTORNOS POR CALIDAD ULTRA ESTRICTA
+          // Filtrar contornos por calidad
           if (this.isValidContour(properties, width, height)) {
             const detectedContour: DetectedContour = {
               points: contour,
@@ -105,16 +101,15 @@ export class ContourDetector {
           }
         }
         
-        // LÍMITE ULTRA ESTRICTO: SOLO 3 CONTORNOS MÁXIMO
-        if (contours.length >= 3) break;
+        // Límite de contornos para evitar sobrecarga
+        if (contours.length >= 8) break;
       }
     }
     
-    // ORDENAR ULTRA INTELIGENTE: PRIORIZAR MUCHO MÁS EL TAMAÑO
+    // Ordenar por confianza y calidad
     contours.sort((a, b) => {
-      // Score ultra: 80% tamaño + 20% confianza
-      const scoreA = (a.properties.area * 0.8) + (a.confidence * 0.2);
-      const scoreB = (b.properties.area * 0.8) + (b.confidence * 0.2);
+      const scoreA = a.confidence * a.properties.area;
+      const scoreB = b.confidence * b.properties.area;
       return scoreB - scoreA;
     });
     
@@ -123,48 +118,23 @@ export class ContourDetector {
   }
 
   /**
-   * ENCONTRAR PUNTOS DE INICIO DE CONTORNOS - SOLO EN ZONA CENTRAL ULTRA ESTRICTA
+   * ENCONTRAR PUNTOS DE INICIO DE CONTORNOS PRIORIZANDO EL CENTRO
    */
   private findContourStartPoints(
     edges: Uint8Array,
     width: number,
     height: number,
     centerX: number,
-    centerY: number,
-    touchPoint?: { x: number; y: number } | null
+    centerY: number
   ): Array<{ x: number; y: number; distance: number }> {
     const candidates: Array<{ x: number; y: number; distance: number }> = [];
     
-    // ZONA DE BÚSQUEDA: CENTRO O PUNTO DE TOQUE
-    let searchZoneWidth, searchZoneHeight;
-    
-    if (touchPoint) {
-      // MODO TOQUE: Zona más amplia alrededor del punto tocado (50%)
-      searchZoneWidth = width * 0.5;
-      searchZoneHeight = height * 0.5;
-      console.log(`👆 Modo TOQUE: Buscando en zona de ${searchZoneWidth.toFixed(0)}x${searchZoneHeight.toFixed(0)} alrededor de (${touchPoint.x}, ${touchPoint.y})`);
-    } else {
-      // MODO CENTRO: Zona central más permisiva (50%)
-      searchZoneWidth = width * 0.5;
-      searchZoneHeight = height * 0.5;
-      console.log(`🎯 Modo CENTRO: Buscando en zona central de ${searchZoneWidth.toFixed(0)}x${searchZoneHeight.toFixed(0)}`);
-    }
-    
-    const startX = Math.max(1, Math.floor(centerX - searchZoneWidth / 2));
-    const endX = Math.min(width - 1, Math.ceil(centerX + searchZoneWidth / 2));
-    const startY = Math.max(1, Math.floor(centerY - searchZoneHeight / 2));
-    const endY = Math.min(height - 1, Math.ceil(centerY + searchZoneHeight / 2));
-    
-    console.log(`🎯 Zona de búsqueda: ${startX}-${endX} x ${startY}-${endY}`);
-    
-    // BUSCAR SOLO EN LA ZONA CENTRAL
-    let edgePixelsFound = 0;
-    for (let y = startY; y < endY; y++) {
-      for (let x = startX; x < endX; x++) {
+    // Buscar en toda la imagen pero priorizar el centro
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
         const idx = y * width + x;
         
         if (edges[idx] === 255) {
-          edgePixelsFound++;
           // Verificar si es un punto de inicio de contorno
           if (this.isContourStartPoint(edges, x, y, width, height)) {
             const distance = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2);
@@ -174,12 +144,8 @@ export class ContourDetector {
       }
     }
     
-    console.log(`🔍 Píxeles de borde encontrados en zona de búsqueda: ${edgePixelsFound}`);
-    
     // Ordenar por proximidad al centro
     candidates.sort((a, b) => a.distance - b.distance);
-    
-    console.log(`📍 Encontrados ${candidates.length} puntos candidatos en zona central`);
     
     return candidates;
   }
@@ -664,7 +630,7 @@ export class ContourDetector {
   }
 
   /**
-   * VALIDAR CONTORNO - FILTROS ULTRA ESTRICTOS PARA SOLO OBJETOS GRANDES Y CENTRALES
+   * VALIDAR CONTORNO
    */
   private isValidContour(
     properties: ContourProperties,
@@ -672,70 +638,22 @@ export class ContourDetector {
     imgHeight: number
   ): boolean {
     const totalArea = imgWidth * imgHeight;
-    const centerX = imgWidth / 2;
-    const centerY = imgHeight / 2;
+    const minArea = totalArea * 0.00005; // Área mínima muy pequeña (0.005%)
+    const maxArea = totalArea * 0.95;    // Área máxima grande
     
-    // 1. FILTRO DE TAMAÑO MÍNIMO (objetos grandes visibles)
-    const minArea = totalArea * 0.03; // 3% mínimo (más permisivo para objetos grandes)
-    const maxArea = totalArea * 0.9;  // 90% máximo
-    
-    // 2. FILTRO DE DIMENSIONES MÍNIMAS ABSOLUTAS
-    const minWidth = imgWidth * 0.03;   // 3% del ancho de pantalla
-    const minHeight = imgHeight * 0.03; // 3% del alto de pantalla
-    
-    // 3. FILTRO DE POSICIÓN CENTRAL (más permisivo)
-    const contourCenterX = properties.boundingBox.x + properties.boundingBox.width / 2;
-    const contourCenterY = properties.boundingBox.y + properties.boundingBox.height / 2;
-    const distanceToCenter = Math.sqrt(
-      Math.pow(contourCenterX - centerX, 2) + 
-      Math.pow(contourCenterY - centerY, 2)
-    );
-    const maxCenterDistance = Math.min(imgWidth, imgHeight) * 0.6; // 60% central (más permisivo)
-    
-    // 4. FILTRO DE RELACIÓN DE ASPECTO (más permisivo)
-    const aspectRatio = properties.boundingBox.width / properties.boundingBox.height;
-    const validAspectRatio = aspectRatio >= 0.2 && aspectRatio <= 5.0; // Más permisivo
-    
-    // 5. FILTRO DE FORMA NATURAL (más permisivo)
-    const validCircularity = properties.circularity >= 0.05 && properties.circularity <= 0.95;
-    const validSolidity = properties.solidity >= 0.2 && properties.solidity <= 0.98;
-    
-    // 6. FILTRO DE PERÍMETRO MÍNIMO (más permisivo)
-    const minPerimeter = Math.sqrt(properties.area) * 2; // Perímetro mínimo más bajo
-    const validPerimeter = properties.perimeter >= minPerimeter;
-    
-    // APLICAR TODOS LOS FILTROS ULTRA ESTRICTOS
-    const isValid = (
+    return (
       properties.area >= minArea &&
       properties.area <= maxArea &&
-      properties.boundingBox.width >= minWidth &&
-      properties.boundingBox.height >= minHeight &&
-      distanceToCenter <= maxCenterDistance &&
-      validAspectRatio &&
-      validCircularity &&
-      validSolidity &&
-      validPerimeter &&
+      properties.perimeter > 0 &&
       properties.boundingBox.width > 1 &&
-      properties.boundingBox.height > 1
+      properties.boundingBox.height > 1 &&
+      properties.circularity <= 1.2 && // Permitir valores ligeramente > 1 por ruido
+      properties.solidity <= 1.1       // Permitir valores ligeramente > 1 por ruido
     );
-    
-         // LOG DETALLADO PARA DEBUG
-     console.log(`🔍 Validando contorno:`, {
-       area: `${(properties.area / totalArea * 100).toFixed(1)}% (mín: ${(minArea / totalArea * 100).toFixed(1)}%)`,
-       dimensions: `${properties.boundingBox.width}x${properties.boundingBox.height} (mín: ${minWidth.toFixed(0)}x${minHeight.toFixed(0)})`,
-       centerDistance: `${(distanceToCenter / maxCenterDistance * 100).toFixed(1)}% (máx: 100%)`,
-       aspectRatio: aspectRatio.toFixed(2),
-       circularity: properties.circularity.toFixed(2),
-       solidity: properties.solidity.toFixed(2),
-       perimeter: properties.perimeter.toFixed(0),
-       isValid: isValid ? '✅' : '❌'
-     });
-    
-    return isValid;
   }
 
   /**
-   * CALCULAR CONFIANZA DEL CONTORNO - PRIORIZAR TAMAÑO Y POSICIÓN CENTRAL
+   * CALCULAR CONFIANZA DEL CONTORNO
    */
   private calculateContourConfidence(
     properties: ContourProperties,
@@ -748,19 +666,8 @@ export class ContourDetector {
     
     const shapeScore = (properties.circularity + properties.solidity + properties.convexity) / 3;
     
-    // PRIORIZAR MUCHO MÁS EL TAMAÑO - OBJETOS GRANDES TIENEN MUCHA MÁS CONFIANZA
-    const sizeScore = Math.min(1, properties.area / (imgWidth * imgHeight * 0.05)); // Umbral más bajo para boost
+    const sizeScore = Math.min(1, properties.area / (imgWidth * imgHeight * 0.1));
     
-    // PUNTUACIÓN ULTRA: 20% proximidad al centro + 70% tamaño + 10% forma
-    // Esto asegura que solo objetos muy grandes y centrales tengan alta confianza
-    const finalScore = (proximityScore * 0.2) + (sizeScore * 0.7) + (shapeScore * 0.1);
-    
-    // BOOST ADICIONAL para objetos muy grandes (más del 25% de la pantalla)
-    const areaPercentage = properties.area / (imgWidth * imgHeight);
-    if (areaPercentage > 0.25) {
-      return Math.min(1, finalScore * 1.3); // 30% de boost
-    }
-    
-    return Math.max(0, Math.min(1, finalScore));
+    return Math.max(0, Math.min(1, (proximityScore * 0.4 + shapeScore * 0.4 + sizeScore * 0.2)));
   }
 }

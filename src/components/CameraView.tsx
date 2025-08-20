@@ -5,7 +5,11 @@ import { Badge } from '@/components/ui/badge';
 import { 
   Camera, 
   SwitchCamera, 
+  Settings,
+  Zap,
   Grid3X3,
+  Focus,
+  Target,
   Pause,
   Play
 } from 'lucide-react';
@@ -56,82 +60,6 @@ export const CameraView: React.FC<CameraViewProps> = ({
   const [frameCount, setFrameCount] = useState(0);
   const processingInterval = useRef<NodeJS.Timeout | null>(null);
 
-  // PROCESAR FRAME DE VIDEO CON OPENCV - SOLO DETECCIÓN AUTOMÁTICA DEL CENTRO
-  const processVideoFrame = useCallback(async () => {
-    if (!videoRef.current || !canvasRef.current) return;
-    
-    try {
-      setIsProcessing(true);
-      console.log('🎯 PROCESANDO FRAME CON OPENCV - DETECCIÓN AUTOMÁTICA DEL CENTRO');
-      
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
-      const ctx = canvas.getContext('2d')!;
-      
-      // Configurar canvas
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      
-      if (canvas.width === 0 || canvas.height === 0) {
-        console.log('❌ Canvas sin dimensiones válidas');
-        return;
-      }
-      
-      console.log(`📐 Canvas configurado: ${canvas.width}x${canvas.height}`);
-      
-      // Capturar frame
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      
-      console.log(`📏 Procesando imagen: ${imageData.width}x${imageData.height}, calibrado: ${calibrationData?.isCalibrated ? 'SÍ' : 'NO'}`);
-      
-      // DETECCIÓN AUTOMÁTICA DEL CENTRO - SIN MODO TOQUE
-      console.log('🚀 Llamando a unifiedOpenCV.detectObjectSilhouettes...');
-      const result = await unifiedOpenCV.detectObjectSilhouettes(
-        imageData, 
-        calibrationData,
-        null // Solo detección automática del centro
-      );
-      
-      console.log(`📊 Resultado recibido: ${result.objects.length} objetos, tiempo: ${result.processingTime.toFixed(1)}ms`);
-      
-      if (result.objects.length > 0) {
-        const obj = result.objects[0];
-        console.log(`✅ OpenCV detectó ${result.objects.length} objetos en ${result.processingTime.toFixed(1)}ms`);
-        console.log(`📊 Objeto principal: ${obj.dimensions.width.toFixed(1)}x${obj.dimensions.height.toFixed(1)} ${obj.dimensions.unit}, área: ${obj.dimensions.area.toFixed(0)} ${obj.dimensions.unit}²`);
-        
-        setDetectedObjects(result.objects);
-        onRealTimeObjects(result.objects);
-        
-        // Dibujar overlay con siluetas reales
-        if (overlayCanvasRef.current) {
-          console.log('🎨 Dibujando overlay...');
-          unifiedOpenCV.drawDetectionOverlay(overlayCanvasRef.current, result);
-        }
-      } else {
-        console.log('❌ No se detectaron objetos');
-        setDetectedObjects([]);
-        onRealTimeObjects([]);
-        
-        // Limpiar overlay
-        if (overlayCanvasRef.current) {
-          const ctx = overlayCanvasRef.current.getContext('2d');
-          if (ctx) {
-            ctx.clearRect(0, 0, overlayCanvasRef.current.width, overlayCanvasRef.current.height);
-          }
-        }
-      }
-      
-      setFrameCount(prev => prev + 1);
-      
-    } catch (error) {
-      console.error('❌ Error procesando frame:', error);
-      console.error('Stack trace:', error instanceof Error ? error.stack : 'No stack trace available');
-    } finally {
-      setIsProcessing(false);
-    }
-  }, [calibrationData, onRealTimeObjects]);
-
   // INICIALIZACIÓN INMEDIATA DE CÁMARA
   useEffect(() => {
     let isMounted = true;
@@ -152,6 +80,15 @@ export const CameraView: React.FC<CameraViewProps> = ({
           if (!isMounted) return;
           
           console.log('✅ CÁMARA INICIADA CORRECTAMENTE');
+          
+          // INICIAR DETECCIÓN AUTOMÁTICA CUANDO LA CÁMARA ESTÉ LISTA
+          if (isActive && isRealTimeMeasurement) {
+            intervalId = setInterval(async () => {
+              if (isMounted && videoRef.current && videoRef.current.readyState === 4) {
+                await processVideoFrame();
+              }
+            }, 3000); // Procesar cada 3 segundos para mejor estabilidad
+          }
         }
       } catch (error) {
         console.error('❌ Error inicializando cámara:', error);
@@ -169,55 +106,72 @@ export const CameraView: React.FC<CameraViewProps> = ({
         clearInterval(intervalId);
       }
     };
-  }, [isActive]);
+  }, [isActive, isRealTimeMeasurement]);
 
-  // DETECCIÓN AUTOMÁTICA RESTAURADA
-  useEffect(() => {
-    let isMounted = true;
-    let intervalId: NodeJS.Timeout | null = null;
+  // PROCESAR FRAME DE VIDEO CON OPENCV AVANZADO Y DEBUG
+  const processVideoFrame = async () => {
+    if (!videoRef.current || !canvasRef.current) return;
     
-    if (isActive && isRealTimeMeasurement && hasPermissions) {
-      console.log('🔄 INICIANDO DETECCIÓN AUTOMÁTICA...');
+    try {
+      setIsProcessing(true);
+      console.log('🎯 PROCESANDO FRAME CON OPENCV...');
       
-      // Procesar frame inmediatamente
-      setTimeout(() => {
-        if (isMounted) processVideoFrame();
-      }, 1000);
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext('2d')!;
       
-      // Luego procesar cada 2 segundos
-      intervalId = setInterval(async () => {
-        if (isMounted) {
-          await processVideoFrame();
+      // Configurar canvas
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      
+      if (canvas.width === 0 || canvas.height === 0) {
+        console.log('❌ Canvas sin dimensiones válidas');
+        return;
+      }
+      
+      // Capturar frame
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      
+      console.log(`📏 Procesando imagen: ${imageData.width}x${imageData.height}, calibrado: ${calibrationData?.isCalibrated ? 'SÍ' : 'NO'}`);
+      
+      // DETECCIÓN AVANZADA CON OPENCV UNIFICADO Y CALIBRACIÓN APLICADA
+      const result = await unifiedOpenCV.detectObjectSilhouettes(imageData, calibrationData);
+      
+      if (result.objects.length > 0) {
+        const obj = result.objects[0];
+        console.log(`✅ OpenCV detectó ${result.objects.length} objetos en ${result.processingTime.toFixed(1)}ms`);
+        console.log(`📊 Objeto principal: ${obj.dimensions.width.toFixed(1)}x${obj.dimensions.height.toFixed(1)} ${obj.dimensions.unit}, área: ${obj.dimensions.area.toFixed(0)} ${obj.dimensions.unit}²`);
+        
+        setDetectedObjects(result.objects);
+        onRealTimeObjects(result.objects);
+        
+        // Dibujar overlay con siluetas reales
+        if (overlayCanvasRef.current) {
+          unifiedOpenCV.drawDetectionOverlay(overlayCanvasRef.current, result);
         }
-      }, 2000);
+      } else {
+        console.log('❌ No se detectaron objetos - reintentando con parámetros más sensibles...');
+        setDetectedObjects([]);
+        onRealTimeObjects([]);
+        
+        // Limpiar overlay
+        if (overlayCanvasRef.current) {
+          const ctx = overlayCanvasRef.current.getContext('2d');
+          if (ctx) {
+            ctx.clearRect(0, 0, overlayCanvasRef.current.width, overlayCanvasRef.current.height);
+          }
+        }
+      }
+      
+      setFrameCount(prev => prev + 1);
+      
+    } catch (error) {
+      console.error('❌ Error procesando frame:', error);
+    } finally {
+      setIsProcessing(false);
     }
-    
-    return () => {
-      isMounted = false;
-      if (intervalId) {
-        clearInterval(intervalId);
-        intervalId = null;
-      }
-      // Limpiar cualquier intervalo de procesamiento existente
-      if (processingInterval.current) {
-        clearInterval(processingInterval.current);
-        processingInterval.current = null;
-      }
-    };
-  }, [isActive, isRealTimeMeasurement, hasPermissions, processVideoFrame]);
-
-  // Efecto de limpieza para desmontaje del componente
-  useEffect(() => {
-    return () => {
-      // Asegurar que todos los intervalos se limpien
-      if (processingInterval.current) {
-        clearInterval(processingInterval.current);
-        processingInterval.current = null;
-      }
-      // Limpiar objetos detectados para liberar memoria
-      setDetectedObjects([]);
-    };
-  }, []);
+  };
 
   // CONFIGURAR CANVAS OVERLAY CUANDO CAMBIE EL TAMAÑO DE VIDEO
   useEffect(() => {
@@ -386,6 +340,90 @@ export const CameraView: React.FC<CameraViewProps> = ({
           Frame: {frameCount}
         </Badge>
       </div>
+
+      {/* INFORMACIÓN DE MEDICIÓN MEJORADA */}
+      {detectedObjects.length > 0 && (
+        <div className="absolute top-4 right-4 bg-black/80 text-white p-3 rounded-lg text-sm max-w-64">
+          <div className="font-semibold mb-2 flex items-center gap-2">
+            <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+            🔍 Detección OpenCV Avanzada
+          </div>
+          
+          {(() => {
+            const obj = detectedObjects[0];
+            if (!obj) return null;
+            
+            return (
+              <div className="space-y-1">
+                <div className="flex justify-between">
+                  <span>Ancho:</span>
+                  <span className="font-mono text-green-400">
+                    {obj.dimensions.width.toFixed(1)} {obj.dimensions.unit}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Alto:</span>
+                  <span className="font-mono text-cyan-400">
+                    {obj.dimensions.height.toFixed(1)} {obj.dimensions.unit}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Área:</span>
+                  <span className="font-mono text-blue-400">
+                    {obj.dimensions.area.toFixed(0)} {obj.dimensions.unit}²
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Confianza:</span>
+                  <span className="font-mono text-yellow-400">
+                    {Math.round(obj.confidence * 100)}%
+                  </span>
+                </div>
+                
+                {/* MEDICIONES 3D AVANZADAS */}
+                {obj.depth3D && (
+                  <>
+                    <div className="flex justify-between">
+                      <span>Distancia:</span>
+                      <span className="font-mono text-purple-400">
+                        {obj.depth3D.distance > 1000 
+                          ? `${(obj.depth3D.distance / 1000).toFixed(1)} m`
+                          : `${Math.round(obj.depth3D.distance)} mm`
+                        }
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Volumen:</span>
+                      <span className="font-mono text-orange-400">
+                        {obj.depth3D.volume > 1000000 
+                          ? `${(obj.depth3D.volume / 1000000).toFixed(1)} cm³`
+                          : `${Math.round(obj.depth3D.volume)} mm³`
+                        }
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Profundidad:</span>
+                      <span className="font-mono text-teal-400">
+                        {obj.depth3D.depth.toFixed(1)} mm
+                      </span>
+                    </div>
+                  </>
+                )}
+                {calibrationData?.isCalibrated && (
+                  <div className="mt-2 pt-2 border-t border-white/20 text-xs text-green-300">
+                    ✅ Medición calibrada en {obj.dimensions.unit}
+                  </div>
+                )}
+                {!calibrationData?.isCalibrated && obj.dimensions.unit === 'px' && (
+                  <div className="mt-2 pt-2 border-t border-white/20 text-xs text-amber-300">
+                    ⚠️ Sin calibrar - valores en píxeles
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+        </div>
+      )}
     </div>
   );
 };

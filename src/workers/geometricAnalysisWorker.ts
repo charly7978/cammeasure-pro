@@ -51,31 +51,24 @@ class AdvancedGeometricProcessor {
   private async initializeOpenCV() {
     try {
       // Load OpenCV.js dynamically in web worker context
-      // Setup Module configuration without eval
-      (self as any).Module = {
-        onRuntimeInitialized() {
-          self.postMessage({ type: 'OPENCV_READY' });
-        }
-      };
+      const script = `
+        self.Module = {
+          onRuntimeInitialized() {
+            self.postMessage({ type: 'OPENCV_READY' });
+          }
+        };
+      `;
       
-      // Load OpenCV from CDN using importScripts (safer than eval)
+      // Create and evaluate the module setup
+      eval(script);
+      
+      // Load OpenCV from CDN
       const opencvUrl = 'https://docs.opencv.org/4.8.0/opencv.js';
+      const response = await fetch(opencvUrl);
+      const opencvCode = await response.text();
       
-      try {
-        // Use importScripts for web workers - this is the safe way to load external scripts
-        importScripts(opencvUrl);
-      } catch (importError) {
-        // If importScripts fails, try creating a blob URL (still safer than eval)
-        console.warn('ImportScripts failed, trying blob URL approach:', importError);
-        const response = await fetch(opencvUrl);
-        const opencvCode = await response.text();
-        
-        // Create a blob URL to safely execute the script
-        const blob = new Blob([opencvCode], { type: 'application/javascript' });
-        const blobUrl = URL.createObjectURL(blob);
-        importScripts(blobUrl);
-        URL.revokeObjectURL(blobUrl); // Clean up the blob URL
-      }
+      // Execute OpenCV code in worker context
+      eval(opencvCode);
       
     } catch (error) {
       console.error('Error loading OpenCV in worker:', error);

@@ -51,8 +51,7 @@ export class SilhouetteDetector {
    */
   async detectSilhouettes(
     imageData: ImageData,
-    calibrationData: CalibrationData | null = null,
-    touchPoint?: { x: number; y: number } | null
+    calibrationData: CalibrationData | null = null
   ): Promise<SilhouetteDetectionResult> {
     const startTime = performance.now();
     const { width, height } = imageData;
@@ -82,23 +81,15 @@ export class SilhouetteDetector {
       
       // PASO 4: DETECCIÓN DE CONTORNOS AVANZADA
       console.log('📐 Paso 4: Detección de contornos...');
-      console.log(`🎯 Buscando contornos en modo: ${touchPoint ? 'TOQUE' : 'CENTRO'}`);
-      
       const detectedContours = this.contourDetector.findContours(
         cannyResult.edges,
         width,
         height,
         'external',
-        'simple',
-        touchPoint // Pasar el punto de toque si existe
+        'simple'
       );
       
       console.log(`✅ Contornos encontrados: ${detectedContours.length}`);
-      if (detectedContours.length > 0) {
-        detectedContours.forEach((contour, i) => {
-          console.log(`  Contorno ${i + 1}: área=${contour.properties.area.toFixed(0)}, confianza=${contour.confidence.toFixed(2)}`);
-        });
-      }
       
       // PASO 5: CONVERTIR A OBJETOS DETECTADOS CON CALIBRACIÓN
       console.log('🎯 Paso 5: Conversión a objetos detectados...');
@@ -158,8 +149,8 @@ export class SilhouetteDetector {
     // FILTRAR POR OBJETOS CENTRALES GRANDES PRIMERO
     const centerX = width / 2;
     const centerY = height / 2;
-    const minAreaPercentage = 0.02; // Mínimo 2% del área total para objetos centrales
-    const maxDistanceFromCenter = Math.min(width, height) * 0.7; // Máximo 70% de distancia del centro
+    const minAreaPercentage = 0.15; // Mínimo 15% del área total para objetos centrales
+    const maxDistanceFromCenter = Math.min(width, height) * 0.4; // Máximo 40% de distancia del centro
     
     const filteredContours = contours.filter(contour => {
       const { properties } = contour;

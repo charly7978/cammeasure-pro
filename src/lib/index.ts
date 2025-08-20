@@ -9,7 +9,8 @@ export * from './types';
 // ============================================================================
 // EXPORTACIÓN DE ALGORITMOS UNIFICADOS
 // ============================================================================
-export { unifiedOpenCV, detectObjectsWithOpenCV } from './unifiedOpenCVSystem';
+export { unifiedOpenCV } from './unifiedOpenCVSystem';
+export { detectObjectsWithOpenCV } from './opencv';
 export { real3DDepthCalculator, calculateDepthFromStereo, calculateObjectDepth, setSGBMParameters, calibrateSystem } from './realDepthCalculation';
 
 // ============================================================================

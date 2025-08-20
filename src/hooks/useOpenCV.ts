@@ -594,7 +594,7 @@ class NativeOpenCV {
   }
 
   // FUNCIÓN REAL DE BÚSQUEDA DE CONTORNOS
-  findContours(src: ImageData, mode: number, method: number, touchPoint?: { x: number; y: number }): any[] {
+  findContours(src: ImageData, mode: number, method: number): any[] {
     try {
       if (!this.isInitialized) {
         throw new Error('OpenCV nativo no inicializado');
@@ -607,122 +607,14 @@ class NativeOpenCV {
       const thresholded = this.applyBinaryThreshold(grayData, width, height);
       
       // Encontrar contornos reales
-      const allContours = this.findContoursReal(thresholded, width, height);
+      const contours = this.findContoursReal(thresholded, width, height);
       
-      // FILTRAR OBJETO CON TOQUE DE PANTALLA O CENTRO AUTOMÁTICO
-      const selectedContour = this.filterCentralDominantContour(allContours, width, height, touchPoint);
-      
-      return selectedContour ? [selectedContour] : [];
+      return contours;
       
     } catch (error) {
       console.error('❌ Error en búsqueda de contornos:', error);
       return [];
     }
-  }
-
-  // FILTRO PARA OBJETO CENTRAL Y PREDOMINANTE
-  private filterCentralDominantContour(contours: any[], width: number, height: number, touchPoint?: { x: number; y: number }): any | null {
-    if (contours.length === 0) return null;
-    
-    const centerX = width / 2;
-    const centerY = height / 2;
-    const screenArea = width * height;
-    
-    // FILTROS AJUSTADOS PARA OBJETOS MÁS GRANDES Y TOQUE DE PANTALLA
-    const validContours = contours.filter(contour => {
-      const { area, boundingBox, points } = contour;
-      
-      // 1. FILTRAR POR TAMAÑO MÍNIMO AJUSTADO (objetos más grandes)
-      const minAreaThreshold = screenArea * 0.03; // 3% mínimo (más permisivo)
-      if (area < minAreaThreshold) return false;
-      
-      // 2. FILTRAR POR TAMAÑO MÁXIMO
-      const maxAreaThreshold = screenArea * 0.8; // 80% máximo
-      if (area > maxAreaThreshold) return false;
-      
-      // 3. FILTRAR POR RELACIÓN DE ASPECTO
-      const aspectRatio = boundingBox.width / boundingBox.height;
-      if (aspectRatio < 0.2 || aspectRatio > 5.0) return false; // Más permisivo
-      
-      // 4. FILTRAR POR PERÍMETRO MÍNIMO
-      const minPerimeter = Math.sqrt(area) * 2; // Perímetro mínimo más bajo
-      if (points.length < minPerimeter) return false;
-      
-      // 5. FILTRAR POR DIMENSIONES MÍNIMAS ABSOLUTAS (más permisivo)
-      const minWidth = width * 0.05;   // 5% del ancho de pantalla
-      const minHeight = height * 0.05;  // 5% del alto de pantalla
-      if (boundingBox.width < minWidth || boundingBox.height < minHeight) return false;
-      
-      return true;
-    });
-    
-    if (validContours.length === 0) return null;
-    
-    // SELECCIÓN INTELIGENTE CON TOQUE DE PANTALLA
-    let bestContour = validContours[0];
-    let bestScore = 0;
-    
-    for (const contour of validContours) {
-      const { area, boundingBox } = contour;
-      
-      // Calcular centro del contorno
-      const contourCenterX = boundingBox.x + boundingBox.width / 2;
-      const contourCenterY = boundingBox.y + boundingBox.height / 2;
-      
-      let finalScore = 0;
-      
-      if (touchPoint) {
-        // MODO TOQUE: Priorizar objetos cerca del punto tocado
-        const distanceToTouch = Math.sqrt(
-          Math.pow(contourCenterX - touchPoint.x, 2) + 
-          Math.pow(contourCenterY - touchPoint.y, 2)
-        );
-        const maxTouchDistance = Math.min(width, height) * 0.4; // 40% de la pantalla
-        
-        if (distanceToTouch <= maxTouchDistance) {
-          // PUNTUACIÓN TOQUE: 60% proximidad al toque + 40% tamaño
-          const touchScore = 1 - (distanceToTouch / maxTouchDistance);
-          const relativeArea = area / screenArea;
-          finalScore = (touchScore * 0.6) + (relativeArea * 0.4);
-        }
-      } else {
-        // MODO CENTRO: Priorizar objetos en el centro
-        const distanceToCenter = Math.sqrt(
-          Math.pow(contourCenterX - centerX, 2) + 
-          Math.pow(contourCenterY - centerY, 2)
-        );
-        const maxCenterDistance = Math.min(width, height) * 0.4; // 40% central
-        
-        if (distanceToCenter <= maxCenterDistance) {
-          // PUNTUACIÓN CENTRO: 60% posición central + 40% tamaño
-          const centerScore = 1 - (distanceToCenter / maxCenterDistance);
-          const relativeArea = area / screenArea;
-          finalScore = (centerScore * 0.6) + (relativeArea * 0.4);
-        }
-      }
-      
-      if (finalScore > bestScore) {
-        bestScore = finalScore;
-        bestContour = contour;
-      }
-    }
-    
-    // VERIFICACIÓN FINAL
-    if (bestScore < 0.05) { // Umbral más bajo para ser más permisivo
-      console.log('⚠️ Ningún contorno cumple con los criterios de calidad');
-      return null;
-    }
-    
-    const mode = touchPoint ? 'TOQUE' : 'CENTRO';
-    console.log(`🎯 Contorno seleccionado (${mode}):`, {
-      score: bestScore.toFixed(3),
-      area: bestContour.area,
-      relativeArea: ((bestContour.area / screenArea) * 100).toFixed(1) + '%',
-      dimensions: `${bestContour.boundingBox.width}x${bestContour.boundingBox.height}`,
-      touchPoint: touchPoint ? `(${touchPoint.x}, ${touchPoint.y})` : 'Centro automático'
-    });
-    
-    return bestContour;
   }
 
   // UMBRAL BINARIO REAL
@@ -867,11 +759,6 @@ class NativeOpenCV {
     return this.findContours(src, 0, 0);
   }
 
-  // NUEVA FUNCIÓN: DETECCIÓN CON TOQUE DE PANTALLA
-  findContoursAtTouch(src: ImageData, touchX: number, touchY: number): any[] {
-    return this.findContours(src, 0, 0, { x: touchX, y: touchY });
-  }
-
   warpAffine(src: ImageData, matrix: number[][], size: number[]): ImageData {
     // Implementación básica de transformación afín
     return src;
@@ -964,10 +851,6 @@ export function useOpenCV() {
       if (contours && result) {
         contours.splice(0, contours.length, ...result);
       }
-    },
-    // NUEVA FUNCIÓN: DETECCIÓN CON TOQUE DE PANTALLA
-    findContoursAtTouch: (src: ImageData, touchX: number, touchY: number) => {
-      return nativeOpenCV.findContoursAtTouch(src, touchX, touchY);
     },
     // Funciones adicionales (mantener compatibilidad)
     // Funciones adicionales (mantener compatibilidad)

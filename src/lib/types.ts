@@ -411,7 +411,6 @@ export interface OpenCVFunctions {
   GaussianBlur: (src: ImageData, dst: ImageData, ksize: number[], sigma: number) => void;
   Canny: (src: ImageData, dst: ImageData, threshold1: number, threshold2: number) => void;
   findContours: (src: ImageData, contours: any[], hierarchy: any[], mode: number, method: number) => void;
-  findContoursAtTouch: (src: ImageData, touchX: number, touchY: number) => any[];
   contourArea: (contour: any) => number;
   boundingRect: (contour: any) => { x: number; y: number; width: number; height: number };
   arcLength: (contour: any, closed: boolean) => number;

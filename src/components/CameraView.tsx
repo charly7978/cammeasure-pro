@@ -379,6 +379,36 @@ export const CameraView: React.FC<CameraViewProps> = ({
                     {Math.round(obj.confidence * 100)}%
                   </span>
                 </div>
+                
+                {/* MEDICIONES 3D AVANZADAS */}
+                {obj.depth3D && (
+                  <>
+                    <div className="flex justify-between">
+                      <span>Distancia:</span>
+                      <span className="font-mono text-purple-400">
+                        {obj.depth3D.distance > 1000 
+                          ? `${(obj.depth3D.distance / 1000).toFixed(1)} m`
+                          : `${Math.round(obj.depth3D.distance)} mm`
+                        }
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Volumen:</span>
+                      <span className="font-mono text-orange-400">
+                        {obj.depth3D.volume > 1000000 
+                          ? `${(obj.depth3D.volume / 1000000).toFixed(1)} cm³`
+                          : `${Math.round(obj.depth3D.volume)} mm³`
+                        }
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Profundidad:</span>
+                      <span className="font-mono text-teal-400">
+                        {obj.depth3D.depth.toFixed(1)} mm
+                      </span>
+                    </div>
+                  </>
+                )}
                 {calibrationData?.isCalibrated && (
                   <div className="mt-2 pt-2 border-t border-white/20 text-xs text-green-300">
                     ✅ Medición calibrada en {obj.dimensions.unit}

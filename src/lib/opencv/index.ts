@@ -184,6 +184,7 @@ export { SilhouetteDetector } from './processors/SilhouetteDetector';
 export { ImageProcessor } from './core/ImageProcessor';
 export { CannyEdgeDetector } from './algorithms/CannyEdgeDetector';
 export { ContourDetector } from './algorithms/ContourDetector';
+export { depthVolumeCalculator, DepthVolumeCalculator } from './processors/DepthVolumeCalculator';
 
 // Exportar tipos específicos
 export type { 

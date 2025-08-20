@@ -101,6 +101,15 @@ export interface DetectedObject extends BoundingRect {
     confidence: number;
   };
   
+  // MEDICIONES 3D REALES
+  depth3D?: {
+    distance: number;    // Distancia a la cámara en mm
+    depth: number;       // Profundidad del objeto en mm
+    volume: number;      // Volumen estimado en mm³
+    confidence: number;  // Confianza de la medición 3D
+    method: 'stereo' | 'monocular' | 'estimated';
+  };
+  
   // Propiedades geométricas adicionales
   geometricProperties?: {
     aspectRatio: number;

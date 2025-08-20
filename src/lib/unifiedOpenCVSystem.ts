@@ -28,6 +28,12 @@ class UnifiedOpenCVSystem {
       return { objects: [], processingTime: 0, edgeMap: new Uint8Array(0), contours: [] };
     }
 
+    // VALIDACIÓN DE SEGURIDAD - PREVENIR ATAQUES DoS
+    if (!this.validateImageData(imageData)) {
+      console.error('❌ Datos de imagen inválidos o demasiado grandes');
+      return { objects: [], processingTime: 0, edgeMap: new Uint8Array(0), contours: [] };
+    }
+
     this.isProcessing = true;
 
     try {
@@ -48,6 +54,104 @@ class UnifiedOpenCVSystem {
       return { objects: [], processingTime: 0, edgeMap: new Uint8Array(0), contours: [] };
     } finally {
       this.isProcessing = false;
+    }
+  }
+
+  /**
+   * VALIDACIÓN DE SEGURIDAD PARA DATOS DE IMAGEN
+   * Previene ataques DoS y buffer overflows
+   */
+  private validateImageData(imageData: ImageData): boolean {
+    try {
+      // Verificar que imageData existe
+      if (!imageData || !imageData.data || !imageData.width || !imageData.height) {
+        console.error('❌ ImageData inválido o nulo');
+        return false;
+      }
+
+      // Límites de seguridad para dimensiones de imagen
+      const MAX_DIMENSION = 4096; // Máximo 4K
+      const MAX_PIXELS = 16777216; // Máximo 16M píxeles (4K x 4K)
+      const MAX_MEMORY = 268435456; // Máximo 256MB de memoria
+
+      // Verificar dimensiones
+      if (imageData.width <= 0 || imageData.height <= 0) {
+        console.error('❌ Dimensiones de imagen inválidas');
+        return false;
+      }
+
+      if (imageData.width > MAX_DIMENSION || imageData.height > MAX_DIMENSION) {
+        console.error(`❌ Imagen demasiado grande: ${imageData.width}x${imageData.height}`);
+        return false;
+      }
+
+      // Verificar número total de píxeles
+      const totalPixels = imageData.width * imageData.height;
+      if (totalPixels > MAX_PIXELS) {
+        console.error(`❌ Demasiados píxeles: ${totalPixels}`);
+        return false;
+      }
+
+      // Verificar tamaño de datos
+      const expectedDataSize = totalPixels * 4; // RGBA
+      if (imageData.data.length !== expectedDataSize) {
+        console.error(`❌ Tamaño de datos incorrecto: esperado ${expectedDataSize}, obtenido ${imageData.data.length}`);
+        return false;
+      }
+
+      // Verificar uso de memoria
+      const memoryUsage = imageData.data.length * imageData.data.BYTES_PER_ELEMENT;
+      if (memoryUsage > MAX_MEMORY) {
+        console.error(`❌ Uso de memoria excesivo: ${memoryUsage} bytes`);
+        return false;
+      }
+
+      // Verificar que todos los valores de píxeles están en rango válido
+      for (let i = 0; i < Math.min(imageData.data.length, 1000); i += 4) { // Solo verificar primeros 1000 píxeles
+        if (imageData.data[i] > 255 || imageData.data[i + 1] > 255 || 
+            imageData.data[i + 2] > 255 || imageData.data[i + 3] > 255) {
+          console.error('❌ Valores de píxeles fuera de rango válido');
+          return false;
+        }
+      }
+
+      return true;
+    } catch (error) {
+      console.error('❌ Error validando datos de imagen:', error);
+      return false;
+    }
+  }
+
+  /**
+   * VALIDACIÓN DE DIMENSIONES DE IMAGEN PARA PROCESAMIENTO
+   * Método auxiliar para validar dimensiones en funciones de procesamiento
+   */
+  private validateImageDimensions(width: number, height: number, dataLength: number): boolean {
+    try {
+      // Verificar dimensiones básicas
+      if (width <= 0 || height <= 0) {
+        console.error('❌ Dimensiones de imagen inválidas');
+        return false;
+      }
+
+      // Verificar límites de seguridad
+      const MAX_DIMENSION = 4096;
+      if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
+        console.error(`❌ Imagen demasiado grande: ${width}x${height}`);
+        return false;
+      }
+
+      // Verificar que el tamaño de datos coincide con las dimensiones
+      const expectedSize = width * height;
+      if (dataLength !== expectedSize && dataLength !== expectedSize * 4) {
+        console.error(`❌ Tamaño de datos no coincide con dimensiones: esperado ${expectedSize} o ${expectedSize * 4}, obtenido ${dataLength}`);
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      console.error('❌ Error validando dimensiones de imagen:', error);
+      return false;
     }
   }
 
@@ -78,6 +182,11 @@ class UnifiedOpenCVSystem {
    * CONVERSIÓN A ESCALA DE GRISES OPTIMIZADA
    */
   private convertToGrayscale(data: Uint8ClampedArray, width: number, height: number): Uint8Array {
+    // Validación de seguridad
+    if (!this.validateImageDimensions(width, height, data.length)) {
+      throw new Error('Dimensiones de imagen inválidas para conversión a escala de grises');
+    }
+
     const grayData = new Uint8Array(width * height);
     
     for (let i = 0; i < data.length; i += 4) {
@@ -97,6 +206,16 @@ class UnifiedOpenCVSystem {
    * FILTRO GAUSSIANO PARA REDUCIR RUIDO
    */
   private applyGaussianBlur(data: Uint8Array, width: number, height: number, sigma: number): Uint8Array {
+    // Validación de seguridad
+    if (!this.validateImageDimensions(width, height, data.length)) {
+      throw new Error('Dimensiones de imagen inválidas para filtro gaussiano');
+    }
+
+    // Validar parámetros del filtro
+    if (sigma <= 0 || sigma > 10) {
+      throw new Error('Parámetro sigma inválido para filtro gaussiano');
+    }
+
     const result = new Uint8Array(width * height);
     
     // Generar kernel Gaussiano

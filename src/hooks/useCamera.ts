@@ -216,29 +216,33 @@ class RealCameraManager {
     }
   }
 
-  // DETENCIÓN REAL DE CÁMARA
+  // DETENER CÁMARA REAL
   async stopCamera(): Promise<void> {
     try {
       console.log('🛑 DETENIENDO CÁMARA REAL...');
       
       if (this.currentStream) {
-        // Detener todos los tracks
+        // Detener todos los tracks del stream
         this.currentStream.getTracks().forEach(track => {
           track.stop();
-          console.log('🛑 Track detenido:', track.kind);
+          console.log(`🛑 Track detenido: ${track.kind}`);
         });
         
+        // Limpiar referencias
         this.currentStream = null;
         this.currentTrack = null;
         
-        console.log('✅ CÁMARA REAL DETENIDA EXITOSAMENTE');
+        console.log('✅ Cámara detenida correctamente');
       } else {
-        console.log('ℹ️ No hay cámara activa para detener');
+        console.log('ℹ️ No hay stream activo para detener');
       }
       
     } catch (error) {
-      console.error('❌ Error deteniendo cámara real:', error);
-      throw this.createCameraError(error);
+      console.error('❌ Error deteniendo cámara:', error);
+      // Forzar limpieza en caso de error
+      this.currentStream = null;
+      this.currentTrack = null;
+      throw error;
     }
   }
 
@@ -388,24 +392,32 @@ class RealCameraManager {
     };
   }
 
-  // LIMPIEZA REAL DE RECURSOS
-  async cleanup(): Promise<void> {
+  // LIMPIAR RECURSOS DE CÁMARA
+  cleanup(): void {
     try {
-      console.log('🧹 LIMPIANDO RECURSOS REALES DE CÁMARA...');
+      console.log('🧹 LIMPIANDO RECURSOS DE CÁMARA...');
       
-      // Detener cámara si está activa
       if (this.currentStream) {
-        await this.stopCamera();
+        this.currentStream.getTracks().forEach(track => {
+          track.stop();
+        });
+        this.currentStream = null;
       }
       
-      // Limpiar lista de dispositivos
-      this.deviceList = [];
-      this.isInitialized = false;
+      if (this.currentTrack) {
+        this.currentTrack.stop();
+        this.currentTrack = null;
+      }
       
+      this.isInitialized = false;
       console.log('✅ Recursos de cámara limpiados');
       
     } catch (error) {
       console.error('❌ Error limpiando recursos de cámara:', error);
+      // Forzar limpieza
+      this.currentStream = null;
+      this.currentTrack = null;
+      this.isInitialized = false;
     }
   }
 

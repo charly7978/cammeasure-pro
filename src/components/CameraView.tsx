@@ -196,9 +196,28 @@ export const CameraView: React.FC<CameraViewProps> = ({
       isMounted = false;
       if (intervalId) {
         clearInterval(intervalId);
+        intervalId = null;
+      }
+      // Limpiar cualquier intervalo de procesamiento existente
+      if (processingInterval.current) {
+        clearInterval(processingInterval.current);
+        processingInterval.current = null;
       }
     };
   }, [isActive, isRealTimeMeasurement, hasPermissions, processVideoFrame]);
+
+  // Efecto de limpieza para desmontaje del componente
+  useEffect(() => {
+    return () => {
+      // Asegurar que todos los intervalos se limpien
+      if (processingInterval.current) {
+        clearInterval(processingInterval.current);
+        processingInterval.current = null;
+      }
+      // Limpiar objetos detectados para liberar memoria
+      setDetectedObjects([]);
+    };
+  }, []);
 
   // CONFIGURAR CANVAS OVERLAY CUANDO CAMBIE EL TAMAÑO DE VIDEO
   useEffect(() => {

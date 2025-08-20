@@ -296,6 +296,12 @@ class RealCameraCalibrator {
           }
         }
         
+        // Verificar si el pivote es cero (matriz singular)
+        if (Math.abs(augmented[maxRow][i]) < 1e-10) {
+          console.warn('⚠️ Matriz singular detectada, usando pseudoinversa');
+          return this.solveSingularSystem(A, b);
+        }
+        
         // Intercambiar filas
         if (maxRow !== i) {
           [augmented[i], augmented[maxRow]] = [augmented[maxRow], augmented[i]];
@@ -317,7 +323,20 @@ class RealCameraCalibrator {
         for (let j = i + 1; j < cols; j++) {
           sum += augmented[i][j] * solution[j];
         }
-        solution[i] = (augmented[i][cols] - sum) / augmented[i][i];
+        
+        // Verificar división por cero
+        if (Math.abs(augmented[i][i]) < 1e-10) {
+          console.warn('⚠️ Pivote cero detectado en sustitución, usando valor por defecto');
+          solution[i] = 0;
+        } else {
+          solution[i] = (augmented[i][cols] - sum) / augmented[i][i];
+        }
+        
+        // Verificar valores infinitos o NaN
+        if (!isFinite(solution[i])) {
+          console.warn('⚠️ Solución no finita detectada, usando valor por defecto');
+          solution[i] = 0;
+        }
       }
       
       return solution;
@@ -325,6 +344,50 @@ class RealCameraCalibrator {
     } catch (error) {
       console.error('❌ Error resolviendo sistema lineal:', error);
       throw error;
+    }
+  }
+
+  // RESOLVER SISTEMA SINGULAR CON PSEUDOINVERSA
+  private solveSingularSystem(A: number[][], b: number[]): number[] {
+    try {
+      console.log('🔍 Resolviendo sistema singular con pseudoinversa...');
+      
+      // Usar método de mínimos cuadrados para sistemas sobredeterminados
+      const rows = A.length;
+      const cols = A[0].length;
+      
+      // Calcular A^T * A
+      const ATA: number[][] = [];
+      for (let i = 0; i < cols; i++) {
+        ATA[i] = new Array(cols).fill(0);
+        for (let j = 0; j < cols; j++) {
+          for (let k = 0; k < rows; k++) {
+            ATA[i][j] += A[k][i] * A[k][j];
+          }
+        }
+      }
+      
+      // Calcular A^T * b
+      const ATb: number[] = new Array(cols).fill(0);
+      for (let i = 0; i < cols; i++) {
+        for (let j = 0; j < rows; j++) {
+          ATb[i] += A[j][i] * b[j];
+        }
+      }
+      
+      // Resolver (A^T * A) * x = A^T * b con regularización
+      const lambda = 1e-6; // Parámetro de regularización
+      for (let i = 0; i < cols; i++) {
+        ATA[i][i] += lambda;
+      }
+      
+      // Resolver sistema regularizado
+      return this.solveLinearSystem(ATA, ATb);
+      
+    } catch (error) {
+      console.error('❌ Error resolviendo sistema singular:', error);
+      // Retornar solución por defecto
+      return new Array(A[0].length).fill(0);
     }
   }
 

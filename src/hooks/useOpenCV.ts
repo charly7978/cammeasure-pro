@@ -594,7 +594,7 @@ class NativeOpenCV {
   }
 
   // FUNCIÓN REAL DE BÚSQUEDA DE CONTORNOS
-  findContours(src: ImageData, mode: number, method: number): any[] {
+  findContours(src: ImageData, mode: number, method: number, touchPoint?: { x: number; y: number }): any[] {
     try {
       if (!this.isInitialized) {
         throw new Error('OpenCV nativo no inicializado');
@@ -609,10 +609,10 @@ class NativeOpenCV {
       // Encontrar contornos reales
       const allContours = this.findContoursReal(thresholded, width, height);
       
-      // FILTRAR SOLO EL OBJETO CENTRAL Y PREDOMINANTE
-      const centralContour = this.filterCentralDominantContour(allContours, width, height);
+      // FILTRAR OBJETO CON TOQUE DE PANTALLA O CENTRO AUTOMÁTICO
+      const selectedContour = this.filterCentralDominantContour(allContours, width, height, touchPoint);
       
-      return centralContour ? [centralContour] : [];
+      return selectedContour ? [selectedContour] : [];
       
     } catch (error) {
       console.error('❌ Error en búsqueda de contornos:', error);
@@ -621,101 +621,108 @@ class NativeOpenCV {
   }
 
   // FILTRO PARA OBJETO CENTRAL Y PREDOMINANTE
-  private filterCentralDominantContour(contours: any[], width: number, height: number): any | null {
+  private filterCentralDominantContour(contours: any[], width: number, height: number, touchPoint?: { x: number; y: number }): any | null {
     if (contours.length === 0) return null;
     
     const centerX = width / 2;
     const centerY = height / 2;
     const screenArea = width * height;
     
-    // Filtrar contornos por criterios de calidad
+    // FILTROS AJUSTADOS PARA OBJETOS MÁS GRANDES Y TOQUE DE PANTALLA
     const validContours = contours.filter(contour => {
       const { area, boundingBox, points } = contour;
       
-      // 1. FILTRAR POR TAMAÑO MÍNIMO (eliminar objetos muy pequeños)
-      const minAreaThreshold = screenArea * 0.01; // 1% de la pantalla
+      // 1. FILTRAR POR TAMAÑO MÍNIMO AJUSTADO (objetos más grandes)
+      const minAreaThreshold = screenArea * 0.03; // 3% mínimo (más permisivo)
       if (area < minAreaThreshold) return false;
       
-      // 2. FILTRAR POR TAMAÑO MÁXIMO (eliminar objetos que ocupan toda la pantalla)
-      const maxAreaThreshold = screenArea * 0.8; // 80% de la pantalla
+      // 2. FILTRAR POR TAMAÑO MÁXIMO
+      const maxAreaThreshold = screenArea * 0.8; // 80% máximo
       if (area > maxAreaThreshold) return false;
       
-      // 3. FILTRAR POR RELACIÓN DE ASPECTO (eliminar objetos muy alargados)
+      // 3. FILTRAR POR RELACIÓN DE ASPECTO
       const aspectRatio = boundingBox.width / boundingBox.height;
-      if (aspectRatio < 0.2 || aspectRatio > 5.0) return false;
+      if (aspectRatio < 0.2 || aspectRatio > 5.0) return false; // Más permisivo
       
-      // 4. FILTRAR POR PERÍMETRO MÍNIMO (eliminar objetos con contornos muy simples)
-      const minPerimeter = Math.sqrt(area) * 2; // Perímetro mínimo esperado
+      // 4. FILTRAR POR PERÍMETRO MÍNIMO
+      const minPerimeter = Math.sqrt(area) * 2; // Perímetro mínimo más bajo
       if (points.length < minPerimeter) return false;
+      
+      // 5. FILTRAR POR DIMENSIONES MÍNIMAS ABSOLUTAS (más permisivo)
+      const minWidth = width * 0.05;   // 5% del ancho de pantalla
+      const minHeight = height * 0.05;  // 5% del alto de pantalla
+      if (boundingBox.width < minWidth || boundingBox.height < minHeight) return false;
       
       return true;
     });
     
     if (validContours.length === 0) return null;
     
-    // CALCULAR PUNTUACIÓN PARA CADA CONTORNO VÁLIDO
-    const scoredContours = validContours.map(contour => {
-      const { area, boundingBox, points, confidence } = contour;
+    // SELECCIÓN INTELIGENTE CON TOQUE DE PANTALLA
+    let bestContour = validContours[0];
+    let bestScore = 0;
+    
+    for (const contour of validContours) {
+      const { area, boundingBox } = contour;
       
       // Calcular centro del contorno
       const contourCenterX = boundingBox.x + boundingBox.width / 2;
       const contourCenterY = boundingBox.y + boundingBox.height / 2;
       
-      // 1. PUNTUACIÓN POR DISTANCIA AL CENTRO DE LA PANTALLA
-      const distanceToCenter = Math.sqrt(
-        Math.pow(contourCenterX - centerX, 2) + 
-        Math.pow(contourCenterY - centerY, 2)
-      );
-      const maxDistance = Math.sqrt(centerX * centerX + centerY * centerY);
-      const centerScore = 1 - (distanceToCenter / maxDistance);
+      let finalScore = 0;
       
-      // 2. PUNTUACIÓN POR TAMAÑO RELATIVO
-      const relativeArea = area / screenArea;
-      const sizeScore = Math.min(relativeArea * 10, 1); // Normalizar a [0,1]
+      if (touchPoint) {
+        // MODO TOQUE: Priorizar objetos cerca del punto tocado
+        const distanceToTouch = Math.sqrt(
+          Math.pow(contourCenterX - touchPoint.x, 2) + 
+          Math.pow(contourCenterY - touchPoint.y, 2)
+        );
+        const maxTouchDistance = Math.min(width, height) * 0.4; // 40% de la pantalla
+        
+        if (distanceToTouch <= maxTouchDistance) {
+          // PUNTUACIÓN TOQUE: 60% proximidad al toque + 40% tamaño
+          const touchScore = 1 - (distanceToTouch / maxTouchDistance);
+          const relativeArea = area / screenArea;
+          finalScore = (touchScore * 0.6) + (relativeArea * 0.4);
+        }
+      } else {
+        // MODO CENTRO: Priorizar objetos en el centro
+        const distanceToCenter = Math.sqrt(
+          Math.pow(contourCenterX - centerX, 2) + 
+          Math.pow(contourCenterY - centerY, 2)
+        );
+        const maxCenterDistance = Math.min(width, height) * 0.4; // 40% central
+        
+        if (distanceToCenter <= maxCenterDistance) {
+          // PUNTUACIÓN CENTRO: 60% posición central + 40% tamaño
+          const centerScore = 1 - (distanceToCenter / maxCenterDistance);
+          const relativeArea = area / screenArea;
+          finalScore = (centerScore * 0.6) + (relativeArea * 0.4);
+        }
+      }
       
-      // 3. PUNTUACIÓN POR COMPLEJIDAD DEL CONTORNO
-      const complexityScore = Math.min(points.length / 100, 1); // Normalizar a [0,1]
-      
-      // 4. PUNTUACIÓN POR CONFIANZA
-      const confidenceScore = confidence || 0.5;
-      
-      // PUNTUACIÓN FINAL PONDERADA
-      const finalScore = (
-        centerScore * 0.4 +      // 40% peso a posición central
-        sizeScore * 0.3 +        // 30% peso a tamaño apropiado
-        complexityScore * 0.2 +  // 20% peso a complejidad
-        confidenceScore * 0.1    // 10% peso a confianza
-      );
-      
-      return {
-        ...contour,
-        score: finalScore,
-        centerDistance: distanceToCenter,
-        relativeArea: relativeArea
-      };
-    });
+      if (finalScore > bestScore) {
+        bestScore = finalScore;
+        bestContour = contour;
+      }
+    }
     
-    // ORDENAR POR PUNTUACIÓN Y SELECCIONAR EL MEJOR
-    scoredContours.sort((a, b) => b.score - a.score);
-    
-    const bestContour = scoredContours[0];
-    
-    // VERIFICACIÓN FINAL: el contorno debe tener una puntuación mínima
-    if (bestContour.score < 0.3) {
-      console.log('⚠️ Ningún contorno cumple con los criterios mínimos de calidad');
+    // VERIFICACIÓN FINAL
+    if (bestScore < 0.05) { // Umbral más bajo para ser más permisivo
+      console.log('⚠️ Ningún contorno cumple con los criterios de calidad');
       return null;
     }
     
-    console.log('🎯 Contorno central seleccionado:', {
-      score: bestContour.score.toFixed(3),
+    const mode = touchPoint ? 'TOQUE' : 'CENTRO';
+    console.log(`🎯 Contorno seleccionado (${mode}):`, {
+      score: bestScore.toFixed(3),
       area: bestContour.area,
-      centerDistance: Math.round(bestContour.centerDistance),
-      relativeArea: (bestContour.relativeArea * 100).toFixed(1) + '%'
+      relativeArea: ((bestContour.area / screenArea) * 100).toFixed(1) + '%',
+      dimensions: `${bestContour.boundingBox.width}x${bestContour.boundingBox.height}`,
+      touchPoint: touchPoint ? `(${touchPoint.x}, ${touchPoint.y})` : 'Centro automático'
     });
     
-    // Retornar solo el contorno seleccionado (sin información de puntuación)
-    const { score, centerDistance, relativeArea, ...cleanContour } = bestContour;
-    return cleanContour;
+    return bestContour;
   }
 
   // UMBRAL BINARIO REAL
@@ -860,6 +867,11 @@ class NativeOpenCV {
     return this.findContours(src, 0, 0);
   }
 
+  // NUEVA FUNCIÓN: DETECCIÓN CON TOQUE DE PANTALLA
+  findContoursAtTouch(src: ImageData, touchX: number, touchY: number): any[] {
+    return this.findContours(src, 0, 0, { x: touchX, y: touchY });
+  }
+
   warpAffine(src: ImageData, matrix: number[][], size: number[]): ImageData {
     // Implementación básica de transformación afín
     return src;
@@ -952,6 +964,10 @@ export function useOpenCV() {
       if (contours && result) {
         contours.splice(0, contours.length, ...result);
       }
+    },
+    // NUEVA FUNCIÓN: DETECCIÓN CON TOQUE DE PANTALLA
+    findContoursAtTouch: (src: ImageData, touchX: number, touchY: number) => {
+      return nativeOpenCV.findContoursAtTouch(src, touchX, touchY);
     },
     // Funciones adicionales (mantener compatibilidad)
     // Funciones adicionales (mantener compatibilidad)

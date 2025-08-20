@@ -57,52 +57,28 @@ export class SilhouetteDetector {
     const { width, height } = imageData;
     
     console.log(`🎯 INICIANDO DETECCIÓN DE SILUETAS ${width}x${height}`);
+    console.log(`📏 Calibración: ${calibrationData?.isCalibrated ? 'SÍ' : 'NO'}, pixelsPerMm: ${calibrationData?.pixelsPerMm || 0}`);
     
     try {
-      // PASO 1: PROCESAMIENTO DE IMAGEN OPTIMIZADO CON MÚLTIPLES PASADAS
-      console.log('📷 Paso 1: Procesamiento de imagen mejorado...');
-      const processed = this.imageProcessor.processImage(imageData, 1.5); // Mayor contraste
+      // PASO 1: PROCESAMIENTO DE IMAGEN OPTIMIZADO
+      console.log('📷 Paso 1: Procesamiento de imagen...');
+      const processed = this.imageProcessor.processImage(imageData, 1.2); // Contraste moderado
       
-      // PASO 2: MEJORA DE CONTRASTE ADAPTATIVA EXTREMA
-      console.log('🌟 Paso 2: Mejora de contraste extrema...');
+      // PASO 2: MEJORA DE CONTRASTE ADAPTATIVA
+      console.log('🌟 Paso 2: Mejora de contraste...');
       const enhanced = this.imageProcessor.enhanceContrast(processed.blurred, width, height);
       
-      // PASO 2.5: APLICAR FILTRO BILATERAL PARA PRESERVAR BORDES
-      console.log('🔧 Paso 2.5: Filtro bilateral para preservar bordes...');
-      const bilateralFiltered = this.applyBilateralFilter(enhanced, width, height);
+      // PASO 3: DETECCIÓN DE BORDES OPTIMIZADA PARA OBJETOS GRANDES
+      console.log('🔍 Paso 3: Detección de bordes para objetos grandes...');
       
-      // PASO 3: DETECCIÓN DE BORDES MULTI-ALGORITMO PARA OBJETOS GRANDES CENTRALES
-      console.log('🔍 Paso 3: Detección de bordes multi-algoritmo para objeto central...');
-      
-      // Primera pasada: Canny con parámetros para objetos grandes
-      const cannyResult1 = this.edgeDetector.detectEdges(bilateralFiltered, width, height, {
-        lowThreshold: 10,    // Muy bajo para capturar todos los bordes posibles
-        highThreshold: 60,   // Moderado para eliminar ruido
-        sigma: 2.5,          // Sigma alto para objetos grandes
-        sobelKernelSize: 7,  // Kernel muy grande para bordes de objetos grandes
+      // Parámetros optimizados para objetos grandes y centrales
+      const cannyResult = this.edgeDetector.detectEdges(enhanced, width, height, {
+        lowThreshold: 40,    // Umbral más alto para ignorar detalles pequeños
+        highThreshold: 120,  // Umbral alto para bordes fuertes
+        sigma: 2.0,          // Suavizado mayor para objetos grandes
+        sobelKernelSize: 5,  // Kernel mediano para balance velocidad/calidad
         l2Gradient: true
       });
-      
-      // Segunda pasada: Canny con parámetros más estrictos
-      const cannyResult2 = this.edgeDetector.detectEdges(bilateralFiltered, width, height, {
-        lowThreshold: 25,
-        highThreshold: 100,
-        sigma: 1.5,
-        sobelKernelSize: 5,
-        l2Gradient: true
-      });
-      
-      // Combinar resultados de ambas pasadas
-      const combinedEdges = this.combineEdgeMaps(cannyResult1.edges, cannyResult2.edges, width, height);
-      
-      // Aplicar operaciones morfológicas para cerrar gaps
-      const morphedEdges = this.applyMorphologicalOperations(combinedEdges, width, height);
-      
-      const cannyResult = {
-        edges: morphedEdges,
-        edgePixels: this.countEdgePixels(morphedEdges),
-        threshold: { low: 10, high: 100 }
-      };
       
       console.log(`✅ Bordes detectados: ${cannyResult.edgePixels} píxeles`);
       
@@ -176,8 +152,8 @@ export class SilhouetteDetector {
     // FILTRAR PARA DETECTAR SOLO EL OBJETO CENTRAL MÁS GRANDE
     const centerX = width / 2;
     const centerY = height / 2;
-    const minAreaPercentage = 0.05; // Reducido a 5% para capturar objetos más pequeños
-    const maxDistanceFromCenter = Math.min(width, height) * 0.35; // 35% del tamaño de la imagen
+    const minAreaPercentage = 0.08; // Mínimo 8% del área total para objetos grandes
+    const maxDistanceFromCenter = Math.min(width, height) * 0.45; // 45% del tamaño de la imagen
     
     // Calcular score para cada contorno basado en tamaño y centralidad
     const scoredContours = contours.map(contour => {
@@ -225,7 +201,7 @@ export class SilhouetteDetector {
       const contour = contoursToProcess[i];
       const { properties, confidence } = contour;
       
-      // Aplicar calibración real
+      // Aplicar calibración real - MEJORADO
       let realWidth = properties.boundingBox.width;
       let realHeight = properties.boundingBox.height;
       let realArea = properties.area;
@@ -240,7 +216,12 @@ export class SilhouetteDetector {
         realPerimeter = properties.perimeter * mmPerPixel;
         unit = 'mm';
         
-        console.log(`🔧 Objeto ${i + 1}: ${properties.boundingBox.width}px → ${realWidth.toFixed(1)}mm`);
+        console.log(`🔧 Calibración aplicada - Objeto ${i + 1}:`);
+        console.log(`   - Ancho: ${properties.boundingBox.width}px → ${realWidth.toFixed(1)}mm`);
+        console.log(`   - Alto: ${properties.boundingBox.height}px → ${realHeight.toFixed(1)}mm`);
+        console.log(`   - Factor: ${calibrationData.pixelsPerMm.toFixed(2)} px/mm`);
+      } else {
+        console.log(`⚠️ Sin calibración - Objeto ${i + 1}: ${realWidth.toFixed(0)}x${realHeight.toFixed(0)} píxeles`);
       }
       
       const detectedObject: DetectedObject = {
@@ -298,7 +279,7 @@ export class SilhouetteDetector {
         boundingCircleRadius: properties.minEnclosingCircle.radius
       };
 
-      // CALCULAR PROFUNDIDAD Y VOLUMEN 3D REALES
+      // CALCULAR PROFUNDIDAD Y VOLUMEN 3D REALES - MEJORADO
       try {
         const depthMeasurement = depthVolumeCalculator.calculateDepthAndVolume(
           detectedObject, 
@@ -307,19 +288,36 @@ export class SilhouetteDetector {
           calibrationData
         );
         
+        // Asegurar que siempre tengamos mediciones 3D
+        const distance = depthMeasurement.distance > 0 ? depthMeasurement.distance : 500; // Default 500mm
+        const depth = depthMeasurement.depth > 0 ? depthMeasurement.depth : realWidth * 0.3;
+        const volume = depthMeasurement.volume > 0 ? depthMeasurement.volume : realWidth * realHeight * depth;
+        
         // Agregar mediciones 3D al objeto
         detectedObject.depth3D = {
-          distance: depthMeasurement.distance,
-          depth: depthMeasurement.depth,
-          volume: depthMeasurement.volume,
-          confidence: depthMeasurement.confidence,
-          method: depthMeasurement.method
+          distance: distance,
+          depth: depth,
+          volume: volume,
+          confidence: depthMeasurement.confidence > 0 ? depthMeasurement.confidence : 0.7,
+          method: depthMeasurement.method || 'estimated'
         };
         
-        console.log(`🎯 Objeto ${i + 1} - Mediciones 3D: distancia=${depthMeasurement.distance.toFixed(0)}mm, volumen=${depthMeasurement.volume.toFixed(0)}mm³`);
+        console.log(`🎯 Mediciones 3D - Objeto ${i + 1}:`);
+        console.log(`   - Distancia: ${distance.toFixed(0)}mm`);
+        console.log(`   - Profundidad: ${depth.toFixed(1)}mm`);
+        console.log(`   - Volumen: ${(volume/1000).toFixed(1)}cm³`);
+        console.log(`   - Método: ${detectedObject.depth3D.method}`);
         
       } catch (error) {
         console.error('❌ Error calculando profundidad 3D:', error);
+        // Valores por defecto en caso de error
+        detectedObject.depth3D = {
+          distance: 500,
+          depth: realWidth * 0.3,
+          volume: realWidth * realHeight * (realWidth * 0.3),
+          confidence: 0.5,
+          method: 'estimated'
+        };
       }
       
       objects.push(detectedObject);

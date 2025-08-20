@@ -59,6 +59,10 @@ export const CameraView: React.FC<CameraViewProps> = ({
   const [isProcessing, setIsProcessing] = useState(false);
   const [frameCount, setFrameCount] = useState(0);
   const processingInterval = useRef<NodeJS.Timeout | null>(null);
+  
+  // ESTADOS PARA TOQUE DE PANTALLA
+  const [touchPoint, setTouchPoint] = useState<{ x: number; y: number } | null>(null);
+  const [isTouchMode, setIsTouchMode] = useState(false);
 
   // INICIALIZACIÓN INMEDIATA DE CÁMARA
   useEffect(() => {
@@ -136,7 +140,12 @@ export const CameraView: React.FC<CameraViewProps> = ({
       console.log(`📏 Procesando imagen: ${imageData.width}x${imageData.height}, calibrado: ${calibrationData?.isCalibrated ? 'SÍ' : 'NO'}`);
       
       // DETECCIÓN AVANZADA CON OPENCV UNIFICADO Y CALIBRACIÓN APLICADA
-      const result = await unifiedOpenCV.detectObjectSilhouettes(imageData, calibrationData);
+      // Si hay punto de toque, usar modo toque; si no, modo centro automático
+      const result = await unifiedOpenCV.detectObjectSilhouettes(
+        imageData, 
+        calibrationData,
+        touchPoint // Pasar el punto de toque si existe
+      );
       
       if (result.objects.length > 0) {
         const obj = result.objects[0];
@@ -220,6 +229,65 @@ export const CameraView: React.FC<CameraViewProps> = ({
     }
   }, [onImageCapture]);
 
+  // MANEJAR TOQUE DE PANTALLA
+  const handleTouchStart = useCallback((event: React.TouchEvent) => {
+    event.preventDefault();
+    
+    if (event.touches.length > 0) {
+      const touch = event.touches[0];
+      const rect = event.currentTarget.getBoundingClientRect();
+      
+      // Calcular coordenadas relativas al video
+      const x = touch.clientX - rect.left;
+      const y = touch.clientY - rect.top;
+      
+      // Convertir a coordenadas de video
+      const video = videoRef.current;
+      if (video && video.videoWidth > 0) {
+        const scaleX = video.videoWidth / rect.width;
+        const scaleY = video.videoHeight / rect.height;
+        
+        const videoX = Math.round(x * scaleX);
+        const videoY = Math.round(y * scaleY);
+        
+        setTouchPoint({ x: videoX, y: videoY });
+        setIsTouchMode(true);
+        
+        console.log(`👆 Toque detectado en: (${videoX}, ${videoY}) - Modo toque activado`);
+        
+        // Procesar frame inmediatamente con el punto de toque
+        setTimeout(() => processVideoFrame(), 100);
+      }
+    }
+  }, []);
+
+  // MANEJAR CLICK DE RATÓN (para desarrollo)
+  const handleMouseClick = useCallback((event: React.MouseEvent) => {
+    event.preventDefault();
+    
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    
+    // Convertir a coordenadas de video
+    const video = videoRef.current;
+    if (video && video.videoWidth > 0) {
+      const scaleX = video.videoWidth / rect.width;
+      const scaleY = video.videoHeight / rect.height;
+      
+      const videoX = Math.round(x * scaleX);
+      const videoY = Math.round(y * scaleY);
+      
+      setTouchPoint({ x: videoX, y: videoY });
+      setIsTouchMode(true);
+      
+      console.log(`🖱️ Click detectado en: (${videoX}, ${videoY}) - Modo toque activado`);
+      
+      // Procesar frame inmediatamente con el punto de toque
+      setTimeout(() => processVideoFrame(), 100);
+    }
+  }, []);
+
   // CAMBIAR CÁMARA
   const handleSwitchCamera = useCallback(async () => {
     try {
@@ -247,6 +315,8 @@ export const CameraView: React.FC<CameraViewProps> = ({
           muted
           className="w-full h-full object-cover"
           style={{ transform: currentCamera === 'front' ? 'scaleX(-1)' : 'none' }}
+          onTouchStart={handleTouchStart}
+          onClick={handleMouseClick}
         />
         
         {/* CANVAS OVERLAY PARA SILUETAS */}
@@ -316,6 +386,22 @@ export const CameraView: React.FC<CameraViewProps> = ({
         >
           {isRealTimeMeasurement ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
         </Button>
+
+        {isTouchMode && (
+          <Button
+            variant="destructive"
+            size="icon"
+            onClick={() => {
+              setIsTouchMode(false);
+              setTouchPoint(null);
+              console.log('🔄 Modo toque desactivado - Volviendo a detección automática del centro');
+            }}
+            className="bg-red-500/80 hover:bg-red-600/80 text-white"
+            title="Desactivar modo toque"
+          >
+            <Target className="h-5 w-5" />
+          </Button>
+        )}
       </div>
 
       {/* INDICADORES DE ESTADO */}
@@ -323,6 +409,12 @@ export const CameraView: React.FC<CameraViewProps> = ({
         <Badge variant={hasPermissions ? "default" : "destructive"}>
           {hasPermissions ? "Cámara OK" : "Sin permisos"}
         </Badge>
+        
+        {isTouchMode && touchPoint && (
+          <Badge variant="secondary" className="bg-purple-500/80 text-white">
+            👆 Modo Toque: ({touchPoint.x}, {touchPoint.y})
+          </Badge>
+        )}
         
         {isProcessing && (
           <Badge variant="secondary" className="bg-blue-500/80 text-white">
@@ -339,6 +431,20 @@ export const CameraView: React.FC<CameraViewProps> = ({
         <Badge variant="outline" className="bg-black/50 text-white border-white/30">
           Frame: {frameCount}
         </Badge>
+      </div>
+
+      {/* INSTRUCCIONES DE USO */}
+      <div className="absolute top-20 left-4 bg-black/80 text-white p-3 rounded-lg text-sm max-w-80">
+        <div className="font-semibold mb-2 flex items-center gap-2">
+          <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
+          📱 Instrucciones de Uso
+        </div>
+        <div className="space-y-1 text-xs">
+          <div>• <strong>Toque/Click</strong> en cualquier parte de la pantalla para detectar objetos en esa zona</div>
+          <div>• <strong>Modo automático:</strong> Detecta objetos grandes en el centro</div>
+          <div>• <strong>Modo toque:</strong> Detecta objetos cerca del punto seleccionado</div>
+          <div>• <strong>Botón rojo:</strong> Desactiva el modo toque</div>
+        </div>
       </div>
 
       {/* INFORMACIÓN DE MEDICIÓN MEJORADA */}

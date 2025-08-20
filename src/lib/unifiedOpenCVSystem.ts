@@ -21,7 +21,8 @@ class UnifiedOpenCVSystem {
    */
   async detectObjectSilhouettes(
     imageData: ImageData, 
-    calibrationData: CalibrationData | null = null
+    calibrationData: CalibrationData | null = null,
+    touchPoint?: { x: number; y: number } | null
   ): Promise<OpenCVDetectionResult> {
     if (this.isProcessing) {
       return { objects: [], processingTime: 0, edgeMap: new Uint8Array(0), contours: [] };
@@ -33,7 +34,7 @@ class UnifiedOpenCVSystem {
       console.log('🔄 Redirigiendo al sistema OpenCV ultra avanzado...');
       
       // Usar el nuevo sistema modular ultra avanzado
-      const result = await detectObjectsWithOpenCV(imageData, calibrationData);
+      const result = await detectObjectsWithOpenCV(imageData, calibrationData, touchPoint);
       
       return {
         objects: result.objects,

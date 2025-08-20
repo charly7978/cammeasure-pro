@@ -51,7 +51,8 @@ export class SilhouetteDetector {
    */
   async detectSilhouettes(
     imageData: ImageData,
-    calibrationData: CalibrationData | null = null
+    calibrationData: CalibrationData | null = null,
+    touchPoint?: { x: number; y: number } | null
   ): Promise<SilhouetteDetectionResult> {
     const startTime = performance.now();
     const { width, height } = imageData;
@@ -86,7 +87,8 @@ export class SilhouetteDetector {
         width,
         height,
         'external',
-        'simple'
+        'simple',
+        touchPoint // Pasar el punto de toque si existe
       );
       
       console.log(`✅ Contornos encontrados: ${detectedContours.length}`);

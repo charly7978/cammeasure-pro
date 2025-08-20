@@ -70,7 +70,8 @@ class OpenCVSystem {
    */
   async detectObjectSilhouettes(
     imageData: ImageData,
-    calibrationData: CalibrationData | null = null
+    calibrationData: CalibrationData | null = null,
+    touchPoint?: { x: number; y: number } | null
   ): Promise<OpenCVSystemResult> {
     // Auto-inicializar si es necesario
     if (!this.isInitialized) {
@@ -81,7 +82,7 @@ class OpenCVSystem {
     
     try {
       // Usar el detector de siluetas especializado
-      const result = await this.silhouetteDetector.detectSilhouettes(imageData, calibrationData);
+      const result = await this.silhouetteDetector.detectSilhouettes(imageData, calibrationData, touchPoint);
       
       // Formatear resultado para compatibilidad
       return {
@@ -169,9 +170,10 @@ export const openCVSystem = OpenCVSystem.getInstance();
 // Función de conveniencia para uso directo
 export const detectObjectsWithOpenCV = async (
   imageData: ImageData,
-  calibrationData: CalibrationData | null = null
+  calibrationData: CalibrationData | null = null,
+  touchPoint?: { x: number; y: number } | null
 ): Promise<OpenCVSystemResult> => {
-  return openCVSystem.detectObjectSilhouettes(imageData, calibrationData);
+  return openCVSystem.detectObjectSilhouettes(imageData, calibrationData, touchPoint);
 };
 
 // Función de inicialización explícita

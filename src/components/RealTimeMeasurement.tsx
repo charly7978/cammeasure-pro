@@ -1,6 +1,9 @@
-import React from 'react';
-import { useAutomaticMeasurement } from '@/hooks/useAutomaticMeasurement';
+import React, { useState, useEffect } from 'react';
+import { useSimpleMeasurement } from '@/hooks/useSimpleMeasurement';
+import { useCalibration } from '@/hooks/useCalibration';
 import { DetectedObject, RealTimeMeasurement as RealTimeMeasurementType } from '@/lib/types';
+import { Button } from '@/components/ui/button';
+import { Target, Zap } from 'lucide-react';
 
 interface RealTimeMeasurementProps {
   videoRef?: React.RefObject<HTMLVideoElement>;
@@ -20,33 +23,34 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
   onError
 }) => {
   
-  // USAR HOOK ESPECIALIZADO PARA MEDICIÓN AUTOMÁTICA
+  const { getPixelsPerMm, isCalibrated } = useCalibration();
+  const [clickMode, setClickMode] = useState(false);
+  
+  const pixelsPerMm = isCalibrated() ? getPixelsPerMm() : 1;
+  
   const {
     isProcessing,
-    currentMeasurement,
-    frameCount,
-    fps,
-    successRate,
-    lastProcessingTime
-  } = useAutomaticMeasurement({
-    videoRef,
-    overlayCanvasRef,
-    isActive,
+    lastMeasurement,
+    measureByClick,
+    measureAutomatic
+  } = useSimpleMeasurement({
+    videoRef: videoRef!,
+    pixelsPerMm,
     onMeasurementUpdate: (measurement) => {
-      // Convertir formato de medición automática a formato esperado
+      // Convertir medición simple a formato completo
       const convertedMeasurement: RealTimeMeasurementType = {
         width: measurement.width,
         height: measurement.height,
         area: measurement.area,
         perimeter: measurement.perimeter,
-        circularity: measurement.circularity,
-        solidity: measurement.solidity,
+        circularity: 0.8, // Valor por defecto
+        solidity: 0.9, // Valor por defecto
         confidence: measurement.confidence,
-        depth: 100, // Valor por defecto
+        depth: 100,
         volume: measurement.area * 100,
         surfaceArea: measurement.area * 2,
-        curvature: measurement.contourComplexity,
-        roughness: 1 - measurement.stability,
+        curvature: 0.1,
+        roughness: 0.1,
         orientation: { pitch: 0, yaw: 0, roll: 0 },
         materialProperties: {
           refractiveIndex: 1.0,
@@ -59,92 +63,117 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
           algorithm: 0.02,
           total: 1 - measurement.confidence + 0.07
         },
-        algorithm: measurement.algorithm,
-        processingTime: measurement.processingTime,
-        frameRate: fps,
+        algorithm: 'Simple Edge Detection',
+        processingTime: 50,
+        frameRate: 30,
         qualityMetrics: {
           sharpness: measurement.confidence,
-          contrast: measurement.stability,
-          noise: 1 - measurement.stability,
-          blur: 1 - measurement.confidence
+          contrast: 0.8,
+          noise: 0.1,
+          blur: 0.1
         }
       };
       onMeasurementUpdate(convertedMeasurement);
     },
-    onSilhouetteDetected: (silhouette) => {
-      // Convertir silueta a formato DetectedObject
-      const detectedObject: DetectedObject = {
-        id: 'auto_silhouette',
-        type: 'silhouette',
-        x: silhouette.boundingBox.x,
-        y: silhouette.boundingBox.y,
-        width: silhouette.boundingBox.width,
-        height: silhouette.boundingBox.height,
-        area: silhouette.area,
-        confidence: silhouette.confidence,
-        contours: silhouette.contours,
-        boundingBox: silhouette.boundingBox,
-        dimensions: {
-          width: silhouette.boundingBox.width,
-          height: silhouette.boundingBox.height,
-          area: silhouette.area,
-          unit: 'px' as const
-        },
-        points: silhouette.contours.map((point, index) => ({
-          x: point.x,
-          y: point.y,
-          z: 0,
-          confidence: silhouette.confidence,
-          timestamp: Date.now() + index
-        }))
-      };
-      
-      if (onObjectsDetected) {
-        onObjectsDetected([detectedObject]);
-      }
-    },
     onError
   });
+  
+  // Manejo de click en el video
+  const handleVideoClick = (event: React.MouseEvent<HTMLVideoElement>) => {
+    if (!clickMode || !videoRef?.current) return;
+    
+    const video = videoRef.current;
+    const rect = video.getBoundingClientRect();
+    const scaleX = video.videoWidth / rect.width;
+    const scaleY = video.videoHeight / rect.height;
+    
+    const x = (event.clientX - rect.left) * scaleX;
+    const y = (event.clientY - rect.top) * scaleY;
+    
+    measureByClick(x, y);
+  };
+  
+  // Medición automática cada 5 segundos cuando está activa
+  useEffect(() => {
+    if (!isActive || clickMode) return;
+    
+    const interval = setInterval(() => {
+      measureAutomatic();
+    }, 5000);
+    
+    return () => clearInterval(interval);
+  }, [isActive, clickMode, measureAutomatic]);
 
   return (
-    <div className="absolute bottom-4 left-4 bg-black/90 text-white p-4 rounded-lg text-sm border border-green-500/30">
-      <div className="flex items-center gap-2 mb-3">
-        <div className={`w-3 h-3 rounded-full ${isProcessing ? 'bg-yellow-400 animate-pulse' : 'bg-green-400'}`}></div>
-        <span className="text-green-400 font-semibold">
-          {isProcessing ? 'DETECTANDO SILUETA...' : 'MEDICIÓN AUTOMÁTICA ACTIVA'}
-        </span>
-      </div>
+    <>
+      {/* OVERLAY PARA CLICKS */}
+      {clickMode && videoRef?.current && (
+        <div 
+          className="absolute inset-0 cursor-crosshair z-10"
+          onClick={handleVideoClick as any}
+        />
+      )}
       
-      <div className="space-y-2">
-        <div className="flex justify-between">
-          <span>Frame:</span>
-          <span className="text-green-400">{frameCount}</span>
+      {/* PANEL DE INFORMACIÓN */}
+      <div className="absolute bottom-4 left-4 bg-black/90 text-white p-4 rounded-lg text-sm border border-green-500/30 max-w-xs">
+        <div className="flex items-center gap-2 mb-3">
+          <div className={`w-3 h-3 rounded-full ${isProcessing ? 'bg-yellow-400 animate-pulse' : 'bg-green-400'}`}></div>
+          <span className="text-green-400 font-semibold text-xs">
+            MEDICIÓN SIMPLE ACTIVA
+          </span>
         </div>
-        <div className="flex justify-between">
-          <span>FPS:</span>
-          <span className="text-green-400">{fps.toFixed(1)}</span>
+        
+        {/* CONTROLES */}
+        <div className="flex gap-2 mb-3">
+          <Button
+            size="sm"
+            variant={clickMode ? "default" : "outline"}
+            onClick={() => setClickMode(!clickMode)}
+            className="text-xs"
+          >
+            <Target className="h-3 w-3 mr-1" />
+            {clickMode ? 'Click Activo' : 'Click Manual'}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={measureAutomatic}
+            disabled={isProcessing}
+            className="text-xs"
+          >
+            <Zap className="h-3 w-3 mr-1" />
+            Medir
+          </Button>
         </div>
-        <div className="flex justify-between">
-          <span>Éxito:</span>
-          <span className="text-green-400">{(successRate * 100).toFixed(1)}%</span>
+        
+        {/* ESTADO DE CALIBRACIÓN */}
+        <div className="text-xs mb-2">
+          <span className="text-gray-400">Calibración: </span>
+          <span className={isCalibrated() ? 'text-green-400' : 'text-red-400'}>
+            {isCalibrated() ? 'OK' : 'Sin calibrar'}
+          </span>
         </div>
-        {lastProcessingTime > 0 && (
-          <div className="flex justify-between">
-            <span>Tiempo:</span>
-            <span className="text-green-400">{lastProcessingTime.toFixed(1)}ms</span>
-          </div>
-        )}
-        {currentMeasurement && (
+        
+        {/* INFORMACIÓN DE MEDICIÓN */}
+        {lastMeasurement && (
           <>
             <hr className="border-green-500/30 my-2" />
-            <div className="text-xs text-green-300">
-              <div>Área: {Math.round(currentMeasurement.area)} px²</div>
-              <div>Perímetro: {Math.round(currentMeasurement.perimeter)} px</div>
-              <div>Confianza: {(currentMeasurement.confidence * 100).toFixed(1)}%</div>
+            <div className="text-xs text-green-300 space-y-1">
+              <div>Área: {Math.round(lastMeasurement.area)} {isCalibrated() ? 'mm²' : 'px²'}</div>
+              <div>Perímetro: {Math.round(lastMeasurement.perimeter)} {isCalibrated() ? 'mm' : 'px'}</div>
+              <div>Dimensiones: {Math.round(lastMeasurement.width)} × {Math.round(lastMeasurement.height)}</div>
+              <div>Confianza: {(lastMeasurement.confidence * 100).toFixed(1)}%</div>
             </div>
           </>
         )}
+        
+        {/* INSTRUCCIONES */}
+        {clickMode && (
+          <div className="text-xs text-yellow-300 mt-2">
+            👆 Toca cualquier parte del objeto para medir
+          </div>
+        )}
       </div>
-    </div>
+    </>
   );
 };

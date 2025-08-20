@@ -55,11 +55,8 @@ export const CameraView: React.FC<CameraViewProps> = ({
   const [isRealTimeMeasurement, setIsRealTimeMeasurement] = useState(true);
   const [videoContainer, setVideoContainer] = useState({ width: 0, height: 0 });
   
-  // ESTADOS PARA MEDICIÓN AUTOMÁTICA
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [currentMeasurement, setCurrentMeasurement] = useState<any>(null);
+  // ESTADOS SIMPLIFICADOS
   const [frameCount, setFrameCount] = useState(0);
-  const processingInterval = useRef<NodeJS.Timeout | null>(null);
   
   // ESTADOS PARA SELECCIÓN MANUAL POR TOQUE
   const [isManualSelectionMode, setIsManualSelectionMode] = useState(false);
@@ -71,18 +68,10 @@ export const CameraView: React.FC<CameraViewProps> = ({
     console.log('🎯 OBJETO SELECCIONADO MANUALMENTE:', object);
     setSelectedObject(object);
     setManualMeasurements(measurements);
-    
-    // Detener medición automática cuando se selecciona manualmente
-    if (processingInterval.current) {
-      clearInterval(processingInterval.current);
-      processingInterval.current = null;
-    }
-    
-    // Notificar al componente padre
     onRealTimeObjects([object]);
   }, [onRealTimeObjects]);
 
-  // MANEJAR ERROR EN SELECCIÓN MANUAL
+  // MANEJAR ERROR EN SELECCIÓN MANUAL  
   const handleManualSelectionError = useCallback((error: string) => {
     console.error('❌ Error en selección manual:', error);
   }, []);
@@ -169,15 +158,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
   // ACTIVAR/DESACTIVAR MODO MANUAL
   const toggleManualMode = () => {
     setIsManualSelectionMode(!isManualSelectionMode);
-    
-    if (!isManualSelectionMode) {
-      // Parar medición automática
-      if (processingInterval.current) {
-        clearInterval(processingInterval.current);
-        processingInterval.current = null;
-      }
-    } else {
-      // Reiniciar medición automática
+    if (isManualSelectionMode) {
       setSelectedObject(null);
       setManualMeasurements(null);
     }
@@ -292,11 +273,6 @@ export const CameraView: React.FC<CameraViewProps> = ({
           {hasPermissions ? "Cámara OK" : "Sin permisos"}
         </Badge>
         
-        {isProcessing && (
-          <Badge variant="secondary" className="bg-blue-500/80 text-white">
-            Procesando...
-          </Badge>
-        )}
         
         {detectedObjects.length > 0 && (
           <Badge variant="default" className="bg-green-500/80 text-white">
@@ -310,13 +286,11 @@ export const CameraView: React.FC<CameraViewProps> = ({
       </div>
 
       {/* INFORMACIÓN DE MEDICIÓN */}
-      {(selectedObject || currentMeasurement) && (
+      {selectedObject && (
         <div className="absolute top-4 right-4 bg-black/70 text-white p-3 rounded-lg text-sm">
-          <div className="font-semibold mb-1">
-            {selectedObject ? 'Objeto Seleccionado' : 'Medición Automática'}
-          </div>
-          <div>Área: {Math.round((selectedObject?.area || currentMeasurement?.area || 0))} px²</div>
-          <div>Confianza: {Math.round(((selectedObject?.confidence || currentMeasurement?.confidence || 0) * 100))}%</div>
+          <div className="font-semibold mb-1">Objeto Seleccionado</div>
+          <div>Área: {Math.round(selectedObject.area)} px²</div>
+          <div>Confianza: {Math.round(selectedObject.confidence * 100)}%</div>
         </div>
       )}
     </div>

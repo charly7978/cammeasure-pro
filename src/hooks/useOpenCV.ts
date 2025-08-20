@@ -799,7 +799,7 @@ class NativeOpenCV {
     }
   }
 
-  // FILTRO MEJORADO PARA OBJETO CENTRAL Y PREDOMINANTE - SIN OBJETOS MINÚSCULOS
+  // FILTRO ULTRA ESTRICTO PARA SOLO EL OBJETO PRINCIPAL - SIN MICRO OBJETOS
   private filterCentralDominantContour(contours: any[], width: number, height: number, touchPoint?: { x: number; y: number }): any | null {
     if (contours.length === 0) return null;
     
@@ -807,47 +807,51 @@ class NativeOpenCV {
     const centerY = height / 2;
     const screenArea = width * height;
     
-    // FILTROS ESTRICTOS PARA SOLO OBJETOS GRANDES Y CENTRALES
+    // FILTROS ULTRA ESTRICTOS - SOLO OBJETOS MUY GRANDES Y CENTRALES
     const validContours = contours.filter(contour => {
       const { area, boundingBox, points } = contour;
       
-      // 1. FILTRAR POR TAMAÑO MÍNIMO ESTRICTO (solo objetos grandes)
-      const minAreaThreshold = screenArea * 0.08; // 8% mínimo (más estricto)
+      // 1. FILTRAR POR TAMAÑO MÍNIMO ULTRA ESTRICTO (solo objetos muy grandes)
+      const minAreaThreshold = screenArea * 0.15; // 15% mínimo (ultra estricto)
       if (area < minAreaThreshold) return false;
       
       // 2. FILTRAR POR TAMAÑO MÁXIMO
-      const maxAreaThreshold = screenArea * 0.7; // 70% máximo (más estricto)
+      const maxAreaThreshold = screenArea * 0.6; // 60% máximo (más estricto)
       if (area > maxAreaThreshold) return false;
       
-      // 3. FILTRAR POR RELACIÓN DE ASPECTO MÁS ESTRICTA
+      // 3. FILTRAR POR RELACIÓN DE ASPECTO ULTRA ESTRICTA
       const aspectRatio = boundingBox.width / boundingBox.height;
-      if (aspectRatio < 0.3 || aspectRatio > 3.0) return false; // Más estricto
+      if (aspectRatio < 0.4 || aspectRatio > 2.5) return false; // Ultra estricto
       
-      // 4. FILTRAR POR PERÍMETRO MÍNIMO MÁS ALTO
-      const minPerimeter = Math.sqrt(area) * 3; // Perímetro mínimo más alto
+      // 4. FILTRAR POR PERÍMETRO MÍNIMO ULTRA ALTO
+      const minPerimeter = Math.sqrt(area) * 4; // Perímetro mínimo ultra alto
       if (points.length < minPerimeter) return false;
       
-      // 5. FILTRAR POR DIMENSIONES MÍNIMAS ABSOLUTAS MÁS ALTAS
-      const minWidth = width * 0.08;   // 8% del ancho de pantalla
-      const minHeight = height * 0.08;  // 8% del alto de pantalla
+      // 5. FILTRAR POR DIMENSIONES MÍNIMAS ABSOLUTAS ULTRA ALTAS
+      const minWidth = width * 0.12;   // 12% del ancho de pantalla
+      const minHeight = height * 0.12;  // 12% del alto de pantalla
       if (boundingBox.width < minWidth || boundingBox.height < minHeight) return false;
       
-      // 6. NUEVO FILTRO: VERIFICAR QUE EL OBJETO ESTÉ EN LA ZONA CENTRAL
+      // 6. FILTRO ULTRA ESTRICTO: SOLO OBJETOS EN ZONA CENTRAL MUY PEQUEÑA
       const contourCenterX = boundingBox.x + boundingBox.width / 2;
       const contourCenterY = boundingBox.y + boundingBox.height / 2;
       const distanceToCenter = Math.sqrt(
         Math.pow(contourCenterX - centerX, 2) + 
         Math.pow(contourCenterY - centerY, 2)
       );
-      const maxCenterDistance = Math.min(width, height) * 0.3; // Solo 30% central
+      const maxCenterDistance = Math.min(width, height) * 0.2; // Solo 20% central (ultra estricto)
       if (distanceToCenter > maxCenterDistance) return false;
+      
+      // 7. NUEVO FILTRO: VERIFICAR QUE EL OBJETO TENGA FORMA NATURAL
+      const compactness = (4 * Math.PI * area) / (points.length * points.length);
+      if (compactness < 0.1 || compactness > 0.8) return false; // Solo formas naturales
       
       return true;
     });
     
     if (validContours.length === 0) return null;
     
-    // SELECCIÓN INTELIGENTE MEJORADA - PRIORIZAR OBJETO MÁS GRANDE Y CENTRAL
+    // SELECCIÓN ULTRA INTELIGENTE - SOLO EL OBJETO MÁS GRANDE Y CENTRAL
     let bestContour = validContours[0];
     let bestScore = 0;
     
@@ -866,13 +870,13 @@ class NativeOpenCV {
           Math.pow(contourCenterX - touchPoint.x, 2) + 
           Math.pow(contourCenterY - touchPoint.y, 2)
         );
-        const maxTouchDistance = Math.min(width, height) * 0.3; // 30% de la pantalla (más estricto)
+        const maxTouchDistance = Math.min(width, height) * 0.25; // 25% de la pantalla (ultra estricto)
         
         if (distanceToTouch <= maxTouchDistance) {
-          // PUNTUACIÓN TOQUE MEJORADA: 40% proximidad al toque + 60% tamaño
+          // PUNTUACIÓN TOQUE ULTRA: 30% proximidad al toque + 70% tamaño
           const touchScore = 1 - (distanceToTouch / maxTouchDistance);
           const relativeArea = area / screenArea;
-          finalScore = (touchScore * 0.4) + (relativeArea * 0.6); // Priorizar tamaño
+          finalScore = (touchScore * 0.3) + (relativeArea * 0.7); // Priorizar mucho el tamaño
         }
       } else {
         // MODO CENTRO: Priorizar objetos en el centro y más grandes
@@ -880,13 +884,13 @@ class NativeOpenCV {
           Math.pow(contourCenterX - centerX, 2) + 
           Math.pow(contourCenterY - centerY, 2)
         );
-        const maxCenterDistance = Math.min(width, height) * 0.25; // Solo 25% central (más estricto)
+        const maxCenterDistance = Math.min(width, height) * 0.15; // Solo 15% central (ultra estricto)
         
         if (distanceToCenter <= maxCenterDistance) {
-          // PUNTUACIÓN CENTRO MEJORADA: 30% posición central + 70% tamaño
+          // PUNTUACIÓN CENTRO ULTRA: 20% posición central + 80% tamaño
           const centerScore = 1 - (distanceToCenter / maxCenterDistance);
           const relativeArea = area / screenArea;
-          finalScore = (centerScore * 0.3) + (relativeArea * 0.7); // Priorizar mucho el tamaño
+          finalScore = (centerScore * 0.2) + (relativeArea * 0.8); // Priorizar extremadamente el tamaño
         }
       }
       
@@ -896,8 +900,8 @@ class NativeOpenCV {
       }
     }
     
-    // VERIFICACIÓN FINAL MEJORADA - MÁS ESTRICTA
-    if (bestScore < 0.15) { // Umbral más alto para ser más estricto
+    // VERIFICACIÓN FINAL ULTRA ESTRICTA
+    if (bestScore < 0.25) { // Umbral ultra alto para ser ultra estricto
       console.log('⚠️ Ningún contorno cumple con los criterios de calidad estricta');
       return null;
     }

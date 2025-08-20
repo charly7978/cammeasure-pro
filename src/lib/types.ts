@@ -101,6 +101,14 @@ export interface DetectedObject extends BoundingRect {
     confidence: number;
   };
   
+  // Propiedades geométricas adicionales
+  geometricProperties?: {
+    aspectRatio: number;
+    solidity: number;
+    circularity: number;
+    perimeter: number;
+  };
+  
   orientation?: {
     pitch: number;
     yaw: number;

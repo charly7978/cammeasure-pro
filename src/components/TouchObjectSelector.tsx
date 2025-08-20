@@ -3,7 +3,7 @@
 
 import React, { useRef, useState, useCallback, useEffect } from 'react';
 import { DetectedObject } from '@/lib/types';
-import { detectContoursReal, applyFilter } from '@/lib';
+import { unifiedOpenCV } from '@/lib/unifiedOpenCVSystem';
 
 interface TouchObjectSelectorProps {
   videoRef: React.RefObject<HTMLVideoElement>;
@@ -125,42 +125,17 @@ export const TouchObjectSelector: React.FC<TouchObjectSelectorProps> = ({
     try {
       console.log('🔍 DETECTANDO OBJETOS EN PUNTO DE TOQUE...');
       
-      // 1. APLICAR FILTRO CANNY PARA DETECTAR BORDES
-      const edges = applyFilter(imageData, 'canny');
+      // 1. USAR SISTEMA UNIFICADO OPENCV PARA DETECCIÓN EN PUNTO DE TOQUE
+      const result = await unifiedOpenCV.detectObjectSilhouettes(imageData);
+      const allDetectedObjects = result.objects;
       
-      // 2. DETECTAR CONTORNOS REALES
-      const contours = detectContoursReal(edges, imageData.width, imageData.height);
-      
-      // 3. FILTRAR CONTORNOS QUE CONTENGAN EL PUNTO DE TOQUE
-      const validContours = contours.filter((contour: any) => {
-        return isPointInContour(touchX, touchY, contour);
+      // 2. FILTRAR OBJETOS QUE CONTENGAN EL PUNTO DE TOQUE
+      const validObjects = allDetectedObjects.filter((obj: DetectedObject) => {
+        return isPointInBoundingBox(touchX, touchY, obj.boundingBox);
       });
       
-      // 4. CONVERTIR A DETECTEDOBJECT[]
-      const detectedObjects: DetectedObject[] = validContours.map((contour: any, index: number) => ({
-        id: `touch_obj_${index}`,
-        type: 'touch_selected',
-        points: [], // Array vacío para compatibilidad
-        x: contour.boundingBox.x,
-        y: contour.boundingBox.y,
-        width: contour.boundingBox.width,
-        height: contour.boundingBox.height,
-        area: contour.boundingBox.area,
-        boundingBox: {
-          x: contour.boundingBox.x,
-          y: contour.boundingBox.y,
-          width: contour.boundingBox.width,
-          height: contour.boundingBox.height
-        },
-        dimensions: {
-          width: contour.boundingBox.width,
-          height: contour.boundingBox.height,
-          area: contour.area || contour.boundingBox.width * contour.boundingBox.height,
-          unit: 'px'
-        },
-        confidence: contour.confidence || 0.9,
-        contour: contour.points
-      }));
+      // 3. CONVERTIR A FORMATO COMPATIBLE SI ES NECESARIO
+      const detectedObjects: DetectedObject[] = validObjects.length > 0 ? validObjects : [];
       
       console.log(`✅ ${detectedObjects.length} objetos detectados en punto de toque`);
       return detectedObjects;
@@ -171,30 +146,12 @@ export const TouchObjectSelector: React.FC<TouchObjectSelectorProps> = ({
     }
   };
 
-  // VERIFICAR SI UN PUNTO ESTÁ DENTRO DE UN CONTORNO
-  const isPointInContour = (x: number, y: number, contour: any): boolean => {
-    try {
-      // Algoritmo de punto en polígono (ray casting)
-      let inside = false;
-      const points = contour.points || [];
-      
-      for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
-        const xi = points[i].x;
-        const yi = points[i].y;
-        const xj = points[j].x;
-        const yj = points[j].y;
-        
-        if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) {
-          inside = !inside;
-        }
-      }
-      
-      return inside;
-      
-    } catch (error) {
-      console.error('❌ Error verificando punto en contorno:', error);
-      return false;
-    }
+  // VERIFICAR SI UN PUNTO ESTÁ DENTRO DE UN BOUNDING BOX
+  const isPointInBoundingBox = (x: number, y: number, boundingBox: {x: number, y: number, width: number, height: number}): boolean => {
+    return x >= boundingBox.x && 
+           x <= boundingBox.x + boundingBox.width && 
+           y >= boundingBox.y && 
+           y <= boundingBox.y + boundingBox.height;
   };
 
   // SELECCIONAR OBJETO MÁS CERCANO AL TOQUE

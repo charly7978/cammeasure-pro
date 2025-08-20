@@ -7,9 +7,9 @@
 export * from './types';
 
 // ============================================================================
-// EXPORTACIÓN DE ALGORITMOS
+// EXPORTACIÓN DE ALGORITMOS UNIFICADOS
 // ============================================================================
-export { detectContoursReal, detectEdgesSobel, analyzeTextureReal, applyFilter } from './imageProcessing';
+export { unifiedOpenCV, detectObjectsWithOpenCV } from './unifiedOpenCVSystem';
 export { real3DDepthCalculator, calculateDepthFromStereo, calculateObjectDepth, setSGBMParameters, calibrateSystem } from './realDepthCalculation';
 
 // ============================================================================

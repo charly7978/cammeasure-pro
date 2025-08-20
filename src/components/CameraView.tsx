@@ -16,6 +16,7 @@ import {
 import { useCamera } from '@/hooks/useCamera';
 import { DetectedObject } from '@/lib/types';
 import { TouchObjectSelector } from './TouchObjectSelector';
+import { unifiedOpenCV } from '@/lib/unifiedOpenCVSystem';
 
 interface CameraViewProps {
   onImageCapture?: (imageData: ImageData) => void;
@@ -135,13 +136,13 @@ export const CameraView: React.FC<CameraViewProps> = ({
     };
   }, [isActive, isRealTimeMeasurement]);
 
-  // PROCESAR FRAME DE VIDEO - SIMPLIFICADO
+  // PROCESAR FRAME DE VIDEO CON OPENCV AVANZADO
   const processVideoFrame = async () => {
     if (!videoRef.current || !canvasRef.current) return;
     
     try {
       setIsProcessing(true);
-      console.log('🎯 PROCESANDO FRAME...');
+      console.log('🎯 PROCESANDO FRAME CON OPENCV...');
       
       const video = videoRef.current;
       const canvas = canvasRef.current;
@@ -155,20 +156,30 @@ export const CameraView: React.FC<CameraViewProps> = ({
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
       
-      // Detectar objetos con algoritmo simple y rápido
-      const objects = await detectObjectsSimple(imageData, canvas.width, canvas.height);
+      // DETECCIÓN AVANZADA CON OPENCV UNIFICADO
+      const result = await unifiedOpenCV.detectObjectSilhouettes(imageData, calibrationData);
       
-      if (objects.length > 0) {
-        console.log(`✅ Detectados ${objects.length} objetos`);
-        setDetectedObjects(objects);
-        onRealTimeObjects(objects);
+      if (result.objects.length > 0) {
+        console.log(`✅ OpenCV detectó ${result.objects.length} objetos en ${result.processingTime.toFixed(1)}ms`);
+        setDetectedObjects(result.objects);
+        onRealTimeObjects(result.objects);
         
-        // Dibujar siluetas de objetos detectados
-        drawObjectSilhouettes(objects);
+        // Dibujar overlay con siluetas reales
+        if (overlayCanvasRef.current) {
+          unifiedOpenCV.drawDetectionOverlay(overlayCanvasRef.current, result);
+        }
       } else {
         console.log('❌ No se detectaron objetos');
         setDetectedObjects([]);
         onRealTimeObjects([]);
+        
+        // Limpiar overlay
+        if (overlayCanvasRef.current) {
+          const ctx = overlayCanvasRef.current.getContext('2d');
+          if (ctx) {
+            ctx.clearRect(0, 0, overlayCanvasRef.current.width, overlayCanvasRef.current.height);
+          }
+        }
       }
       
       setFrameCount(prev => prev + 1);
@@ -180,153 +191,25 @@ export const CameraView: React.FC<CameraViewProps> = ({
     }
   };
 
-  // DETECCIÓN SIMPLE DE OBJETOS POR COLOR Y CONTRASTE
-  const detectObjectsSimple = async (imageData: ImageData, width: number, height: number): Promise<DetectedObject[]> => {
-    const { data } = imageData;
-    
-    // Detectar región central con mayor contraste
-    const centerX = Math.floor(width * 0.2);
-    const centerY = Math.floor(height * 0.2);
-    const regionWidth = Math.floor(width * 0.6);
-    const regionHeight = Math.floor(height * 0.6);
-    
-    // Generar contornos de forma orgánica
-    const contours = generateObjectContour(centerX, centerY, regionWidth, regionHeight);
-    
-    const detectedObject: DetectedObject = {
-      id: 'main_object',
-      type: 'detected',
-      x: centerX,
-      y: centerY,
-      width: regionWidth,
-      height: regionHeight,
-      area: regionWidth * regionHeight,
-      confidence: 0.85,
-      contours,
-      boundingBox: { x: centerX, y: centerY, width: regionWidth, height: regionHeight },
-      dimensions: {
-        width: regionWidth,
-        height: regionHeight,
-        area: regionWidth * regionHeight,
-        unit: 'px' as const
-      },
-      points: contours.map((point, index) => ({
-        x: point.x,
-        y: point.y,
-        z: 0,
-        confidence: 0.8,
-        timestamp: Date.now() + index
-      }))
-    };
-    
-    return [detectedObject];
-  };
-
-  // GENERAR CONTORNO ORGÁNICO DE OBJETO
-  const generateObjectContour = (centerX: number, centerY: number, width: number, height: number) => {
-    const contours = [];
-    const points = 20; // Número de puntos del contorno
-    
-    for (let i = 0; i < points; i++) {
-      const angle = (i / points) * 2 * Math.PI;
-      const radiusX = width * 0.4 * (0.8 + 0.2 * Math.sin(angle * 3)); // Variación orgánica
-      const radiusY = height * 0.4 * (0.8 + 0.2 * Math.cos(angle * 2)); // Variación orgánica
+  // CONFIGURAR CANVAS OVERLAY CUANDO CAMBIE EL TAMAÑO DE VIDEO
+  useEffect(() => {
+    if (overlayCanvasRef.current && videoRef.current) {
+      const video = videoRef.current;
+      const overlay = overlayCanvasRef.current;
       
-      const x = centerX + width * 0.5 + radiusX * Math.cos(angle);
-      const y = centerY + height * 0.5 + radiusY * Math.sin(angle);
+      const updateCanvasSize = () => {
+        overlay.width = video.videoWidth;
+        overlay.height = video.videoHeight;
+      };
       
-      contours.push({ x, y });
-    }
-    
-    return contours;
-  };
-
-  // FLOOD FILL PARA ENCONTRAR REGIONES CONECTADAS
-  const floodFill = (edges: Uint8Array, visited: boolean[], startX: number, startY: number, width: number, height: number) => {
-    const stack = [{ x: startX, y: startY }];
-    let minX = startX, maxX = startX, minY = startY, maxY = startY;
-    let area = 0;
-    
-    while (stack.length > 0) {
-      const { x, y } = stack.pop()!;
-      const idx = y * width + x;
-      
-      if (x < 0 || x >= width || y < 0 || y >= height || visited[idx] || edges[idx] === 0) {
-        continue;
+      if (video.videoWidth > 0) {
+        updateCanvasSize();
       }
       
-      visited[idx] = true;
-      area++;
-      
-      minX = Math.min(minX, x);
-      maxX = Math.max(maxX, x);
-      minY = Math.min(minY, y);
-      maxY = Math.max(maxY, y);
-      
-      stack.push({ x: x + 1, y }, { x: x - 1, y }, { x, y: y + 1 }, { x, y: y - 1 });
+      video.addEventListener('loadedmetadata', updateCanvasSize);
+      return () => video.removeEventListener('loadedmetadata', updateCanvasSize);
     }
-    
-    return {
-      x: minX,
-      y: minY,
-      width: maxX - minX + 1,
-      height: maxY - minY + 1,
-      area
-    };
-  };
-
-  // DIBUJAR SILUETAS DE OBJETOS DETECTADOS
-  const drawObjectSilhouettes = (objects: DetectedObject[]) => {
-    if (!overlayCanvasRef.current || !videoRef.current) return;
-    
-    const overlayCanvas = overlayCanvasRef.current;
-    const ctx = overlayCanvas.getContext('2d')!;
-    
-    // Configurar canvas overlay
-    overlayCanvas.width = videoRef.current.videoWidth;
-    overlayCanvas.height = videoRef.current.videoHeight;
-    
-    // Limpiar canvas
-    ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-    
-    // Dibujar cada objeto
-    objects.forEach((obj, index) => {
-      // Color diferente para cada objeto
-      const colors = ['#00ff00', '#ff0066', '#0099ff', '#ffaa00'];
-      const color = colors[index % colors.length];
-      
-      // Dibujar contorno de la silueta
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      
-      if (obj.contours && obj.contours.length > 0) {
-        ctx.moveTo(obj.contours[0].x, obj.contours[0].y);
-        for (let i = 1; i < obj.contours.length; i++) {
-          ctx.lineTo(obj.contours[i].x, obj.contours[i].y);
-        }
-        ctx.closePath();
-      } else {
-        // Fallback: dibujar rectángulo
-        ctx.rect(obj.x, obj.y, obj.width, obj.height);
-      }
-      
-      ctx.stroke();
-      
-      // Rellenar con transparencia
-      ctx.fillStyle = color + '20';
-      ctx.fill();
-      
-      // Etiqueta informativa
-      ctx.fillStyle = color;
-      ctx.font = '16px Arial';
-      ctx.fillText(
-        `Área: ${Math.round(obj.area)} px² | Conf: ${Math.round(obj.confidence * 100)}%`,
-        obj.x,
-        obj.y - 10
-      );
-    });
-  };
+  }, [videoRef.current]);
 
   // CAPTURAR IMAGEN
   const captureImage = useCallback(async () => {
@@ -513,14 +396,57 @@ export const CameraView: React.FC<CameraViewProps> = ({
         </Badge>
       </div>
 
-      {/* INFORMACIÓN DE MEDICIÓN */}
-      {(selectedObject || currentMeasurement) && (
-        <div className="absolute top-4 right-4 bg-black/70 text-white p-3 rounded-lg text-sm">
-          <div className="font-semibold mb-1">
-            {selectedObject ? 'Objeto Seleccionado' : 'Medición Automática'}
+        {/* INFORMACIÓN DE MEDICIÓN MEJORADA */}
+      {(selectedObject || (detectedObjects.length > 0)) && (
+        <div className="absolute top-4 right-4 bg-black/80 text-white p-3 rounded-lg text-sm max-w-64">
+          <div className="font-semibold mb-2 flex items-center gap-2">
+            <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+            {selectedObject ? '🎯 Objeto Seleccionado' : '🔍 Detección OpenCV'}
           </div>
-          <div>Área: {Math.round((selectedObject?.area || currentMeasurement?.area || 0))} px²</div>
-          <div>Confianza: {Math.round(((selectedObject?.confidence || currentMeasurement?.confidence || 0) * 100))}%</div>
+          
+          {(() => {
+            const obj = selectedObject || detectedObjects[0];
+            if (!obj) return null;
+            
+            return (
+              <div className="space-y-1">
+                <div className="flex justify-between">
+                  <span>Ancho:</span>
+                  <span className="font-mono text-green-400">
+                    {obj.dimensions.width.toFixed(1)} {obj.dimensions.unit}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Alto:</span>
+                  <span className="font-mono text-cyan-400">
+                    {obj.dimensions.height.toFixed(1)} {obj.dimensions.unit}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Área:</span>
+                  <span className="font-mono text-blue-400">
+                    {obj.dimensions.area.toFixed(0)} {obj.dimensions.unit}²
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Confianza:</span>
+                  <span className="font-mono text-yellow-400">
+                    {Math.round(obj.confidence * 100)}%
+                  </span>
+                </div>
+                {calibrationData?.isCalibrated && (
+                  <div className="mt-2 pt-2 border-t border-white/20 text-xs text-green-300">
+                    ✅ Medición calibrada en {obj.dimensions.unit}
+                  </div>
+                )}
+                {!calibrationData?.isCalibrated && obj.dimensions.unit === 'px' && (
+                  <div className="mt-2 pt-2 border-t border-white/20 text-xs text-amber-300">
+                    ⚠️ Sin calibrar - valores en píxeles
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
       )}
     </div>

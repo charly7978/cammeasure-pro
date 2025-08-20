@@ -5,7 +5,8 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useMeasurementWorker } from '@/hooks/useMeasurementWorker';
 import { useOpenCV } from '@/hooks/useOpenCV';
-import { detectContoursReal, real3DDepthCalculator } from '@/lib';
+import { unifiedOpenCV } from '@/lib/unifiedOpenCVSystem';
+import { real3DDepthCalculator } from '@/lib';
 import { 
   AdvancedMeasurementResult, 
   MeasurementMode 
@@ -172,8 +173,9 @@ export const MeasurementEngine: React.FC<MeasurementEngineProps> = ({
       throw new Error('OpenCV no disponible');
     }
     
-    // 1. DETECCIÓN CON ALGORITMO NATIVO
-    const nativeDetection = detectContoursReal(preprocessedData.preprocessed, preprocessedData.width, preprocessedData.height);
+      // 1. DETECCIÓN CON ALGORITMO UNIFICADO OPENCV
+      const result = await unifiedOpenCV.detectObjectSilhouettes(preprocessedData.preprocessed);
+      const nativeDetection = result.objects;
     
     // 2. DETECCIÓN CON WORKER AVANZADO
     const workerDetection = await measurementWorker.processImage(preprocessedData);

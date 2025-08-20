@@ -155,11 +155,11 @@ export class SilhouetteDetector {
   ): DetectedObject[] {
     const objects: DetectedObject[] = [];
     
-    // FILTRAR POR OBJETOS CENTRALES VISIBLES PRIMERO
+    // FILTRAR POR OBJETOS CENTRALES GRANDES PRIMERO
     const centerX = width / 2;
     const centerY = height / 2;
-    const minAreaPercentage = 0.08; // Mínimo 8% del área total para objetos centrales
-    const maxDistanceFromCenter = Math.min(width, height) * 0.5; // Máximo 50% de distancia del centro
+    const minAreaPercentage = 0.05; // Mínimo 5% del área total para objetos centrales
+    const maxDistanceFromCenter = Math.min(width, height) * 0.6; // Máximo 60% de distancia del centro
     
     const filteredContours = contours.filter(contour => {
       const { properties } = contour;

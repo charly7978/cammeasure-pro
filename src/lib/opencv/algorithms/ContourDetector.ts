@@ -139,14 +139,14 @@ export class ContourDetector {
     let searchZoneWidth, searchZoneHeight;
     
     if (touchPoint) {
-      // MODO TOQUE: Zona más amplia alrededor del punto tocado (35%)
-      searchZoneWidth = width * 0.35;
-      searchZoneHeight = height * 0.35;
+      // MODO TOQUE: Zona más amplia alrededor del punto tocado (40%)
+      searchZoneWidth = width * 0.4;
+      searchZoneHeight = height * 0.4;
       console.log(`👆 Modo TOQUE: Buscando en zona de ${searchZoneWidth.toFixed(0)}x${searchZoneHeight.toFixed(0)} alrededor de (${touchPoint.x}, ${touchPoint.y})`);
     } else {
-      // MODO CENTRO: Zona central más permisiva (35%)
-      searchZoneWidth = width * 0.35;
-      searchZoneHeight = height * 0.35;
+      // MODO CENTRO: Zona central más permisiva (40%)
+      searchZoneWidth = width * 0.4;
+      searchZoneHeight = height * 0.4;
       console.log(`🎯 Modo CENTRO: Buscando en zona central de ${searchZoneWidth.toFixed(0)}x${searchZoneHeight.toFixed(0)}`);
     }
     
@@ -675,13 +675,13 @@ export class ContourDetector {
     const centerX = imgWidth / 2;
     const centerY = imgHeight / 2;
     
-    // 1. FILTRO DE TAMAÑO MÍNIMO (objetos visibles pero no microscópicos)
-    const minArea = totalArea * 0.08; // 8% mínimo (más permisivo)
-    const maxArea = totalArea * 0.7;  // 70% máximo (más permisivo)
+    // 1. FILTRO DE TAMAÑO MÍNIMO (objetos grandes visibles)
+    const minArea = totalArea * 0.05; // 5% mínimo (más permisivo para objetos grandes)
+    const maxArea = totalArea * 0.8;  // 80% máximo
     
     // 2. FILTRO DE DIMENSIONES MÍNIMAS ABSOLUTAS
-    const minWidth = imgWidth * 0.08;   // 8% del ancho de pantalla
-    const minHeight = imgHeight * 0.08; // 8% del alto de pantalla
+    const minWidth = imgWidth * 0.05;   // 5% del ancho de pantalla
+    const minHeight = imgHeight * 0.05; // 5% del alto de pantalla
     
     // 3. FILTRO DE POSICIÓN CENTRAL (más permisivo)
     const contourCenterX = properties.boundingBox.x + properties.boundingBox.width / 2;
@@ -690,7 +690,7 @@ export class ContourDetector {
       Math.pow(contourCenterX - centerX, 2) + 
       Math.pow(contourCenterY - centerY, 2)
     );
-    const maxCenterDistance = Math.min(imgWidth, imgHeight) * 0.35; // 35% central (más permisivo)
+    const maxCenterDistance = Math.min(imgWidth, imgHeight) * 0.45; // 45% central (más permisivo)
     
     // 4. FILTRO ULTRA ESTRICTO DE RELACIÓN DE ASPECTO
     const aspectRatio = properties.boundingBox.width / properties.boundingBox.height;

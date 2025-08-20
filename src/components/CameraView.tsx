@@ -5,11 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { 
   Camera, 
   SwitchCamera, 
-  Settings,
-  Zap,
   Grid3X3,
-  Focus,
-  Target,
   Pause,
   Play
 } from 'lucide-react';
@@ -60,9 +56,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
   const [frameCount, setFrameCount] = useState(0);
   const processingInterval = useRef<NodeJS.Timeout | null>(null);
   
-  // ESTADOS PARA TOQUE DE PANTALLA
-  const [touchPoint, setTouchPoint] = useState<{ x: number; y: number } | null>(null);
-  const [isTouchMode, setIsTouchMode] = useState(false);
+
 
   // INICIALIZACIÓN INMEDIATA DE CÁMARA
   useEffect(() => {
@@ -103,7 +97,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
     };
   }, [isActive]);
 
-  // DETECCIÓN AUTOMÁTICA SEPARADA
+  // DETECCIÓN AUTOMÁTICA RESTAURADA
   useEffect(() => {
     let isMounted = true;
     let intervalId: NodeJS.Timeout | null = null;
@@ -114,12 +108,12 @@ export const CameraView: React.FC<CameraViewProps> = ({
       // Procesar frame inmediatamente
       setTimeout(() => processVideoFrame(), 1000);
       
-      // Luego procesar cada 3 segundos
+      // Luego procesar cada 2 segundos (más frecuente)
       intervalId = setInterval(async () => {
         if (isMounted && videoRef.current && videoRef.current.readyState === 4) {
           await processVideoFrame();
         }
-      }, 3000);
+      }, 2000);
     }
     
     return () => {
@@ -130,17 +124,13 @@ export const CameraView: React.FC<CameraViewProps> = ({
     };
   }, [isActive, isRealTimeMeasurement, hasPermissions]);
 
-  // PROCESAR FRAME DE VIDEO CON OPENCV AVANZADO Y DEBUG
+  // PROCESAR FRAME DE VIDEO CON OPENCV - SOLO DETECCIÓN AUTOMÁTICA DEL CENTRO
   const processVideoFrame = async () => {
     if (!videoRef.current || !canvasRef.current) return;
     
     try {
       setIsProcessing(true);
-      console.log('🎯 PROCESANDO FRAME CON OPENCV...');
-      console.log(`📱 Modo actual: ${touchPoint ? 'TOQUE' : 'CENTRO AUTOMÁTICO'}`);
-      if (touchPoint) {
-        console.log(`📍 Punto de toque: (${touchPoint.x}, ${touchPoint.y})`);
-      }
+      console.log('🎯 PROCESANDO FRAME CON OPENCV - DETECCIÓN AUTOMÁTICA DEL CENTRO');
       
       const video = videoRef.current;
       const canvas = canvasRef.current;
@@ -163,13 +153,12 @@ export const CameraView: React.FC<CameraViewProps> = ({
       
       console.log(`📏 Procesando imagen: ${imageData.width}x${imageData.height}, calibrado: ${calibrationData?.isCalibrated ? 'SÍ' : 'NO'}`);
       
-      // DETECCIÓN AVANZADA CON OPENCV UNIFICADO Y CALIBRACIÓN APLICADA
-      // Si hay punto de toque, usar modo toque; si no, modo centro automático
+      // DETECCIÓN AUTOMÁTICA DEL CENTRO - SIN MODO TOQUE
       console.log('🚀 Llamando a unifiedOpenCV.detectObjectSilhouettes...');
       const result = await unifiedOpenCV.detectObjectSilhouettes(
         imageData, 
         calibrationData,
-        touchPoint // Pasar el punto de toque si existe
+        null // Solo detección automática del centro
       );
       
       console.log(`📊 Resultado recibido: ${result.objects.length} objetos, tiempo: ${result.processingTime.toFixed(1)}ms`);
@@ -258,64 +247,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
     }
   }, [onImageCapture]);
 
-  // MANEJAR TOQUE DE PANTALLA
-  const handleTouchStart = useCallback((event: React.TouchEvent) => {
-    event.preventDefault();
-    
-    if (event.touches.length > 0) {
-      const touch = event.touches[0];
-      const rect = event.currentTarget.getBoundingClientRect();
-      
-      // Calcular coordenadas relativas al video
-      const x = touch.clientX - rect.left;
-      const y = touch.clientY - rect.top;
-      
-      // Convertir a coordenadas de video
-      const video = videoRef.current;
-      if (video && video.videoWidth > 0) {
-        const scaleX = video.videoWidth / rect.width;
-        const scaleY = video.videoHeight / rect.height;
-        
-        const videoX = Math.round(x * scaleX);
-        const videoY = Math.round(y * scaleY);
-        
-        setTouchPoint({ x: videoX, y: videoY });
-        setIsTouchMode(true);
-        
-        console.log(`👆 Toque detectado en: (${videoX}, ${videoY}) - Modo toque activado`);
-        
-        // Procesar frame inmediatamente con el punto de toque
-        setTimeout(() => processVideoFrame(), 100);
-      }
-    }
-  }, [processVideoFrame]);
 
-  // MANEJAR CLICK DE RATÓN (para desarrollo)
-  const handleMouseClick = useCallback((event: React.MouseEvent) => {
-    event.preventDefault();
-    
-    const rect = event.currentTarget.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
-    
-    // Convertir a coordenadas de video
-    const video = videoRef.current;
-    if (video && video.videoWidth > 0) {
-      const scaleX = video.videoWidth / rect.width;
-      const scaleY = video.videoHeight / rect.height;
-      
-      const videoX = Math.round(x * scaleX);
-      const videoY = Math.round(y * scaleY);
-      
-      setTouchPoint({ x: videoX, y: videoY });
-      setIsTouchMode(true);
-      
-      console.log(`🖱️ Click detectado en: (${videoX}, ${videoY}) - Modo toque activado`);
-      
-      // Procesar frame inmediatamente con el punto de toque
-      setTimeout(() => processVideoFrame(), 100);
-    }
-  }, [processVideoFrame]);
 
   // CAMBIAR CÁMARA
   const handleSwitchCamera = useCallback(async () => {
@@ -337,16 +269,14 @@ export const CameraView: React.FC<CameraViewProps> = ({
     <div className="relative w-full h-full bg-black" ref={containerRef}>
       {/* VIDEO PRINCIPAL */}
       <div className="relative w-full h-full overflow-hidden">
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          muted
-          className="w-full h-full object-cover"
-          style={{ transform: currentCamera === 'front' ? 'scaleX(-1)' : 'none' }}
-          onTouchStart={handleTouchStart}
-          onClick={handleMouseClick}
-        />
+                 <video
+           ref={videoRef}
+           autoPlay
+           playsInline
+           muted
+           className="w-full h-full object-cover"
+           style={{ transform: currentCamera === 'front' ? 'scaleX(-1)' : 'none' }}
+         />
         
         {/* CANVAS OVERLAY PARA SILUETAS */}
         <canvas
@@ -416,34 +346,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
           {isRealTimeMeasurement ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
         </Button>
 
-        {isTouchMode && (
-          <Button
-            variant="destructive"
-            size="icon"
-            onClick={() => {
-              setIsTouchMode(false);
-              setTouchPoint(null);
-              console.log('🔄 Modo toque desactivado - Volviendo a detección automática del centro');
-            }}
-            className="bg-red-500/80 hover:bg-red-600/80 text-white"
-            title="Desactivar modo toque"
-          >
-            <Target className="h-5 w-5" />
-          </Button>
-        )}
-
-        <Button
-          variant="secondary"
-          size="icon"
-          onClick={() => {
-            console.log('🧪 Forzando detección manual...');
-            processVideoFrame();
-          }}
-          className="bg-blue-500/80 hover:bg-blue-600/80 text-white"
-          title="Forzar detección"
-        >
-          <Zap className="h-5 w-5" />
-        </Button>
+        
       </div>
 
       {/* INDICADORES DE ESTADO */}
@@ -452,11 +355,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
           {hasPermissions ? "Cámara OK" : "Sin permisos"}
         </Badge>
         
-        {isTouchMode && touchPoint && (
-          <Badge variant="secondary" className="bg-purple-500/80 text-white">
-            👆 Modo Toque: ({touchPoint.x}, {touchPoint.y})
-          </Badge>
-        )}
+        
         
         {isProcessing && (
           <Badge variant="secondary" className="bg-blue-500/80 text-white">
@@ -475,103 +374,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
         </Badge>
       </div>
 
-      {/* INSTRUCCIONES DE USO */}
-      <div className="absolute top-20 left-4 bg-black/80 text-white p-3 rounded-lg text-sm max-w-80">
-        <div className="font-semibold mb-2 flex items-center gap-2">
-          <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
-          📱 Instrucciones de Uso
-        </div>
-        <div className="space-y-1 text-xs">
-          <div>• <strong>Toque/Click</strong> en cualquier parte de la pantalla para detectar objetos en esa zona</div>
-          <div>• <strong>Modo automático:</strong> Detecta objetos grandes en el centro</div>
-          <div>• <strong>Modo toque:</strong> Detecta objetos cerca del punto seleccionado</div>
-          <div>• <strong>Botón rojo:</strong> Desactiva el modo toque</div>
-        </div>
-      </div>
-
-      {/* INFORMACIÓN DE MEDICIÓN MEJORADA */}
-      {detectedObjects.length > 0 && (
-        <div className="absolute top-4 right-4 bg-black/80 text-white p-3 rounded-lg text-sm max-w-64">
-          <div className="font-semibold mb-2 flex items-center gap-2">
-            <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-            🔍 Detección OpenCV Avanzada
-          </div>
-          
-          {(() => {
-            const obj = detectedObjects[0];
-            if (!obj) return null;
-            
-            return (
-              <div className="space-y-1">
-                <div className="flex justify-between">
-                  <span>Ancho:</span>
-                  <span className="font-mono text-green-400">
-                    {obj.dimensions.width.toFixed(1)} {obj.dimensions.unit}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Alto:</span>
-                  <span className="font-mono text-cyan-400">
-                    {obj.dimensions.height.toFixed(1)} {obj.dimensions.unit}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Área:</span>
-                  <span className="font-mono text-blue-400">
-                    {obj.dimensions.area.toFixed(0)} {obj.dimensions.unit}²
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Confianza:</span>
-                  <span className="font-mono text-yellow-400">
-                    {Math.round(obj.confidence * 100)}%
-                  </span>
-                </div>
-                
-                {/* MEDICIONES 3D AVANZADAS */}
-                {obj.depth3D && (
-                  <>
-                    <div className="flex justify-between">
-                      <span>Distancia:</span>
-                      <span className="font-mono text-purple-400">
-                        {obj.depth3D.distance > 1000 
-                          ? `${(obj.depth3D.distance / 1000).toFixed(1)} m`
-                          : `${Math.round(obj.depth3D.distance)} mm`
-                        }
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Volumen:</span>
-                      <span className="font-mono text-orange-400">
-                        {obj.depth3D.volume > 1000000 
-                          ? `${(obj.depth3D.volume / 1000000).toFixed(1)} cm³`
-                          : `${Math.round(obj.depth3D.volume)} mm³`
-                        }
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Profundidad:</span>
-                      <span className="font-mono text-teal-400">
-                        {obj.depth3D.depth.toFixed(1)} mm
-                      </span>
-                    </div>
-                  </>
-                )}
-                {calibrationData?.isCalibrated && (
-                  <div className="mt-2 pt-2 border-t border-white/20 text-xs text-green-300">
-                    ✅ Medición calibrada en {obj.dimensions.unit}
-                  </div>
-                )}
-                {!calibrationData?.isCalibrated && obj.dimensions.unit === 'px' && (
-                  <div className="mt-2 pt-2 border-t border-white/20 text-xs text-amber-300">
-                    ⚠️ Sin calibrar - valores en píxeles
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-        </div>
-      )}
+      
     </div>
   );
 };

@@ -1,6 +1,14 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { DetectedObject, RealTimeMeasurement as RealTimeMeasurementType } from '@/lib/types';
-import { detectContoursReal, applyFilter, real3DDepthCalculator } from '@/lib';
+import { real3DDepthCalculator } from '@/lib';
+import { advancedObjectDetector } from '@/lib/advancedObjectDetection';
+import { preciseObjectDetector } from '@/lib/preciseObjectDetection';
+import { 
+  calculateAdvancedMeasurements, 
+  calculatePerimeter, 
+  calculateCircularity, 
+  calculateSolidity 
+} from '@/lib/advancedMeasurements';
 
 interface RealTimeMeasurementProps {
   videoRef?: React.RefObject<HTMLVideoElement>;
@@ -27,7 +35,7 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
   const animationFrameId = useRef<number>(0);
   const processingInterval = useRef<NodeJS.Timeout | null>(null);
 
-  // MEDICIÓN AUTOMÁTICA EN TIEMPO REAL
+  // MEDICIÓN AUTOMÁTICA EN TIEMPO REAL CON IA AVANZADA
   const processFrameAutomatically = useCallback(async () => {
     if (!videoRef?.current || !overlayCanvasRef?.current || !isActive || isProcessing) {
       return;
@@ -48,56 +56,134 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
 
       // Dibujar frame actual
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-      // 2. DETECTAR CONTORNOS AUTOMÁTICAMENTE (Canny + Contornos reales)
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const edges = applyFilter(imageData, 'canny');
-      const rects = detectContoursReal(edges, canvas.width, canvas.height) || [];
-      
-      // Convertir BoundingRect[] a DetectedObject[]
-      const detectedObjects: DetectedObject[] = rects.map((rect, index) => ({
-        ...rect,
-        id: `obj_${index}`,
-        type: 'detected',
-        boundingBox: {
-          x: rect.x,
-          y: rect.y,
-          width: rect.width,
-          height: rect.height
-        },
-        dimensions: {
-          width: rect.width,
-          height: rect.height,
-          area: rect.area,
-          unit: 'px'
-        },
-        confidence: rect.confidence || 0.8
-      }));
 
-      // 3. SELECCIONAR OBJETO MÁS PROMINENTE
-      const prominentObject = selectMostProminentObject(detectedObjects);
+      // 2. DETECCIÓN IA AVANZADA DE OBJETOS Y SILUETAS
+      console.log('🎯 INICIANDO PROCESAMIENTO DE FRAME');
+      console.log('✅ Frame capturado correctamente');
+
+      let detectedObjects: DetectedObject[] = [];
+      let predominantObject = null;
+
+      try {
+        // Usar detectores AI para precisión máxima
+        const [aiResult, preciseResult] = await Promise.allSettled([
+          advancedObjectDetector.detectPredominantObject(imageData),
+          preciseObjectDetector.detectLargestObject(canvas)
+        ]);
+
+        // Procesar resultado AI
+        if (aiResult.status === 'fulfilled' && aiResult.value.predominantObject) {
+          const obj = aiResult.value.predominantObject;
+          predominantObject = {
+            id: obj.id,
+            type: 'ai_detected',
+            x: obj.boundingBox.x,
+            y: obj.boundingBox.y,
+            width: obj.boundingBox.width,
+            height: obj.boundingBox.height,
+            area: obj.area,
+            confidence: obj.confidence,
+            contours: obj.contours.map(c => ({ x: c[0], y: c[1] })),
+            boundingBox: obj.boundingBox,
+            dimensions: {
+              width: obj.boundingBox.width,
+              height: obj.boundingBox.height,
+              area: obj.area,
+              unit: 'px' as const
+            },
+            points: [], // Se llenará después
+            silhouette: obj.contours // SILUETA DETECTADA POR IA
+          };
+        }
+        
+        // Si AI falla, usar detector preciso como backup
+        if (!predominantObject && preciseResult.status === 'fulfilled' && preciseResult.value) {
+          const obj = preciseResult.value;
+          predominantObject = {
+            id: 'precise_obj',
+            type: 'precise_detected',
+            x: obj.x,
+            y: obj.y,
+            width: obj.width,
+            height: obj.height,
+            area: obj.area,
+            confidence: obj.confidence,
+            contours: obj.contours,
+            boundingBox: obj.boundingBox,
+            dimensions: obj.dimensions,
+            points: obj.points,
+            silhouette: obj.contours // SILUETA PRECISA
+          };
+        }
+
+        if (predominantObject) {
+          detectedObjects = [predominantObject];
+          console.log('✅ Objeto predominante detectado con silueta precisa:', {
+            area: predominantObject.area,
+            confidence: predominantObject.confidence,
+            contoursPoints: predominantObject.contours?.length || 0
+          });
+        } else {
+          console.log('⚠️ No se detectó objeto predominante');
+        }
+
+      } catch (detectionError) {
+        console.error('❌ Error en detección IA:', detectionError);
+        detectedObjects = [];
+      }
+
+      // 3. USAR OBJETO PREDOMINANTE DETECTADO
+      const prominentObject = detectedObjects[0] || null;
 
       if (prominentObject) {
-        // 4. CALCULAR MEDICIONES EN TIEMPO REAL
-        const measurements = await calculateRealTimeMeasurements(prominentObject, imageData);
+        // 4. DIBUJAR SILUETA EN CANVAS (CONTORNOS PRECISOS)
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         
-        // 5. ACTUALIZAR ESTADO
+        // Dibujar silueta precisa
+        if (prominentObject.contours && prominentObject.contours.length > 0) {
+          ctx.strokeStyle = '#00ff00';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          
+          // Dibujar contornos como silueta
+          for (let i = 0; i < prominentObject.contours.length; i++) {
+            const point = prominentObject.contours[i];
+            if (i === 0) {
+              ctx.moveTo(point.x, point.y);
+            } else {
+              ctx.lineTo(point.x, point.y);
+            }
+          }
+          ctx.closePath();
+          ctx.stroke();
+          
+          // Rellenar silueta con transparencia
+          ctx.fillStyle = 'rgba(0, 255, 0, 0.1)';
+          ctx.fill();
+        }
+
+        // 5. CALCULAR MEDICIONES AVANZADAS
+        const measurements = await calculateAdvancedMeasurements(prominentObject, imageData);
+        
+        // 6. ACTUALIZAR ESTADO
         const measurement: RealTimeMeasurementType = {
           width: prominentObject.dimensions.width,
           height: prominentObject.dimensions.height,
           area: prominentObject.dimensions.area,
-          perimeter: 2 * (prominentObject.dimensions.width + prominentObject.dimensions.height),
-          circularity: 1.0, // Valor por defecto
-          solidity: 1.0, // Valor por defecto
+          perimeter: calculatePerimeter(prominentObject.contours || []),
+          circularity: calculateCircularity(prominentObject.area, prominentObject.contours || []),
+          solidity: calculateSolidity(prominentObject.contours || []),
           confidence: prominentObject.confidence || 0.8,
           depth: measurements.depth,
           volume: measurements.volume,
           surfaceArea: measurements.surfaceArea,
-          curvature: 0, // Valor por defecto
-          roughness: 0, // Valor por defecto
+          curvature: measurements.curvature,
+          roughness: measurements.roughness,
           orientation: {
-            pitch: 0,
-            yaw: 0,
+            pitch: measurements.orientation?.pitch || 0,
+            yaw: measurements.orientation?.yaw || 0,
             roll: 0
           },
           materialProperties: {

@@ -139,15 +139,15 @@ export class ContourDetector {
     let searchZoneWidth, searchZoneHeight;
     
     if (touchPoint) {
-      // MODO TOQUE: Zona más amplia alrededor del punto tocado (25%)
-      searchZoneWidth = width * 0.25;
-      searchZoneHeight = height * 0.25;
+      // MODO TOQUE: Zona más amplia alrededor del punto tocado (35%)
+      searchZoneWidth = width * 0.35;
+      searchZoneHeight = height * 0.35;
       console.log(`👆 Modo TOQUE: Buscando en zona de ${searchZoneWidth.toFixed(0)}x${searchZoneHeight.toFixed(0)} alrededor de (${touchPoint.x}, ${touchPoint.y})`);
     } else {
-      // MODO CENTRO: Zona central ultra estricta (20%)
-      searchZoneWidth = width * 0.2;
-      searchZoneHeight = height * 0.2;
-      console.log(`🎯 Modo CENTRO: Buscando en zona central ultra estricta de ${searchZoneWidth.toFixed(0)}x${searchZoneHeight.toFixed(0)}`);
+      // MODO CENTRO: Zona central más permisiva (35%)
+      searchZoneWidth = width * 0.35;
+      searchZoneHeight = height * 0.35;
+      console.log(`🎯 Modo CENTRO: Buscando en zona central de ${searchZoneWidth.toFixed(0)}x${searchZoneHeight.toFixed(0)}`);
     }
     
     const startX = Math.max(1, Math.floor(centerX - searchZoneWidth / 2));
@@ -157,12 +157,14 @@ export class ContourDetector {
     
     console.log(`🎯 Zona de búsqueda: ${startX}-${endX} x ${startY}-${endY}`);
     
-    // BUSCAR SOLO EN LA ZONA CENTRAL ULTRA ESTRICTA
+    // BUSCAR SOLO EN LA ZONA CENTRAL
+    let edgePixelsFound = 0;
     for (let y = startY; y < endY; y++) {
       for (let x = startX; x < endX; x++) {
         const idx = y * width + x;
         
         if (edges[idx] === 255) {
+          edgePixelsFound++;
           // Verificar si es un punto de inicio de contorno
           if (this.isContourStartPoint(edges, x, y, width, height)) {
             const distance = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2);
@@ -171,6 +173,8 @@ export class ContourDetector {
         }
       }
     }
+    
+    console.log(`🔍 Píxeles de borde encontrados en zona de búsqueda: ${edgePixelsFound}`);
     
     // Ordenar por proximidad al centro
     candidates.sort((a, b) => a.distance - b.distance);
@@ -671,22 +675,22 @@ export class ContourDetector {
     const centerX = imgWidth / 2;
     const centerY = imgHeight / 2;
     
-    // 1. FILTRO ULTRA ESTRICTO DE TAMAÑO MÍNIMO (solo objetos muy grandes)
-    const minArea = totalArea * 0.15; // 15% mínimo (ultra estricto)
-    const maxArea = totalArea * 0.6;  // 60% máximo (más estricto)
+    // 1. FILTRO DE TAMAÑO MÍNIMO (objetos visibles pero no microscópicos)
+    const minArea = totalArea * 0.08; // 8% mínimo (más permisivo)
+    const maxArea = totalArea * 0.7;  // 70% máximo (más permisivo)
     
-    // 2. FILTRO ULTRA ESTRICTO DE DIMENSIONES MÍNIMAS ABSOLUTAS
-    const minWidth = imgWidth * 0.12;   // 12% del ancho de pantalla
-    const minHeight = imgHeight * 0.12; // 12% del alto de pantalla
+    // 2. FILTRO DE DIMENSIONES MÍNIMAS ABSOLUTAS
+    const minWidth = imgWidth * 0.08;   // 8% del ancho de pantalla
+    const minHeight = imgHeight * 0.08; // 8% del alto de pantalla
     
-    // 3. FILTRO ULTRA ESTRICTO DE POSICIÓN CENTRAL
+    // 3. FILTRO DE POSICIÓN CENTRAL (más permisivo)
     const contourCenterX = properties.boundingBox.x + properties.boundingBox.width / 2;
     const contourCenterY = properties.boundingBox.y + properties.boundingBox.height / 2;
     const distanceToCenter = Math.sqrt(
       Math.pow(contourCenterX - centerX, 2) + 
       Math.pow(contourCenterY - centerY, 2)
     );
-    const maxCenterDistance = Math.min(imgWidth, imgHeight) * 0.2; // Solo 20% central (ultra estricto)
+    const maxCenterDistance = Math.min(imgWidth, imgHeight) * 0.35; // 35% central (más permisivo)
     
     // 4. FILTRO ULTRA ESTRICTO DE RELACIÓN DE ASPECTO
     const aspectRatio = properties.boundingBox.width / properties.boundingBox.height;
@@ -715,19 +719,17 @@ export class ContourDetector {
       properties.boundingBox.height > 1
     );
     
-    // LOG DETALLADO PARA DEBUG
-    if (properties.area >= minArea * 0.5) { // Solo log para objetos que se acercan al umbral
-      console.log(`🔍 Validando contorno:`, {
-        area: `${(properties.area / totalArea * 100).toFixed(1)}%`,
-        dimensions: `${properties.boundingBox.width}x${properties.boundingBox.height}`,
-        centerDistance: `${(distanceToCenter / maxCenterDistance * 100).toFixed(1)}%`,
-        aspectRatio: aspectRatio.toFixed(2),
-        circularity: properties.circularity.toFixed(2),
-        solidity: properties.solidity.toFixed(2),
-        perimeter: properties.perimeter.toFixed(0),
-        isValid: isValid ? '✅' : '❌'
-      });
-    }
+         // LOG DETALLADO PARA DEBUG
+     console.log(`🔍 Validando contorno:`, {
+       area: `${(properties.area / totalArea * 100).toFixed(1)}% (mín: ${(minArea / totalArea * 100).toFixed(1)}%)`,
+       dimensions: `${properties.boundingBox.width}x${properties.boundingBox.height} (mín: ${minWidth.toFixed(0)}x${minHeight.toFixed(0)})`,
+       centerDistance: `${(distanceToCenter / maxCenterDistance * 100).toFixed(1)}% (máx: 100%)`,
+       aspectRatio: aspectRatio.toFixed(2),
+       circularity: properties.circularity.toFixed(2),
+       solidity: properties.solidity.toFixed(2),
+       perimeter: properties.perimeter.toFixed(0),
+       isValid: isValid ? '✅' : '❌'
+     });
     
     return isValid;
   }

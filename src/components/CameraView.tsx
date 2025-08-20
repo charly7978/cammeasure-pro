@@ -84,15 +84,6 @@ export const CameraView: React.FC<CameraViewProps> = ({
           if (!isMounted) return;
           
           console.log('✅ CÁMARA INICIADA CORRECTAMENTE');
-          
-          // INICIAR DETECCIÓN AUTOMÁTICA CUANDO LA CÁMARA ESTÉ LISTA
-          if (isActive && isRealTimeMeasurement) {
-            intervalId = setInterval(async () => {
-              if (isMounted && videoRef.current && videoRef.current.readyState === 4) {
-                await processVideoFrame();
-              }
-            }, 3000); // Procesar cada 3 segundos para mejor estabilidad
-          }
         }
       } catch (error) {
         console.error('❌ Error inicializando cámara:', error);
@@ -110,7 +101,34 @@ export const CameraView: React.FC<CameraViewProps> = ({
         clearInterval(intervalId);
       }
     };
-  }, [isActive, isRealTimeMeasurement]);
+  }, [isActive]);
+
+  // DETECCIÓN AUTOMÁTICA SEPARADA
+  useEffect(() => {
+    let isMounted = true;
+    let intervalId: NodeJS.Timeout | null = null;
+    
+    if (isActive && isRealTimeMeasurement && hasPermissions && videoRef.current) {
+      console.log('🔄 INICIANDO DETECCIÓN AUTOMÁTICA...');
+      
+      // Procesar frame inmediatamente
+      setTimeout(() => processVideoFrame(), 1000);
+      
+      // Luego procesar cada 3 segundos
+      intervalId = setInterval(async () => {
+        if (isMounted && videoRef.current && videoRef.current.readyState === 4) {
+          await processVideoFrame();
+        }
+      }, 3000);
+    }
+    
+    return () => {
+      isMounted = false;
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
+  }, [isActive, isRealTimeMeasurement, hasPermissions]);
 
   // PROCESAR FRAME DE VIDEO CON OPENCV AVANZADO Y DEBUG
   const processVideoFrame = async () => {
@@ -119,6 +137,10 @@ export const CameraView: React.FC<CameraViewProps> = ({
     try {
       setIsProcessing(true);
       console.log('🎯 PROCESANDO FRAME CON OPENCV...');
+      console.log(`📱 Modo actual: ${touchPoint ? 'TOQUE' : 'CENTRO AUTOMÁTICO'}`);
+      if (touchPoint) {
+        console.log(`📍 Punto de toque: (${touchPoint.x}, ${touchPoint.y})`);
+      }
       
       const video = videoRef.current;
       const canvas = canvasRef.current;
@@ -133,6 +155,8 @@ export const CameraView: React.FC<CameraViewProps> = ({
         return;
       }
       
+      console.log(`📐 Canvas configurado: ${canvas.width}x${canvas.height}`);
+      
       // Capturar frame
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -141,11 +165,14 @@ export const CameraView: React.FC<CameraViewProps> = ({
       
       // DETECCIÓN AVANZADA CON OPENCV UNIFICADO Y CALIBRACIÓN APLICADA
       // Si hay punto de toque, usar modo toque; si no, modo centro automático
+      console.log('🚀 Llamando a unifiedOpenCV.detectObjectSilhouettes...');
       const result = await unifiedOpenCV.detectObjectSilhouettes(
         imageData, 
         calibrationData,
         touchPoint // Pasar el punto de toque si existe
       );
+      
+      console.log(`📊 Resultado recibido: ${result.objects.length} objetos, tiempo: ${result.processingTime.toFixed(1)}ms`);
       
       if (result.objects.length > 0) {
         const obj = result.objects[0];
@@ -157,10 +184,11 @@ export const CameraView: React.FC<CameraViewProps> = ({
         
         // Dibujar overlay con siluetas reales
         if (overlayCanvasRef.current) {
+          console.log('🎨 Dibujando overlay...');
           unifiedOpenCV.drawDetectionOverlay(overlayCanvasRef.current, result);
         }
       } else {
-        console.log('❌ No se detectaron objetos - reintentando con parámetros más sensibles...');
+        console.log('❌ No se detectaron objetos');
         setDetectedObjects([]);
         onRealTimeObjects([]);
         
@@ -177,6 +205,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
       
     } catch (error) {
       console.error('❌ Error procesando frame:', error);
+      console.error('Stack trace:', error instanceof Error ? error.stack : 'No stack trace available');
     } finally {
       setIsProcessing(false);
     }
@@ -259,7 +288,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
         setTimeout(() => processVideoFrame(), 100);
       }
     }
-  }, []);
+  }, [processVideoFrame]);
 
   // MANEJAR CLICK DE RATÓN (para desarrollo)
   const handleMouseClick = useCallback((event: React.MouseEvent) => {
@@ -286,7 +315,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
       // Procesar frame inmediatamente con el punto de toque
       setTimeout(() => processVideoFrame(), 100);
     }
-  }, []);
+  }, [processVideoFrame]);
 
   // CAMBIAR CÁMARA
   const handleSwitchCamera = useCallback(async () => {
@@ -402,6 +431,19 @@ export const CameraView: React.FC<CameraViewProps> = ({
             <Target className="h-5 w-5" />
           </Button>
         )}
+
+        <Button
+          variant="secondary"
+          size="icon"
+          onClick={() => {
+            console.log('🧪 Forzando detección manual...');
+            processVideoFrame();
+          }}
+          className="bg-blue-500/80 hover:bg-blue-600/80 text-white"
+          title="Forzar detección"
+        >
+          <Zap className="h-5 w-5" />
+        </Button>
       </div>
 
       {/* INDICADORES DE ESTADO */}

@@ -75,14 +75,18 @@ class OpenCVSystem {
   ): Promise<OpenCVSystemResult> {
     // Auto-inicializar si es necesario
     if (!this.isInitialized) {
+      console.log('🚀 Auto-inicializando OpenCV System...');
       await this.initialize();
     }
 
     console.log('🎯 INICIANDO DETECCIÓN COMPLETA DE SILUETAS...');
+    console.log(`📱 Modo: ${touchPoint ? 'TOQUE' : 'CENTRO AUTOMÁTICO'}`);
     
     try {
       // Usar el detector de siluetas especializado
       const result = await this.silhouetteDetector.detectSilhouettes(imageData, calibrationData, touchPoint);
+      
+      console.log(`✅ Detección completada: ${result.objects.length} objetos encontrados`);
       
       // Formatear resultado para compatibilidad
       return {

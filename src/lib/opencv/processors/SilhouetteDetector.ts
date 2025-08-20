@@ -82,6 +82,8 @@ export class SilhouetteDetector {
       
       // PASO 4: DETECCIÓN DE CONTORNOS AVANZADA
       console.log('📐 Paso 4: Detección de contornos...');
+      console.log(`🎯 Buscando contornos en modo: ${touchPoint ? 'TOQUE' : 'CENTRO'}`);
+      
       const detectedContours = this.contourDetector.findContours(
         cannyResult.edges,
         width,
@@ -92,6 +94,11 @@ export class SilhouetteDetector {
       );
       
       console.log(`✅ Contornos encontrados: ${detectedContours.length}`);
+      if (detectedContours.length > 0) {
+        detectedContours.forEach((contour, i) => {
+          console.log(`  Contorno ${i + 1}: área=${contour.properties.area.toFixed(0)}, confianza=${contour.confidence.toFixed(2)}`);
+        });
+      }
       
       // PASO 5: CONVERTIR A OBJETOS DETECTADOS CON CALIBRACIÓN
       console.log('🎯 Paso 5: Conversión a objetos detectados...');
@@ -148,11 +155,11 @@ export class SilhouetteDetector {
   ): DetectedObject[] {
     const objects: DetectedObject[] = [];
     
-    // FILTRAR POR OBJETOS CENTRALES GRANDES PRIMERO
+    // FILTRAR POR OBJETOS CENTRALES VISIBLES PRIMERO
     const centerX = width / 2;
     const centerY = height / 2;
-    const minAreaPercentage = 0.15; // Mínimo 15% del área total para objetos centrales
-    const maxDistanceFromCenter = Math.min(width, height) * 0.4; // Máximo 40% de distancia del centro
+    const minAreaPercentage = 0.08; // Mínimo 8% del área total para objetos centrales
+    const maxDistanceFromCenter = Math.min(width, height) * 0.5; // Máximo 50% de distancia del centro
     
     const filteredContours = contours.filter(contour => {
       const { properties } = contour;

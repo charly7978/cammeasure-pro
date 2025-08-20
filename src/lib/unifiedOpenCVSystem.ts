@@ -34,8 +34,7 @@ class UnifiedOpenCVSystem {
   }
 
   /**
-   * DETECCIÓN PRINCIPAL DE SILUETAS CON OPENCV AVANZADO
-   * Implementa Canny + Contornos + Análisis de forma
+   * DETECTAR SILUETAS CON PRIORIDAD EN OBJETOS CENTRALES
    */
   async detectObjectSilhouettes(
     imageData: ImageData, 
@@ -57,16 +56,16 @@ class UnifiedOpenCVSystem {
       // 2. FILTRO GAUSSIANO PARA REDUCIR RUIDO
       const blurredData = this.applyGaussianBlur(grayData, width, height, 1.4);
       
-      // 3. DETECCIÓN DE BORDES CANNY AVANZADA
-      const edgeData = this.cannyEdgeDetection(blurredData, width, height, 50, 150);
+      // 3. DETECCIÓN DE BORDES CANNY AVANZADA - CONFIGURADA PARA OBJETOS CENTRALES
+      const edgeData = this.cannyEdgeDetection(blurredData, width, height, 30, 120);
       
-      // 4. ENCONTRAR CONTORNOS REALES
-      const contours = this.findContours(edgeData, width, height);
+      // 4. ENCONTRAR CONTORNOS REALES PRIORIZANDO EL CENTRO
+      const contours = this.findContoursWithCentralPriority(edgeData, width, height);
       
       // 5. FILTRAR Y ANALIZAR CONTORNOS SIGNIFICATIVOS
       const significantContours = this.filterSignificantContours(contours, width, height);
       
-      // 6. CREAR OBJETOS DETECTADOS CON MEDICIONES REALES
+      // 6. CREAR OBJETOS DETECTADOS CON MEDICIONES REALES EN MM/CM
       const objects = this.createDetectedObjects(
         significantContours, 
         width, 
@@ -365,9 +364,9 @@ class UnifiedOpenCVSystem {
   }
 
   /**
-   * ENCONTRAR CONTORNOS USANDO MOORE NEIGHBORHOOD
+   * ENCONTRAR CONTORNOS CON PRIORIDAD CENTRAL
    */
-  private findContours(edgeData: Uint8Array, width: number, height: number): ContourPoint[][] {
+  private findContoursWithCentralPriority(edgeData: Uint8Array, width: number, height: number): ContourPoint[][] {
     const contours: ContourPoint[][] = [];
     const visited = new Array(width * height).fill(false);
     
@@ -382,17 +381,40 @@ class UnifiedOpenCVSystem {
       {dx: 0, dy: -1},  // N
       {dx: 1, dy: -1}   // NE
     ];
+
+    // PRIORIZAR BÚSQUEDA DESDE EL CENTRO
+    const centerX = Math.floor(width / 2);
+    const centerY = Math.floor(height / 2);
+    const searchRadius = Math.min(width, height) / 3;
+
+    // Crear lista de puntos ordenados por distancia al centro
+    const searchPoints: Array<{x: number, y: number, distance: number}> = [];
     
     for (let y = 1; y < height - 1; y++) {
       for (let x = 1; x < width - 1; x++) {
         const idx = y * width + x;
+        if (edgeData[idx] === 255) {
+          const distance = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2);
+          searchPoints.push({x, y, distance});
+        }
+      }
+    }
+
+    // Ordenar por distancia al centro (más cerca primero)
+    searchPoints.sort((a, b) => a.distance - b.distance);
+
+    // Buscar contornos priorizando los más centrales
+    for (const point of searchPoints) {
+      const idx = point.y * width + point.x;
+      
+      if (!visited[idx] && edgeData[idx] === 255) {
+        const contour = this.traceContour(edgeData, visited, point.x, point.y, width, height, directions);
         
-        if (edgeData[idx] === 255 && !visited[idx]) {
-          const contour = this.traceContour(edgeData, visited, x, y, width, height, directions);
+        if (contour.length > 20) { // Filtrar contornos más grandes
+          contours.push(contour);
           
-          if (contour.length > 10) { // Filtrar contornos muy pequeños
-            contours.push(contour);
-          }
+          // Limitar a máximo 5 contornos para mejor rendimiento
+          if (contours.length >= 5) break;
         }
       }
     }
@@ -484,7 +506,7 @@ class UnifiedOpenCVSystem {
   }
 
   /**
-   * CREAR OBJETOS DETECTADOS CON MEDICIONES REALES
+   * CREAR OBJETOS DETECTADOS CON MEDICIONES REALES EN MM/CM
    */
   private createDetectedObjects(
     contours: ContourPoint[][],
@@ -504,7 +526,7 @@ class UnifiedOpenCVSystem {
       const solidity = area / (bbox.width * bbox.height);
       const circularity = (4 * Math.PI * area) / (perimeter * perimeter);
       
-      // Convertir a unidades reales si hay calibración
+      // APLICAR CALIBRACIÓN REAL PARA CONVERTIR A MM/CM
       let realWidth = bbox.width;
       let realHeight = bbox.height;
       let realArea = area;
@@ -516,6 +538,10 @@ class UnifiedOpenCVSystem {
         realHeight = bbox.height * mmPerPixel;
         realArea = area * mmPerPixel * mmPerPixel;
         unit = 'mm';
+        
+        console.log(`🔧 Conversión aplicada: ${bbox.width}px → ${realWidth.toFixed(1)}mm (factor: ${mmPerPixel.toFixed(4)})`);
+      } else {
+        console.log('⚠️ Sin calibración - medidas en píxeles');
       }
       
       const detectedObject: DetectedObject = {
@@ -533,7 +559,8 @@ class UnifiedOpenCVSystem {
           width: realWidth,
           height: realHeight,
           area: realArea,
-          unit
+          unit,
+          perimeter: calibrationData?.isCalibrated ? perimeter / calibrationData.pixelsPerMm : perimeter
         },
         points: contour.map((point, i) => ({
           x: point.x,
@@ -547,7 +574,7 @@ class UnifiedOpenCVSystem {
           aspectRatio,
           solidity,
           circularity,
-          perimeter
+          perimeter: calibrationData?.isCalibrated ? perimeter / calibrationData.pixelsPerMm : perimeter
         }
       };
       

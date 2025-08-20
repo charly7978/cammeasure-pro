@@ -21,7 +21,7 @@ import { MeasurementControls } from '@/components/MeasurementControls';
 // MeasurementEngine removido - usando sistema unificado
 import { useDeviceSensors } from '@/hooks/useDeviceSensors';
 import { useOpenCV } from '@/hooks/useOpenCV';
-import { useCalibration } from '@/hooks/useCalibration';
+import { useSimpleCalibration } from '@/hooks/useSimpleCalibration';
 import { ImmersiveMode } from '@/components/ImmersiveMode';
 import { 
   CalibrationData, 
@@ -35,7 +35,7 @@ import { useUnifiedOptimization } from '@/lib/unifiedOptimizationSystem';
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState<'camera' | 'calibration' | 'measurements'>('camera');
-  const { calibrationData } = useCalibration();
+  const { calibrationData, setCalibrationData } = useSimpleCalibration();
   const optimization = useUnifiedOptimization();
   const [measurementMode, setMeasurementMode] = useState<MeasurementMode>('2d');
   const [measurementResult, setMeasurementResult] = useState<MeasurementResult | null>(null);
@@ -117,16 +117,16 @@ const Index = () => {
   };
 
   const handleCalibrationChange = (data: CalibrationData) => {
-    // TODO: Update calibration through hook
+    setCalibrationData(data);
     
     if (data.isCalibrated) {
       setShowCalibrationWarning(false);
-      const toastMessage = "Sistema calibrado";
+      const toastMessage = "Sistema calibrado correctamente";
       if (lastToastRef.current !== toastMessage) {
         lastToastRef.current = toastMessage;
         toast({
           title: toastMessage,
-          description: `Factor: ${data.pixelsPerMm.toFixed(2)} px/mm`
+          description: `Factor: ${data.pixelsPerMm.toFixed(2)} px/mm - Medidas en MM/CM activadas`
         });
       }
     }

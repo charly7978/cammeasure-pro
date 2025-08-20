@@ -55,8 +55,6 @@ export const CameraView: React.FC<CameraViewProps> = ({
   const [isProcessing, setIsProcessing] = useState(false);
   const [frameCount, setFrameCount] = useState(0);
   const processingInterval = useRef<NodeJS.Timeout | null>(null);
-  
-
 
   // PROCESAR FRAME DE VIDEO CON OPENCV - SOLO DETECCIÓN AUTOMÁTICA DEL CENTRO
   const processVideoFrame = useCallback(async () => {
@@ -249,8 +247,6 @@ export const CameraView: React.FC<CameraViewProps> = ({
     }
   }, [onImageCapture]);
 
-
-
   // CAMBIAR CÁMARA
   const handleSwitchCamera = useCallback(async () => {
     try {
@@ -271,14 +267,14 @@ export const CameraView: React.FC<CameraViewProps> = ({
     <div className="relative w-full h-full bg-black" ref={containerRef}>
       {/* VIDEO PRINCIPAL */}
       <div className="relative w-full h-full overflow-hidden">
-                 <video
-           ref={videoRef}
-           autoPlay
-           playsInline
-           muted
-           className="w-full h-full object-cover"
-           style={{ transform: currentCamera === 'front' ? 'scaleX(-1)' : 'none' }}
-         />
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted
+          className="w-full h-full object-cover"
+          style={{ transform: currentCamera === 'front' ? 'scaleX(-1)' : 'none' }}
+        />
         
         {/* CANVAS OVERLAY PARA SILUETAS */}
         <canvas
@@ -347,8 +343,6 @@ export const CameraView: React.FC<CameraViewProps> = ({
         >
           {isRealTimeMeasurement ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
         </Button>
-
-        
       </div>
 
       {/* INDICADORES DE ESTADO */}
@@ -356,8 +350,6 @@ export const CameraView: React.FC<CameraViewProps> = ({
         <Badge variant={hasPermissions ? "default" : "destructive"}>
           {hasPermissions ? "Cámara OK" : "Sin permisos"}
         </Badge>
-        
-        
         
         {isProcessing && (
           <Badge variant="secondary" className="bg-blue-500/80 text-white">
@@ -375,8 +367,6 @@ export const CameraView: React.FC<CameraViewProps> = ({
           Frame: {frameCount}
         </Badge>
       </div>
-
-      
     </div>
   );
 };

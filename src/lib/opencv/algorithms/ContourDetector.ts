@@ -139,14 +139,14 @@ export class ContourDetector {
     let searchZoneWidth, searchZoneHeight;
     
     if (touchPoint) {
-      // MODO TOQUE: Zona más amplia alrededor del punto tocado (40%)
-      searchZoneWidth = width * 0.4;
-      searchZoneHeight = height * 0.4;
+      // MODO TOQUE: Zona más amplia alrededor del punto tocado (50%)
+      searchZoneWidth = width * 0.5;
+      searchZoneHeight = height * 0.5;
       console.log(`👆 Modo TOQUE: Buscando en zona de ${searchZoneWidth.toFixed(0)}x${searchZoneHeight.toFixed(0)} alrededor de (${touchPoint.x}, ${touchPoint.y})`);
     } else {
-      // MODO CENTRO: Zona central más permisiva (40%)
-      searchZoneWidth = width * 0.4;
-      searchZoneHeight = height * 0.4;
+      // MODO CENTRO: Zona central más permisiva (50%)
+      searchZoneWidth = width * 0.5;
+      searchZoneHeight = height * 0.5;
       console.log(`🎯 Modo CENTRO: Buscando en zona central de ${searchZoneWidth.toFixed(0)}x${searchZoneHeight.toFixed(0)}`);
     }
     
@@ -676,12 +676,12 @@ export class ContourDetector {
     const centerY = imgHeight / 2;
     
     // 1. FILTRO DE TAMAÑO MÍNIMO (objetos grandes visibles)
-    const minArea = totalArea * 0.05; // 5% mínimo (más permisivo para objetos grandes)
-    const maxArea = totalArea * 0.8;  // 80% máximo
+    const minArea = totalArea * 0.03; // 3% mínimo (más permisivo para objetos grandes)
+    const maxArea = totalArea * 0.9;  // 90% máximo
     
     // 2. FILTRO DE DIMENSIONES MÍNIMAS ABSOLUTAS
-    const minWidth = imgWidth * 0.05;   // 5% del ancho de pantalla
-    const minHeight = imgHeight * 0.05; // 5% del alto de pantalla
+    const minWidth = imgWidth * 0.03;   // 3% del ancho de pantalla
+    const minHeight = imgHeight * 0.03; // 3% del alto de pantalla
     
     // 3. FILTRO DE POSICIÓN CENTRAL (más permisivo)
     const contourCenterX = properties.boundingBox.x + properties.boundingBox.width / 2;
@@ -690,18 +690,18 @@ export class ContourDetector {
       Math.pow(contourCenterX - centerX, 2) + 
       Math.pow(contourCenterY - centerY, 2)
     );
-    const maxCenterDistance = Math.min(imgWidth, imgHeight) * 0.45; // 45% central (más permisivo)
+    const maxCenterDistance = Math.min(imgWidth, imgHeight) * 0.6; // 60% central (más permisivo)
     
-    // 4. FILTRO ULTRA ESTRICTO DE RELACIÓN DE ASPECTO
+    // 4. FILTRO DE RELACIÓN DE ASPECTO (más permisivo)
     const aspectRatio = properties.boundingBox.width / properties.boundingBox.height;
-    const validAspectRatio = aspectRatio >= 0.4 && aspectRatio <= 2.5; // Ultra estricto
+    const validAspectRatio = aspectRatio >= 0.2 && aspectRatio <= 5.0; // Más permisivo
     
-    // 5. FILTRO ULTRA ESTRICTO DE FORMA NATURAL
-    const validCircularity = properties.circularity >= 0.1 && properties.circularity <= 0.8;
-    const validSolidity = properties.solidity >= 0.3 && properties.solidity <= 0.95;
+    // 5. FILTRO DE FORMA NATURAL (más permisivo)
+    const validCircularity = properties.circularity >= 0.05 && properties.circularity <= 0.95;
+    const validSolidity = properties.solidity >= 0.2 && properties.solidity <= 0.98;
     
-    // 6. FILTRO ULTRA ESTRICTO DE PERÍMETRO MÍNIMO
-    const minPerimeter = Math.sqrt(properties.area) * 4; // Perímetro mínimo ultra alto
+    // 6. FILTRO DE PERÍMETRO MÍNIMO (más permisivo)
+    const minPerimeter = Math.sqrt(properties.area) * 2; // Perímetro mínimo más bajo
     const validPerimeter = properties.perimeter >= minPerimeter;
     
     // APLICAR TODOS LOS FILTROS ULTRA ESTRICTOS

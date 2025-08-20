@@ -178,48 +178,26 @@ export const CameraView: React.FC<CameraViewProps> = ({
     let isMounted = true;
     let intervalId: NodeJS.Timeout | null = null;
     
-    const startDetection = () => {
-      if (isActive && isRealTimeMeasurement && hasPermissions && videoRef.current) {
-        console.log('🔄 INICIANDO DETECCIÓN AUTOMÁTICA...');
-        
-        // Procesar frame inmediatamente
-        setTimeout(() => {
-          if (isMounted) processVideoFrame();
-        }, 1000);
-        
-        // Luego procesar cada 2 segundos (más frecuente)
-        intervalId = setInterval(async () => {
-          if (isMounted && videoRef.current && videoRef.current.readyState === 4) {
-            await processVideoFrame();
-          }
-        }, 2000);
-      }
-    };
-    
-    // Iniciar detección cuando cambien las dependencias
-    startDetection();
-    
-    // También iniciar cuando el video esté listo
-    const handleVideoReady = () => {
-      if (isMounted && isActive && isRealTimeMeasurement && hasPermissions) {
-        console.log('🎥 Video listo, iniciando detección...');
-        startDetection();
-      }
-    };
-    
-    if (videoRef.current) {
-      videoRef.current.addEventListener('loadeddata', handleVideoReady);
-      videoRef.current.addEventListener('canplay', handleVideoReady);
+    if (isActive && isRealTimeMeasurement && hasPermissions) {
+      console.log('🔄 INICIANDO DETECCIÓN AUTOMÁTICA...');
+      
+      // Procesar frame inmediatamente
+      setTimeout(() => {
+        if (isMounted) processVideoFrame();
+      }, 1000);
+      
+      // Luego procesar cada 2 segundos
+      intervalId = setInterval(async () => {
+        if (isMounted) {
+          await processVideoFrame();
+        }
+      }, 2000);
     }
     
     return () => {
       isMounted = false;
       if (intervalId) {
         clearInterval(intervalId);
-      }
-      if (videoRef.current) {
-        videoRef.current.removeEventListener('loadeddata', handleVideoReady);
-        videoRef.current.removeEventListener('canplay', handleVideoReady);
       }
     };
   }, [isActive, isRealTimeMeasurement, hasPermissions, processVideoFrame]);

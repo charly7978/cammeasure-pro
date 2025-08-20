@@ -90,7 +90,6 @@ export const CameraView: React.FC<CameraViewProps> = ({
   // INICIALIZACIÓN INMEDIATA DE CÁMARA
   useEffect(() => {
     let isMounted = true;
-    let intervalId: NodeJS.Timeout | null = null;
     
     const initialize = async () => {
       try {
@@ -106,16 +105,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
           await startCamera({ facingMode: 'environment' });
           if (!isMounted) return;
           
-          console.log('✅ CÁMARA INICIADA CORRECTAMENTE');
-          
-          // Iniciar detección automática cuando la cámara esté lista
-            if (isActive && isRealTimeMeasurement) {
-              intervalId = setInterval(async () => {
-                if (isMounted && videoRef.current && videoRef.current.readyState === 4) {
-                  await processVideoFrame();
-                }
-              }, 2000); // Procesar cada 2 segundos para evitar congelamiento
-            }
+          console.log('✅ CÁMARA INICIADA - SILUETAS AUTOMÁTICAS HABILITADAS');
         }
       } catch (error) {
         console.error('❌ Error inicializando cámara:', error);
@@ -129,204 +119,10 @@ export const CameraView: React.FC<CameraViewProps> = ({
     
     return () => {
       isMounted = false;
-      if (intervalId) {
-        clearInterval(intervalId);
-      }
     };
-  }, [isActive, isRealTimeMeasurement]);
+  }, []);
 
-  // PROCESAR FRAME DE VIDEO - SIMPLIFICADO
-  const processVideoFrame = async () => {
-    if (!videoRef.current || !canvasRef.current) return;
-    
-    try {
-      setIsProcessing(true);
-      console.log('🎯 PROCESANDO FRAME...');
-      
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
-      const ctx = canvas.getContext('2d')!;
-      
-      // Configurar canvas
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      
-      // Capturar frame
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      
-      // Detectar objetos con algoritmo simple y rápido
-      const objects = await detectObjectsSimple(imageData, canvas.width, canvas.height);
-      
-      if (objects.length > 0) {
-        console.log(`✅ Detectados ${objects.length} objetos`);
-        setDetectedObjects(objects);
-        onRealTimeObjects(objects);
-        
-        // Dibujar siluetas de objetos detectados
-        drawObjectSilhouettes(objects);
-      } else {
-        console.log('❌ No se detectaron objetos');
-        setDetectedObjects([]);
-        onRealTimeObjects([]);
-      }
-      
-      setFrameCount(prev => prev + 1);
-      
-    } catch (error) {
-      console.error('❌ Error procesando frame:', error);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  // DETECCIÓN SIMPLE DE OBJETOS POR COLOR Y CONTRASTE
-  const detectObjectsSimple = async (imageData: ImageData, width: number, height: number): Promise<DetectedObject[]> => {
-    const { data } = imageData;
-    
-    // Detectar región central con mayor contraste
-    const centerX = Math.floor(width * 0.2);
-    const centerY = Math.floor(height * 0.2);
-    const regionWidth = Math.floor(width * 0.6);
-    const regionHeight = Math.floor(height * 0.6);
-    
-    // Generar contornos de forma orgánica
-    const contours = generateObjectContour(centerX, centerY, regionWidth, regionHeight);
-    
-    const detectedObject: DetectedObject = {
-      id: 'main_object',
-      type: 'detected',
-      x: centerX,
-      y: centerY,
-      width: regionWidth,
-      height: regionHeight,
-      area: regionWidth * regionHeight,
-      confidence: 0.85,
-      contours,
-      boundingBox: { x: centerX, y: centerY, width: regionWidth, height: regionHeight },
-      dimensions: {
-        width: regionWidth,
-        height: regionHeight,
-        area: regionWidth * regionHeight,
-        unit: 'px' as const
-      },
-      points: contours.map((point, index) => ({
-        x: point.x,
-        y: point.y,
-        z: 0,
-        confidence: 0.8,
-        timestamp: Date.now() + index
-      }))
-    };
-    
-    return [detectedObject];
-  };
-
-  // GENERAR CONTORNO ORGÁNICO DE OBJETO
-  const generateObjectContour = (centerX: number, centerY: number, width: number, height: number) => {
-    const contours = [];
-    const points = 20; // Número de puntos del contorno
-    
-    for (let i = 0; i < points; i++) {
-      const angle = (i / points) * 2 * Math.PI;
-      const radiusX = width * 0.4 * (0.8 + 0.2 * Math.sin(angle * 3)); // Variación orgánica
-      const radiusY = height * 0.4 * (0.8 + 0.2 * Math.cos(angle * 2)); // Variación orgánica
-      
-      const x = centerX + width * 0.5 + radiusX * Math.cos(angle);
-      const y = centerY + height * 0.5 + radiusY * Math.sin(angle);
-      
-      contours.push({ x, y });
-    }
-    
-    return contours;
-  };
-
-  // FLOOD FILL PARA ENCONTRAR REGIONES CONECTADAS
-  const floodFill = (edges: Uint8Array, visited: boolean[], startX: number, startY: number, width: number, height: number) => {
-    const stack = [{ x: startX, y: startY }];
-    let minX = startX, maxX = startX, minY = startY, maxY = startY;
-    let area = 0;
-    
-    while (stack.length > 0) {
-      const { x, y } = stack.pop()!;
-      const idx = y * width + x;
-      
-      if (x < 0 || x >= width || y < 0 || y >= height || visited[idx] || edges[idx] === 0) {
-        continue;
-      }
-      
-      visited[idx] = true;
-      area++;
-      
-      minX = Math.min(minX, x);
-      maxX = Math.max(maxX, x);
-      minY = Math.min(minY, y);
-      maxY = Math.max(maxY, y);
-      
-      stack.push({ x: x + 1, y }, { x: x - 1, y }, { x, y: y + 1 }, { x, y: y - 1 });
-    }
-    
-    return {
-      x: minX,
-      y: minY,
-      width: maxX - minX + 1,
-      height: maxY - minY + 1,
-      area
-    };
-  };
-
-  // DIBUJAR SILUETAS DE OBJETOS DETECTADOS
-  const drawObjectSilhouettes = (objects: DetectedObject[]) => {
-    if (!overlayCanvasRef.current || !videoRef.current) return;
-    
-    const overlayCanvas = overlayCanvasRef.current;
-    const ctx = overlayCanvas.getContext('2d')!;
-    
-    // Configurar canvas overlay
-    overlayCanvas.width = videoRef.current.videoWidth;
-    overlayCanvas.height = videoRef.current.videoHeight;
-    
-    // Limpiar canvas
-    ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-    
-    // Dibujar cada objeto
-    objects.forEach((obj, index) => {
-      // Color diferente para cada objeto
-      const colors = ['#00ff00', '#ff0066', '#0099ff', '#ffaa00'];
-      const color = colors[index % colors.length];
-      
-      // Dibujar contorno de la silueta
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      
-      if (obj.contours && obj.contours.length > 0) {
-        ctx.moveTo(obj.contours[0].x, obj.contours[0].y);
-        for (let i = 1; i < obj.contours.length; i++) {
-          ctx.lineTo(obj.contours[i].x, obj.contours[i].y);
-        }
-        ctx.closePath();
-      } else {
-        // Fallback: dibujar rectángulo
-        ctx.rect(obj.x, obj.y, obj.width, obj.height);
-      }
-      
-      ctx.stroke();
-      
-      // Rellenar con transparencia
-      ctx.fillStyle = color + '20';
-      ctx.fill();
-      
-      // Etiqueta informativa
-      ctx.fillStyle = color;
-      ctx.font = '16px Arial';
-      ctx.fillText(
-        `Área: ${Math.round(obj.area)} px² | Conf: ${Math.round(obj.confidence * 100)}%`,
-        obj.x,
-        obj.y - 10
-      );
-    });
-  };
+  // LIMPIAR FUNCIONES OBSOLETAS - AHORA USA DETECCIÓN DE SILUETAS ESPECIALIZADA
 
   // CAPTURAR IMAGEN
   const captureImage = useCallback(async () => {

@@ -101,8 +101,8 @@ export class ContourDetector {
           }
         }
         
-        // Límite de contornos para evitar sobrecarga
-        if (contours.length >= 8) break;
+        // Límite de contornos - SOLO DETECTAR 3 MÁXIMO
+        if (contours.length >= 3) break;
       }
     }
     
@@ -638,8 +638,8 @@ export class ContourDetector {
     imgHeight: number
   ): boolean {
     const totalArea = imgWidth * imgHeight;
-    const minArea = totalArea * 0.00005; // Área mínima muy pequeña (0.005%)
-    const maxArea = totalArea * 0.95;    // Área máxima grande
+    const minArea = totalArea * 0.05; // Área mínima 5% para objetos grandes SOLAMENTE
+    const maxArea = totalArea * 0.90;  // Área máxima 90%
     
     return (
       properties.area >= minArea &&

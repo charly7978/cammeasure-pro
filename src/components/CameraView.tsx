@@ -87,7 +87,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
               if (isMounted && videoRef.current && videoRef.current.readyState === 4) {
                 await processVideoFrame();
               }
-            }, 3000); // Procesar cada 3 segundos para mejor estabilidad
+            }, 5000); // Procesar cada 5 segundos para evitar temblores
           }
         }
       } catch (error) {
@@ -110,7 +110,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
 
   // PROCESAR FRAME DE VIDEO CON OPENCV AVANZADO Y DEBUG
   const processVideoFrame = async () => {
-    if (!videoRef.current || !canvasRef.current) return;
+    if (!videoRef.current || !canvasRef.current || isProcessing) return;
     
     try {
       setIsProcessing(true);

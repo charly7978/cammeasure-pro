@@ -62,10 +62,10 @@ export class SilhouetteDetector {
     try {
       // PASO 1: PROCESAMIENTO DE IMAGEN OPTIMIZADO
       console.log('📷 Paso 1: Procesamiento de imagen...');
-      const processed = this.imageProcessor.processImage(imageData, 1.2); // Contraste moderado
+      const processed = this.imageProcessor.processImage(imageData, 1.3); // Contraste aumentado
       
-      // PASO 2: MEJORA DE CONTRASTE ADAPTATIVA
-      console.log('🌟 Paso 2: Mejora de contraste...');
+      // PASO 2: MEJORA DE CONTRASTE ADAPTATIVA  
+      console.log('🌟 Paso 2: Mejora de contraste adaptativa...');
       const enhanced = this.imageProcessor.enhanceContrast(processed.blurred, width, height);
       
       // PASO 3: DETECCIÓN DE BORDES OPTIMIZADA PARA OBJETOS GRANDES
@@ -73,11 +73,11 @@ export class SilhouetteDetector {
       
       // Parámetros optimizados para objetos grandes y centrales
       const cannyResult = this.edgeDetector.detectEdges(enhanced, width, height, {
-        lowThreshold: 40,    // Umbral más alto para ignorar detalles pequeños
-        highThreshold: 120,  // Umbral alto para bordes fuertes
-        sigma: 2.0,          // Suavizado mayor para objetos grandes
-        sobelKernelSize: 5,  // Kernel mediano para balance velocidad/calidad
-        l2Gradient: true
+        lowThreshold: 30,    // Umbral bajo balanceado
+        highThreshold: 90,   // Umbral alto para bordes definidos
+        sigma: 1.8,          // Sigma aumentado para suavizar ruido
+        sobelKernelSize: 3,  // Kernel estándar eficiente
+        l2Gradient: true     // Gradiente L2 para mayor precisión
       });
       
       console.log(`✅ Bordes detectados: ${cannyResult.edgePixels} píxeles`);
@@ -152,8 +152,8 @@ export class SilhouetteDetector {
     // FILTRAR PARA DETECTAR SOLO EL OBJETO CENTRAL MÁS GRANDE
     const centerX = width / 2;
     const centerY = height / 2;
-    const minAreaPercentage = 0.08; // Mínimo 8% del área total para objetos grandes
-    const maxDistanceFromCenter = Math.min(width, height) * 0.45; // 45% del tamaño de la imagen
+    const minAreaPercentage = 0.02; // Mínimo 2% del área para no perder objetos
+    const maxDistanceFromCenter = Math.min(width, height) * 0.5; // 50% del tamaño (toda la zona central)
     
     // Calcular score para cada contorno basado en tamaño y centralidad
     const scoredContours = contours.map(contour => {
@@ -163,11 +163,11 @@ export class SilhouetteDetector {
       const distanceFromCenter = Math.sqrt((objCenterX - centerX) ** 2 + (objCenterY - centerY) ** 2);
       const areaPercentage = properties.area / (width * height);
       
-      // Score basado en área (60%) y centralidad (40%)
+      // Score basado en área (80%) y centralidad (20%) - PRIORIZAR TAMAÑO
       const normalizedDistance = distanceFromCenter / Math.max(width, height);
-      const centralityScore = Math.max(0, 1 - normalizedDistance * 2);
-      const areaScore = Math.min(1, areaPercentage * 5); // Normalizado hasta 20% del área
-      const totalScore = areaScore * 0.6 + centralityScore * 0.4;
+      const centralityScore = Math.max(0, 1 - normalizedDistance);
+      const areaScore = Math.min(1, areaPercentage * 10); // Más peso al área
+      const totalScore = areaScore * 0.8 + centralityScore * 0.2;
       
       return {
         contour,
@@ -422,7 +422,13 @@ export class SilhouetteDetector {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    // SIEMPRE limpiar el canvas antes de dibujar
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Si no hay objetos, no dibujar nada más
+    if (!result.objects || result.objects.length === 0) {
+      return;
+    }
 
     // Mostrar mapa de bordes si se solicita
     if (showEdges && result.edgeMap.length > 0) {
@@ -442,188 +448,116 @@ export class SilhouetteDetector {
       ctx.putImageData(imageData, 0, 0);
     }
 
-    // Dibujar objetos detectados con estilo mejorado y más visible
-    result.objects.forEach((obj, index) => {
-      // Color principal: verde brillante para mejor visibilidad
-      const color = '#00ff00';
-      
-      // DIBUJAR CONTORNO PRINCIPAL CON MÚLTIPLES CAPAS PARA MAYOR VISIBILIDAD
-      if (obj.contours && obj.contours.length > 0) {
-        // Capa 1: Sombra exterior gruesa
-        ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
-        ctx.lineWidth = 8;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        ctx.beginPath();
-        ctx.moveTo(obj.contours[0].x, obj.contours[0].y);
-        for (let i = 1; i < obj.contours.length; i++) {
-          ctx.lineTo(obj.contours[i].x, obj.contours[i].y);
-        }
-        ctx.closePath();
-        ctx.stroke();
-        
-        // Capa 2: Borde blanco intermedio
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
-        ctx.lineWidth = 5;
-        ctx.stroke();
-        
-        // Capa 3: Línea principal de color
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 3;
-        ctx.stroke();
-        
-        // Relleno semi-transparente
-        ctx.fillStyle = 'rgba(0, 255, 0, 0.1)';
-        ctx.fill();
-        
-        // Dibujar puntos en los vértices principales (cada N puntos)
-        const step = Math.max(1, Math.floor(obj.contours.length / 20));
-        ctx.fillStyle = color;
-        for (let i = 0; i < obj.contours.length; i += step) {
-          ctx.beginPath();
-          ctx.arc(obj.contours[i].x, obj.contours[i].y, 4, 0, 2 * Math.PI);
-          ctx.fill();
-        }
-      }
-
-      // PANEL DE INFORMACIÓN COMPLETO CON DIMENSIONES 2D Y 3D
-      const panelX = 10;
-      const panelY = 10;
-      const panelWidth = 320;
-      const lineHeight = 22;
-      
-      // Preparar textos informativos
-      const infoTexts = [
-        `OBJETO DETECTADO`,
-        `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-        `Dimensiones 2D:`,
-        `  Ancho: ${obj.dimensions.width.toFixed(1)} ${obj.dimensions.unit}`,
-        `  Alto: ${obj.dimensions.height.toFixed(1)} ${obj.dimensions.unit}`,
-        `  Área: ${obj.dimensions.area.toFixed(0)} ${obj.dimensions.unit}²`,
-        `  Perímetro: ${obj.dimensions.perimeter?.toFixed(1) || 'N/A'} ${obj.dimensions.unit}`,
-        ``,
-        `Propiedades Geométricas:`,
-        `  Solidez: ${((obj.solidity || 0) * 100).toFixed(1)}%`,
-        `  Circularidad: ${((obj.circularity || 0) * 100).toFixed(1)}%`,
-        `  Relación aspecto: ${obj.aspectRatio?.toFixed(2) || 'N/A'}`,
-        `  Puntos contorno: ${obj.contourPoints || 0}`
-      ];
-      
-      // Agregar información 3D si está disponible
-      if (obj.depth3D) {
-        infoTexts.push('');
-        infoTexts.push('Información 3D:');
-        infoTexts.push(`  Distancia: ${obj.depth3D.distance.toFixed(0)} mm`);
-        infoTexts.push(`  Profundidad: ${obj.depth3D.depth.toFixed(1)} mm`);
-        infoTexts.push(`  Volumen: ${(obj.depth3D.volume / 1000).toFixed(1)} cm³`);
-        infoTexts.push(`  Método: ${obj.depth3D.method}`);
-        infoTexts.push(`  Confianza 3D: ${(obj.depth3D.confidence * 100).toFixed(0)}%`);
-      }
-      
-      infoTexts.push('');
-      infoTexts.push(`Confianza detección: ${(obj.confidence * 100).toFixed(0)}%`);
-      
-      const panelHeight = infoTexts.length * lineHeight + 20;
-      
-      // Dibujar panel de fondo con gradiente
-      const gradient = ctx.createLinearGradient(panelX, panelY, panelX, panelY + panelHeight);
-      gradient.addColorStop(0, 'rgba(0, 0, 0, 0.95)');
-      gradient.addColorStop(1, 'rgba(0, 0, 0, 0.85)');
-      ctx.fillStyle = gradient;
-      ctx.fillRect(panelX, panelY, panelWidth, panelHeight);
-      
-      // Borde del panel
+    // Dibujar SOLO el primer objeto (el más grande y central)
+    const obj = result.objects[0];
+    if (!obj) return;
+    
+    // Estilo simple y no invasivo
+    const color = '#00ff00';
+    
+    // DIBUJAR SOLO EL CONTORNO SIMPLE
+    if (obj.contours && obj.contours.length > 0) {
+      // Una sola línea delgada
       ctx.strokeStyle = color;
       ctx.lineWidth = 2;
-      ctx.strokeRect(panelX, panelY, panelWidth, panelHeight);
-      
-      // Dibujar textos
-      infoTexts.forEach((text, i) => {
-        if (text.startsWith('OBJETO')) {
-          ctx.fillStyle = color;
-          ctx.font = 'bold 14px monospace';
-        } else if (text.startsWith('━')) {
-          ctx.fillStyle = color;
-          ctx.font = '12px monospace';
-        } else if (!text.startsWith('  ')) {
-          ctx.fillStyle = '#ffffff';
-          ctx.font = 'bold 12px monospace';
-        } else {
-          ctx.fillStyle = '#dddddd';
-          ctx.font = '11px monospace';
-        }
-        ctx.fillText(text, panelX + 10, panelY + 20 + i * lineHeight);
-      });
-      
-      // VISUALIZACIÓN DE BOUNDING BOX
-      ctx.strokeStyle = 'rgba(255, 255, 0, 0.8)';
-      ctx.lineWidth = 2;
-      ctx.setLineDash([5, 5]);
-      ctx.strokeRect(obj.boundingBox.x, obj.boundingBox.y, obj.boundingBox.width, obj.boundingBox.height);
-      ctx.setLineDash([]);
-      
-      // Mostrar dimensiones en el bounding box
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-      const widthText = `${obj.dimensions.width.toFixed(1)} ${obj.dimensions.unit}`;
-      const heightText = `${obj.dimensions.height.toFixed(1)} ${obj.dimensions.unit}`;
-      
-      // Ancho - arriba
-      const widthMetrics = ctx.measureText(widthText);
-      const widthLabelX = obj.boundingBox.x + obj.boundingBox.width / 2 - widthMetrics.width / 2;
-      const widthLabelY = obj.boundingBox.y - 5;
-      ctx.fillRect(widthLabelX - 5, widthLabelY - 15, widthMetrics.width + 10, 20);
-      ctx.fillStyle = '#ffff00';
-      ctx.font = 'bold 12px monospace';
-      ctx.fillText(widthText, widthLabelX, widthLabelY);
-      
-      // Alto - derecha
-      ctx.save();
-      ctx.translate(obj.boundingBox.x + obj.boundingBox.width + 15, obj.boundingBox.y + obj.boundingBox.height / 2);
-      ctx.rotate(Math.PI / 2);
-      const heightMetrics = ctx.measureText(heightText);
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-      ctx.fillRect(-heightMetrics.width / 2 - 5, -15, heightMetrics.width + 10, 20);
-      ctx.fillStyle = '#ffff00';
-      ctx.fillText(heightText, -heightMetrics.width / 2, 0);
-      ctx.restore();
-      
-      // Centro del objeto con cruz
-      if (obj.centerX !== undefined && obj.centerY !== undefined) {
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 2;
-        // Cruz
-        ctx.beginPath();
-        ctx.moveTo(obj.centerX - 10, obj.centerY);
-        ctx.lineTo(obj.centerX + 10, obj.centerY);
-        ctx.moveTo(obj.centerX, obj.centerY - 10);
-        ctx.lineTo(obj.centerX, obj.centerY + 10);
-        ctx.stroke();
-        
-        // Círculo central
-        ctx.beginPath();
-        ctx.arc(obj.centerX, obj.centerY, 5, 0, 2 * Math.PI);
-        ctx.stroke();
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(obj.contours[0].x, obj.contours[0].y);
+      for (let i = 1; i < obj.contours.length; i++) {
+        ctx.lineTo(obj.contours[i].x, obj.contours[i].y);
       }
-    });
+      ctx.closePath();
+      ctx.stroke();
+    }
 
-    // Información de debug si se solicita
-    if (showDebugInfo && result.debugInfo) {
-      const debug = result.debugInfo;
-      const debugText = [
-        `Tiempo: ${result.processingTime.toFixed(1)}ms`,
-        `Píxeles borde: ${debug.edgePixels}`,
-        `Contornos: ${debug.contoursFound} → ${debug.validContours}`,
-        `Confianza: ${(debug.averageConfidence * 100).toFixed(1)}%`
-      ];
+    // PANEL DE INFORMACIÓN PROFESIONAL
+    if (obj.dimensions) {
+      const x = 10;
+      let y = 10;
+      const lineHeight = 22;
+      const padding = 10;
       
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-      ctx.fillRect(10, 10, 200, debugText.length * 20 + 10);
+      // Información 2D
+      const info2D = [];
+      const unit = obj.dimensions.unit || 'px';
       
-      ctx.fillStyle = '#00ff41';
-      ctx.font = '11px monospace';
-      debugText.forEach((text, i) => {
-        ctx.fillText(text, 15, 25 + i * 20);
+      info2D.push(`Ancho: ${obj.dimensions.width.toFixed(1)} ${unit}`);
+      info2D.push(`Alto: ${obj.dimensions.height.toFixed(1)} ${unit}`);
+      if (obj.dimensions.area) {
+        const area = unit === 'mm' ? (obj.dimensions.area / 100).toFixed(1) + ' cm²' : 
+                                     obj.dimensions.area.toFixed(0) + ' px²';
+        info2D.push(`Área: ${area}`);
+      }
+      if (obj.dimensions.perimeter) {
+        info2D.push(`Perímetro: ${obj.dimensions.perimeter.toFixed(1)} ${unit}`);
+      }
+      
+      // Información 3D si está disponible
+      const info3D = [];
+      if (obj.depth3D) {
+        info3D.push(`Distancia: ${obj.depth3D.distance.toFixed(0)} mm`);
+        info3D.push(`Profundidad: ${obj.depth3D.depth.toFixed(1)} mm`);
+        info3D.push(`Volumen: ${(obj.depth3D.volume / 1000).toFixed(1)} cm³`);
+      }
+      
+      // Calcular tamaño del panel
+      const allInfo = [...info2D, ...info3D];
+      const maxWidth = Math.max(...allInfo.map(text => {
+        ctx.font = '14px system-ui';
+        return ctx.measureText(text).width;
+      })) + padding * 2;
+      
+      const panelHeight = (allInfo.length + 2) * lineHeight + padding;
+      
+      // Fondo del panel
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.9)';
+      ctx.fillRect(x, y, maxWidth, panelHeight);
+      
+      // Borde del panel
+      ctx.strokeStyle = '#00ff00';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x, y, maxWidth, panelHeight);
+      
+      // Título
+      ctx.fillStyle = '#00ff00';
+      ctx.font = 'bold 16px system-ui';
+      ctx.fillText('MEDICIONES', x + padding, y + lineHeight);
+      
+      y += lineHeight * 1.5;
+      
+      // Información 2D
+      ctx.font = '14px system-ui';
+      ctx.fillStyle = '#ffffff';
+      info2D.forEach(text => {
+        ctx.fillText(text, x + padding, y + lineHeight);
+        y += lineHeight;
       });
+      
+      // Separador si hay info 3D
+      if (info3D.length > 0) {
+        y += 5;
+        ctx.strokeStyle = '#00ff00';
+        ctx.lineWidth = 0.5;
+        ctx.beginPath();
+        ctx.moveTo(x + padding, y);
+        ctx.lineTo(x + maxWidth - padding, y);
+        ctx.stroke();
+        y += 10;
+        
+        // Información 3D
+        ctx.fillStyle = '#88ff88';
+        info3D.forEach(text => {
+          ctx.fillText(text, x + padding, y + lineHeight);
+          y += lineHeight;
+        });
+      }
+      
+      // Mostrar confianza
+      y += 5;
+      ctx.font = '12px system-ui';
+      ctx.fillStyle = '#aaaaaa';
+      ctx.fillText(`Confianza: ${(obj.confidence * 100).toFixed(0)}%`, x + padding, y + lineHeight);
     }
   }
   

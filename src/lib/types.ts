@@ -78,10 +78,6 @@ export interface DetectedObject extends BoundingRect {
   curvature?: number;
   roughness?: number;
   
-  // Propiedades de contornos y siluetas
-  contours?: Array<{x: number, y: number}>;
-  silhouette?: Array<{x: number, y: number}> | number[][];
-  
   // Propiedades de bounding box y dimensiones
   boundingBox: {
     x: number;

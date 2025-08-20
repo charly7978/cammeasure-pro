@@ -471,45 +471,23 @@ export function useCamera() {
   const cameraStreamRef = useRef<MediaStream | null>(null);
   const isCapturingRef = useRef(false);
 
-  // INICIALIZACIÓN REAL DE CÁMARA CON MUTEX
+  // INICIALIZACIÓN REAL DE CÁMARA
   const initializeCamera = useCallback(async () => {
-    const lockId = 'camera-init';
-    
     try {
       setIsLoading(true);
       setError(null);
       
       console.log('🚀 INICIANDO INICIALIZACIÓN REAL DE CÁMARA...');
       
-      // IMPORTANTE: Usar sistema de mutex para evitar inicializaciones múltiples
-      const { processCoordinator } = await import('@/lib/processCoordinator');
+      // Solicitar permisos
+      const hasPermissions = await cameraManager.requestCameraPermissions();
       
-      const lockAcquired = await processCoordinator.acquireLock(lockId, 'useCamera-init', 3000);
-      if (!lockAcquired) {
-        console.warn('⚠️ No se pudo adquirir lock para inicialización de cámara');
-        return;
+      if (!hasPermissions) {
+        throw new Error('Permisos de cámara denegados');
       }
       
-      try {
-        // Verificar si ya hay una inicialización en progreso
-        if (processCoordinator.isProcessActive('camera-manager-init')) {
-          console.log('ℹ️ Inicialización de cámara ya en progreso, esperando...');
-          await new Promise(resolve => setTimeout(resolve, 500));
-        }
-        
-        // Solicitar permisos
-        const hasPermissions = await cameraManager.requestCameraPermissions();
-        
-        if (!hasPermissions) {
-          throw new Error('Permisos de cámara denegados');
-        }
-        
-        setIsReady(true);
-        console.log('✅ CÁMARA REAL INICIALIZADA');
-        
-      } finally {
-        processCoordinator.releaseLock(lockId);
-      }
+      setIsReady(true);
+      console.log('✅ CÁMARA REAL INICIALIZADA');
       
     } catch (err) {
       const cameraError = err instanceof Error ? 
@@ -523,17 +501,14 @@ export function useCamera() {
     }
   }, []);
 
-  // INICIO REAL DE CÁMARA CON COORDINACIÓN
+  // INICIO REAL DE CÁMARA
   const startCamera = useCallback(async (config?: Partial<CameraConfig>) => {
-    const lockId = 'camera-start';
-    
     try {
-      setIsLoading(true);
       setError(null);
       
-      const cameraConfig: CameraConfig = {
-        width: 1280,
-        height: 720,
+      const defaultConfig: CameraConfig = {
+        width: 640,
+        height: 480,
         facingMode: 'environment',
         frameRate: 30,
         ...config
@@ -541,51 +516,20 @@ export function useCamera() {
       
       console.log('📹 INICIANDO CÁMARA REAL...');
       
-      // IMPORTANTE: Usar coordinador para evitar starts múltiples
-      const { processCoordinator } = await import('@/lib/processCoordinator');
+      const cameraStream = await cameraManager.startCamera(defaultConfig);
       
-      const lockAcquired = await processCoordinator.acquireLock(lockId, 'useCamera-start', 5000);
-      if (!lockAcquired) {
-        console.warn('⚠️ No se pudo adquirir lock para inicio de cámara');
-        return;
+      // Asignar stream al video element
+      if (videoRef.current) {
+        videoRef.current.srcObject = cameraStream.stream;
+        await videoRef.current.play();
       }
       
-      try {
-        // Registrar stream como recurso
-        processCoordinator.registerResource('stream');
-        
-        const cameraStream = await cameraManager.startCamera(cameraConfig);
-        
-        if (videoRef.current) {
-          videoRef.current.srcObject = cameraStream.stream;
-          cameraStreamRef.current = cameraStream.stream;
-          
-          await new Promise<void>((resolve, reject) => {
-            if (!videoRef.current) {
-              reject(new Error('Video reference perdida'));
-              return;
-            }
-            
-            videoRef.current.onloadedmetadata = () => {
-              if (videoRef.current) {
-                videoRef.current.play()
-                  .then(() => {
-                    console.log('✅ STREAM DE CÁMARA REAL INICIADO');
-                    resolve();
-                  })
-                  .catch(reject);
-              }
-            };
-            
-            videoRef.current.onerror = reject;
-          });
-        }
-        
-        setCameraStatus(cameraManager.getCameraStatus());
-        
-      } finally {
-        processCoordinator.releaseLock(lockId);
-      }
+      cameraStreamRef.current = cameraStream.stream;
+      
+      // Actualizar estado
+      setCameraStatus(cameraManager.getCameraStatus());
+      
+      console.log('✅ CÁMARA REAL INICIADA');
       
     } catch (err) {
       const cameraError = err instanceof Error ? 
@@ -594,14 +538,7 @@ export function useCamera() {
       
       setError(cameraError);
       console.error('❌ Error iniciando cámara real:', cameraError);
-      
-      // Liberar recurso en caso de error
-      const { processCoordinator } = await import('@/lib/processCoordinator');
-      processCoordinator.releaseResource('stream');
-      
       throw cameraError;
-    } finally {
-      setIsLoading(false);
     }
   }, []);
 

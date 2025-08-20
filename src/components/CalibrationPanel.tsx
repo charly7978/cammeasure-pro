@@ -6,7 +6,6 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Ruler, Target, CheckCircle, AlertCircle, Camera, Info } from 'lucide-react';
 import { CalibrationData } from '@/lib/types';
-import { realCalibrationSystem } from '@/lib/realCalibration';
 
 interface CalibrationPanelProps {
   onCalibrationChange: (data: CalibrationData) => void;
@@ -21,24 +20,23 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
   deviceInfo
 }) => {
   const [calibrationData, setCalibrationData] = useState<CalibrationData>({
-    focalLength: 0,
-    sensorSize: 0,
-    pixelsPerMm: 0,
-    referenceObjectSize: 0,
-    isCalibrated: false,
+    focalLength: 4.0,
+    sensorSize: 6.17,
+    pixelsPerMm: 3.78, // Valor inicial más realista
+    referenceObjectSize: 25.4, // 1 pulgada en mm
+    isCalibrated: false, // Empezar sin calibrar para forzar calibración real
     calibrationMethod: 'manual',
-    cameraMatrix: [[0, 0, 0], [0, 0, 0], [0, 0, 0]],
-    distortionCoefficients: [0, 0, 0, 0, 0],
-    imageSize: { width: 0, height: 0 },
-    realWorldScale: 0
+    // Valores iniciales para los nuevos parámetros
+    cameraMatrix: [[1000, 0, 320], [0, 1000, 240], [0, 0, 1]], // Matriz de cámara inicial
+    distortionCoefficients: [0, 0, 0, 0, 0], // Sin distorsión inicial
+    imageSize: { width: 640, height: 480 }, // Tamaño de imagen estándar
+    realWorldScale: 1.0 // Escala 1:1 inicial
   });
 
   const [referencePixelLength, setReferencePixelLength] = useState<number>(0);
   const [isCalibrating, setIsCalibrating] = useState(false);
   const [calibrationPoints, setCalibrationPoints] = useState<{x: number, y: number}[]>([]);
   const [showInstructions, setShowInstructions] = useState(true);
-  const [selectedObjectType, setSelectedObjectType] = useState<string>('');
-  const [calibrationQuality, setCalibrationQuality] = useState<any>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
@@ -174,39 +172,47 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
   };
 
   const completeCalibration = () => {
-    if (referencePixelLength > 0 && selectedObjectType) {
-      // Usar el sistema de calibración real
-      const success = realCalibrationSystem.addCalibrationPoint(
-        referencePixelLength, 
-        selectedObjectType as keyof ReturnType<typeof realCalibrationSystem.getReferenceObjects>
-      );
+    if (referencePixelLength > 0 && calibrationData.referenceObjectSize > 0) {
+      const pixelsPerMm = referencePixelLength / calibrationData.referenceObjectSize;
       
-      if (success) {
-        const newCalibration = realCalibrationSystem.generateCalibration();
-        if (newCalibration) {
-          setCalibrationData(newCalibration);
-          onCalibrationChange(newCalibration);
-          setCalibrationQuality(realCalibrationSystem.getCalibrationQuality());
-          stopCameraCalibration();
-          
-          const quality = realCalibrationSystem.getCalibrationQuality();
-          alert(`¡Calibración completada!\nCalidad: ${quality.quality}\n${quality.details}\nFactor: ${newCalibration.pixelsPerMm.toFixed(3)} píxeles/mm`);
-        }
-      } else {
-        alert('Error en la calibración. Intenta de nuevo.');
-      }
-    } else {
-      alert('Selecciona un objeto de referencia y mide su distancia.');
+      const updatedData = {
+        ...calibrationData,
+        pixelsPerMm,
+        isCalibrated: true,
+        calibrationMethod: 'reference' as const,
+        lastCalibrationDate: new Date().toISOString()
+      };
+      
+      setCalibrationData(updatedData);
+      onCalibrationChange(updatedData);
+      stopCameraCalibration();
+      
+      alert(`¡Calibración completada!\nFactor: ${pixelsPerMm.toFixed(2)} píxeles/mm`);
     }
   };
 
   const useQuickCalibration = (objectType: string) => {
-    const referenceObjects = realCalibrationSystem.getReferenceObjects();
-    const selectedObject = referenceObjects[objectType as keyof typeof referenceObjects];
-    
-    if (selectedObject) {
-      setSelectedObjectType(objectType);
-      alert(`Objeto seleccionado: ${selectedObject.name}\n${selectedObject.description}: ${selectedObject.size}mm\n\nAhora mide este objeto con la cámara colocando los puntos en extremos opuestos.`);
+    const quickCalibrations = {
+      'coin_1euro': { size: 23.25, description: 'Moneda de 1 euro (diámetro)' },
+      'coin_quarter': { size: 24.26, description: 'Moneda de 25 centavos US (diámetro)' },
+      'card_credit': { size: 85.6, description: 'Tarjeta de crédito (ancho)' },
+      'card_height': { size: 53.98, description: 'Tarjeta de crédito (alto)' },
+      'phone_iphone': { size: 146.7, description: 'iPhone estándar (alto)' },
+      'ruler_10cm': { size: 100, description: '10 cm de regla' },
+      'paper_a4_width': { size: 210, description: 'Papel A4 (ancho)' },
+      'paper_a4_height': { size: 297, description: 'Papel A4 (alto)' }
+    };
+
+    const calibration = quickCalibrations[objectType as keyof typeof quickCalibrations];
+    if (calibration) {
+      const updatedData = {
+        ...calibrationData,
+        referenceObjectSize: calibration.size,
+        calibrationMethod: 'reference' as const
+      };
+      
+      setCalibrationData(updatedData);
+      alert(`Objeto de referencia seleccionado: ${calibration.description}\nAhora mide este objeto con la cámara.`);
     }
   };
 
@@ -286,23 +292,15 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
           <Label className="text-sm font-medium">1. Selecciona un Objeto de Referencia</Label>
           <div className="grid grid-cols-2 gap-2">
             <Button
-              variant={selectedObjectType === 'coin_1euro' ? "default" : "outline"}
+              variant="outline"
               size="sm"
               onClick={() => useQuickCalibration('coin_1euro')}
               className="text-xs justify-start"
             >
-              🪙 Moneda 1€ (23.25mm)
+              🪙 Moneda 1€ (23.3mm)
             </Button>
             <Button
-              variant={selectedObjectType === 'coin_2euro' ? "default" : "outline"}
-              size="sm"
-              onClick={() => useQuickCalibration('coin_2euro')}
-              className="text-xs justify-start"
-            >
-              🪙 Moneda 2€ (25.75mm)
-            </Button>
-            <Button
-              variant={selectedObjectType === 'card_credit' ? "default" : "outline"}
+              variant="outline"
               size="sm"
               onClick={() => useQuickCalibration('card_credit')}
               className="text-xs justify-start"
@@ -310,63 +308,51 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
               💳 Tarjeta (85.6mm)
             </Button>
             <Button
-              variant={selectedObjectType === 'phone_iphone13' ? "default" : "outline"}
+              variant="outline"
               size="sm"
-              onClick={() => useQuickCalibration('phone_iphone13')}
+              onClick={() => useQuickCalibration('phone_iphone')}
               className="text-xs justify-start"
             >
               📱 iPhone (146.7mm)
             </Button>
             <Button
-              variant={selectedObjectType === 'ruler_10cm' ? "default" : "outline"}
+              variant="outline"
               size="sm"
               onClick={() => useQuickCalibration('ruler_10cm')}
               className="text-xs justify-start"
             >
               📏 Regla 10cm
             </Button>
-            <Button
-              variant={selectedObjectType === 'ruler_1cm' ? "default" : "outline"}
-              size="sm"
-              onClick={() => useQuickCalibration('ruler_1cm')}
-              className="text-xs justify-start"
-            >
-              📏 Regla 1cm
-            </Button>
           </div>
-          
-          {selectedObjectType && (
-            <div className="p-2 bg-primary/10 border border-primary/20 rounded text-xs">
-              <strong>Seleccionado:</strong> {realCalibrationSystem.getReferenceObjects()[selectedObjectType as keyof ReturnType<typeof realCalibrationSystem.getReferenceObjects>]?.name} 
-              ({realCalibrationSystem.getReferenceObjects()[selectedObjectType as keyof ReturnType<typeof realCalibrationSystem.getReferenceObjects>]?.size}mm)
-            </div>
-          )}
         </div>
 
-        {/* Estado de calibración actual */}
-        {calibrationQuality && (
-          <div className={`p-3 border rounded-lg ${
-            calibrationQuality.quality === 'excellent' ? 'bg-green-500/10 border-green-500/20' :
-            calibrationQuality.quality === 'good' ? 'bg-blue-500/10 border-blue-500/20' :
-            calibrationQuality.quality === 'fair' ? 'bg-yellow-500/10 border-yellow-500/20' :
-            'bg-red-500/10 border-red-500/20'
-          }`}>
-            <div className="flex items-center gap-2 mb-1">
-              <div className={`w-2 h-2 rounded-full ${
-                calibrationQuality.quality === 'excellent' ? 'bg-green-500' :
-                calibrationQuality.quality === 'good' ? 'bg-blue-500' :
-                calibrationQuality.quality === 'fair' ? 'bg-yellow-500' :
-                'bg-red-500'
-              }`} />
-              <span className="text-sm font-medium">
-                Calidad: {calibrationQuality.quality === 'excellent' ? 'Excelente' :
-                         calibrationQuality.quality === 'good' ? 'Buena' :
-                         calibrationQuality.quality === 'fair' ? 'Regular' : 'Pobre'}
-              </span>
-            </div>
-            <p className="text-xs text-muted-foreground">{calibrationQuality.details}</p>
+        {/* Parámetros de calibración */}
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="reference-size">Tamaño Referencia (mm)</Label>
+            <Input
+              id="reference-size"
+              type="number"
+              step="0.1"
+              value={calibrationData.referenceObjectSize}
+              onChange={(e) => handleInputChange('referenceObjectSize', parseFloat(e.target.value))}
+              className="bg-input/50"
+            />
           </div>
-        )}
+
+          <div className="space-y-2">
+            <Label htmlFor="pixels-per-mm">Factor Conversión (px/mm)</Label>
+            <Input
+              id="pixels-per-mm"
+              type="number"
+              step="0.01"
+              value={calibrationData.pixelsPerMm.toFixed(2)}
+              onChange={(e) => handleInputChange('pixelsPerMm', parseFloat(e.target.value))}
+              className="bg-input/50"
+              placeholder="Calculado automáticamente"
+            />
+          </div>
+        </div>
 
         {/* Calibración con cámara */}
         {!isCalibrating && (
@@ -374,7 +360,7 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
             onClick={startCameraCalibration}
             className="w-full bg-gradient-primary hover:bg-primary/90 shadow-measurement"
             size="lg"
-            disabled={!selectedObjectType}
+            disabled={calibrationData.referenceObjectSize <= 0}
           >
             <Camera className="w-4 h-4 mr-2" />
             2. Medir con Cámara

@@ -31,12 +31,12 @@ import {
   DetectedObject 
 } from '@/lib/types';
 
-// Optimización removida para mejor rendimiento
+import { useUnifiedOptimization } from '@/lib/unifiedOptimizationSystem';
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState<'camera' | 'calibration' | 'measurements'>('camera');
   const { calibrationData } = useCalibration();
-  // Sistema simplificado sin optimización compleja
+  const optimization = useUnifiedOptimization();
   const [measurementMode, setMeasurementMode] = useState<MeasurementMode>('2d');
   const [measurementResult, setMeasurementResult] = useState<MeasurementResult | null>(null);
   const [capturedImage, setCapturedImage] = useState<ImageData | null>(null);
@@ -49,10 +49,30 @@ const Index = () => {
   const { sensorData, isListening, startListening, stopListening } = useDeviceSensors();
   const { isReady: isOpenCVLoaded, error: openCVError } = useOpenCV();
 
-  // SISTEMA SIMPLIFICADO - SIN OPTIMIZACIÓN COMPLEJA
+  // INICIALIZAR SISTEMA (SIMPLIFICADO PARA MEJOR RENDIMIENTO)
   useEffect(() => {
-    console.log('✅ SISTEMA SIMPLIFICADO LISTO');
-  }, []);
+    const initOptimization = async () => {
+      try {
+        await optimization.initialize();
+        // Solo reportes en desarrollo, muy poco frecuentes
+        if (process.env.NODE_ENV === 'development') {
+          setTimeout(() => {
+            console.info('Sistema de optimización activo');
+          }, 5000);
+        }
+      } catch (error) {
+        if (process.env.NODE_ENV === 'development') {
+          console.error('Error inicializando optimización:', error);
+        }
+      }
+    };
+    
+    initOptimization();
+    
+    return () => {
+      optimization.shutdown();
+    };
+  }, [optimization]);
 
   useEffect(() => {
     startListening();
@@ -153,36 +173,6 @@ const Index = () => {
       
       setMeasurementResult(result);
     }
-  };
-
-  const handleMeasurementUpdate = (measurement: any) => {
-    console.log('📊 NUEVA MEDICIÓN RECIBIDA:', measurement);
-    
-    // Convertir medición al formato MeasurementResult
-    const result: MeasurementResult = {
-      distance2D: Math.max(measurement.width, measurement.height),
-      measurements: {
-        width: measurement.width,
-        height: measurement.height,
-        area: measurement.area
-      },
-      unit: calibrationData?.isCalibrated ? 'mm' : 'px',
-      confidence: measurement.confidence,
-      mode: measurementMode,
-      points: [],
-      timestamp: Date.now()
-    };
-    
-    setMeasurementResult(result);
-  };
-
-  const handleMeasurementError = (error: string) => {
-    console.error('❌ ERROR DE MEDICIÓN:', error);
-    toast({
-      title: "Error de Medición",
-      description: error,
-      variant: "destructive"
-    });
   };
 
   const handleCapture = async () => {
@@ -526,8 +516,6 @@ const Index = () => {
               isActive={activeTab === 'camera'}
               calibrationData={calibrationData}
               onRealTimeObjects={handleRealTimeObjects}
-              onMeasurementUpdate={handleMeasurementUpdate}
-              onError={handleMeasurementError}
             />
             
             {/* Instrucciones */}

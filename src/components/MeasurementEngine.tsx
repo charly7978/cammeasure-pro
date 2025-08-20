@@ -456,258 +456,57 @@ export const MeasurementEngine: React.FC<MeasurementEngineProps> = ({
     // Procesar frame inmediatamente
     processFrame();
     
-    // Sistema ultra inteligente de procesamiento con workers
+    // Sistema de cola inteligente con prevención de memory leaks
     let isComponentActive = true;
-    const engineId = `measurement-engine-${Date.now()}`;
+    let processingQueue = false;
+    let rafId: number;
+    let lastProcessTime = 0;
+    const MIN_PROCESS_INTERVAL = 300; // Aumentar a 300ms
+    let processCount = 0;
     
-    const setupUltraIntelligentProcessing = async () => {
-      try {
-        const { performanceOptimizer } = await import('@/lib/performanceOptimizer');
-        const { workerPool } = await import('@/lib/workerPool');
-        const { processCoordinator } = await import('@/lib/processCoordinator');
-
-        const optimizedEngineProcess = performanceOptimizer.createIntelligentThrottle(
-          async () => {
-            if (!isComponentActive || isProcessing) return;
-
-            const metrics = performanceOptimizer.getMetrics();
+    const scheduleNextProcess = () => {
+      if (!isComponentActive || !isActive) return;
+      
+      rafId = requestAnimationFrame((currentTime) => {
+        // Solo procesar si no hay procesamiento en cola y ha pasado suficiente tiempo
+        if (!processingQueue && currentTime - lastProcessTime >= MIN_PROCESS_INTERVAL) {
+          processingQueue = true;
+          lastProcessTime = currentTime;
+          processCount++;
+          
+          // Limpieza periódica cada 5 procesos
+          if (processCount % 5 === 0) {
+            console.log('🧹 Limpieza de memoria en MeasurementEngine');
+            // Limpiar buffer
+            frameBufferRef.current = frameBufferRef.current.slice(-2);
             
-            // Saltar si el sistema está muy sobrecargado
-            if (metrics.isOverloaded) {
-              console.log('⏸️ Motor sobrecargado, saltando procesamiento');
-              return;
+            // Forzar garbage collection
+            if (typeof window !== 'undefined' && 'gc' in window) {
+              (window as any).gc();
             }
-
-            const lockAcquired = await processCoordinator.acquireLock(engineId, 'MeasurementEngine', 1500);
-            if (!lockAcquired) return;
-
-            try {
-              performanceOptimizer.addTask({
-                id: `engine-${Date.now()}`,
-                priority: 'medium',
-                estimatedTime: 200,
-                component: 'MeasurementEngine',
-                processor: async () => {
-                  // Limpiar buffer inmediatamente
-                  frameBufferRef.current = frameBufferRef.current.slice(-2);
-
-                  // Usar worker para procesamiento
-                  try {
-                    const [measurementResult, detectionResult] = await Promise.allSettled([
-                      workerPool.executeTask('measurement', 
-                        { imageData, options: { quality: metrics.isOverloaded ? 'low' : 'medium' }}, 
-                        'medium', 2000),
-                      workerPool.executeTask('detection', 
-                        { imageData, threshold: 100 }, 
-                        'medium', 2000)
-                    ]);
-
-                    let finalMeasurement;
-                    
-                    if (measurementResult.status === 'fulfilled' && detectionResult.status === 'fulfilled') {
-                      // Combinar resultados
-                      finalMeasurement = {
-                        objectId: `engine_obj_${Date.now()}`,
-                        timestamp: Date.now(),
-                        measurements2D: measurementResult.value,
-                        measurements3D: {
-                          width3D: measurementResult.value.width * 1.2,
-                          height3D: measurementResult.value.height * 1.2,
-                          depth3D: 120,
-                          volume3D: measurementResult.value.area * 120,
-                          distance3D: 180,
-                          surfaceArea3D: measurementResult.value.area * 2.4,
-                          confidence: Math.min(measurementResult.value.confidence, 0.85)
-                        },
-                        advancedProperties: {
-                          curvature: 0.03,
-                          roughness: 0.25,
-                          orientation: { pitch: 0, yaw: 0, roll: 0 },
-                          materialProperties: {
-                            refractiveIndex: 1.4,
-                            scatteringCoefficient: 0.08,
-                            absorptionCoefficient: 0.04,
-                            density: 1.1,
-                            elasticity: 0.7
-                          }
-                        },
-                        uncertainty: {
-                          measurement: 0.12,
-                          calibration: 0.06,
-                          algorithm: 0.04,
-                          stereo: 0.08,
-                          total: 0.18
-                        },
-                        qualityMetrics: {
-                          imageQuality: 0.8,
-                          detectionQuality: detectionResult.value ? 0.8 : 0.6,
-                          depthQuality: 0.75,
-                          reconstructionQuality: 0.7
-                        },
-                        algorithm: 'Intelligent Worker-Based Engine',
-                        processingTime: performance.now() - Date.now(),
-                        frameRate: metrics.framerate
-                      };
-                    } else {
-                      // Fallback simple con estructura completa
-                      finalMeasurement = {
-                        objectId: `fallback_${Date.now()}`,
-                        timestamp: Date.now(),
-                        measurements2D: { 
-                          width: 50, 
-                          height: 50, 
-                          area: 2500, 
-                          perimeter: 200,
-                          circularity: 0.8,
-                          solidity: 0.9,
-                          aspectRatio: 1.0,
-                          compactness: 0.8,
-                          confidence: 0.5 
-                        },
-                        measurements3D: {
-                          width3D: 50,
-                          height3D: 50,
-                          depth3D: 50,
-                          volume3D: 125000,
-                          distance3D: 200,
-                          surfaceArea3D: 15000,
-                          confidence: 0.5
-                        },
-                        advancedProperties: {
-                          curvature: 0.02,
-                          roughness: 0.3,
-                          orientation: { pitch: 0, yaw: 0, roll: 0 },
-                          materialProperties: {
-                            refractiveIndex: 1.5,
-                            scatteringCoefficient: 0.1,
-                            absorptionCoefficient: 0.05,
-                            density: 1.2,
-                            elasticity: 0.8
-                          }
-                        },
-                        uncertainty: {
-                          measurement: 0.2,
-                          calibration: 0.1,
-                          algorithm: 0.1,
-                          stereo: 0.1,
-                          total: 0.3
-                        },
-                        qualityMetrics: {
-                          imageQuality: 0.6,
-                          detectionQuality: 0.5,
-                          depthQuality: 0.5,
-                          reconstructionQuality: 0.5
-                        },
-                        algorithm: 'Fallback Simple',
-                        processingTime: 10,
-                        frameRate: 15,
-                        calibration: {
-                          isCalibrated: false,
-                          calibrationQuality: 0.5,
-                          lastCalibration: Date.now(),
-                          calibrationUncertainty: 0.2
-                        }
-                      };
-                    }
-
-                    setCurrentMeasurement(finalMeasurement);
-                    onMeasurementComplete(finalMeasurement);
-
-                  } catch (workerError) {
-                    console.warn('Workers no disponibles, usando medición simplificada');
-                    // Crear medición básica sin workers
-                    const basicMeasurement = {
-                      objectId: `basic_${Date.now()}`,
-                      timestamp: Date.now(),
-                      measurements2D: {
-                        width: imageData.width * 0.1,
-                        height: imageData.height * 0.1,
-                        area: imageData.width * imageData.height * 0.01,
-                        perimeter: (imageData.width + imageData.height) * 0.2,
-                        circularity: 0.7,
-                        solidity: 0.8,
-                        aspectRatio: 1.0,
-                        compactness: 0.7,
-                        confidence: 0.6
-                      },
-                      measurements3D: {
-                        width3D: imageData.width * 0.12,
-                        height3D: imageData.height * 0.12,
-                        depth3D: 100,
-                        volume3D: imageData.width * imageData.height * 10,
-                        distance3D: 180,
-                        surfaceArea3D: imageData.width * imageData.height * 0.24,
-                        confidence: 0.6
-                      },
-                      advancedProperties: {
-                        curvature: 0.02,
-                        roughness: 0.25,
-                        orientation: { pitch: 0, yaw: 0, roll: 0 },
-                        materialProperties: {
-                          refractiveIndex: 1.4,
-                          scatteringCoefficient: 0.08,
-                          absorptionCoefficient: 0.04,
-                          density: 1.1,
-                          elasticity: 0.7
-                        }
-                      },
-                      uncertainty: {
-                        measurement: 0.15,
-                        calibration: 0.08,
-                        algorithm: 0.06,
-                        stereo: 0.1,
-                        total: 0.2
-                      },
-                      qualityMetrics: {
-                        imageQuality: 0.7,
-                        detectionQuality: 0.6,
-                        depthQuality: 0.6,
-                        reconstructionQuality: 0.6
-                      },
-                      algorithm: 'Basic Local Processing',
-                      processingTime: 50,
-                      frameRate: metrics.framerate,
-                      calibration: {
-                        isCalibrated: true,
-                        calibrationQuality: 0.7,
-                        lastCalibration: Date.now(),
-                        calibrationUncertainty: 0.1
-                      }
-                    };
-                    
-                    setCurrentMeasurement(basicMeasurement);
-                    onMeasurementComplete(basicMeasurement);
-                  }
-                }
-              });
-
-            } finally {
-              processCoordinator.releaseLock(engineId);
-            }
-          },
-          'MeasurementEngine'
-        );
-
-        const intervalId = setInterval(() => {
-          if (isComponentActive) {
-            optimizedEngineProcess();
           }
-        }, 1000); // 1 segundo entre procesamiento del motor
-
-        return () => clearInterval(intervalId);
-
-      } catch (error) {
-        console.error('Error configurando motor inteligente:', error);
-        return () => {}; // Cleanup vacío
-      }
+          
+          processFrame().finally(() => {
+            processingQueue = false;
+            // Programar siguiente procesamiento con más delay
+            setTimeout(() => scheduleNextProcess(), 150);
+          });
+        } else {
+          // Reprogramar si no es tiempo de procesar con delay
+          setTimeout(() => scheduleNextProcess(), 100);
+        }
+      });
     };
-
-    const cleanup = setupUltraIntelligentProcessing();
-
-    // Limpiar al desmontar
+    
+    // Iniciar sistema de cola con delay inicial
+    setTimeout(() => scheduleNextProcess(), 1500);
+    
     return () => {
       isComponentActive = false;
-      cleanup.then(cleanupFn => cleanupFn && cleanupFn());
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+      }
+      // Limpiar buffers al desmontar
       frameBufferRef.current = [];
     };
   }, [imageData, isActive, opencvLoaded, processMeasurement, onMeasurementComplete, onError, isProcessing]);

@@ -17,6 +17,7 @@ import {
 import { useCamera } from '@/hooks/useCamera';
 import { DetectedObject } from '@/lib/types';
 import { TouchObjectSelector } from './TouchObjectSelector';
+import { preciseObjectDetector } from '@/lib/preciseObjectDetection';
 
 interface CameraViewProps {
   onImageCapture?: (imageData: ImageData) => void;
@@ -306,7 +307,15 @@ export const CameraView: React.FC<CameraViewProps> = ({
       // USAR DETECCIÓN AI SIMPLIFICADA PARA EVITAR CONGELAMIENTO
       try {
         console.log('🎯 Usando detección AI optimizada...');
-        const aiResult = await preciseObjectDetector.detectLargestObject(canvas);
+        
+        // Crear canvas temporal para detección AI
+        const tempCanvas = document.createElement('canvas');
+        const tempCtx = tempCanvas.getContext('2d')!;
+        tempCanvas.width = width;
+        tempCanvas.height = height;
+        tempCtx.putImageData(imageData, 0, 0);
+        
+        const aiResult = await preciseObjectDetector.detectLargestObject(tempCanvas);
         
         if (aiResult && aiResult.confidence > 0.3) {
           const detectedObject = {

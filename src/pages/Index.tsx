@@ -31,12 +31,12 @@ import {
   DetectedObject 
 } from '@/lib/types';
 
-import { useUnifiedOptimization } from '@/lib/unifiedOptimizationSystem';
+// Optimización removida para mejor rendimiento
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState<'camera' | 'calibration' | 'measurements'>('camera');
   const { calibrationData } = useCalibration();
-  const optimization = useUnifiedOptimization();
+  // Sistema simplificado sin optimización compleja
   const [measurementMode, setMeasurementMode] = useState<MeasurementMode>('2d');
   const [measurementResult, setMeasurementResult] = useState<MeasurementResult | null>(null);
   const [capturedImage, setCapturedImage] = useState<ImageData | null>(null);
@@ -49,30 +49,10 @@ const Index = () => {
   const { sensorData, isListening, startListening, stopListening } = useDeviceSensors();
   const { isReady: isOpenCVLoaded, error: openCVError } = useOpenCV();
 
-  // INICIALIZAR SISTEMA (SIMPLIFICADO PARA MEJOR RENDIMIENTO)
+  // SISTEMA SIMPLIFICADO - SIN OPTIMIZACIÓN COMPLEJA
   useEffect(() => {
-    const initOptimization = async () => {
-      try {
-        await optimization.initialize();
-        // Solo reportes en desarrollo, muy poco frecuentes
-        if (process.env.NODE_ENV === 'development') {
-          setTimeout(() => {
-            console.info('Sistema de optimización activo');
-          }, 5000);
-        }
-      } catch (error) {
-        if (process.env.NODE_ENV === 'development') {
-          console.error('Error inicializando optimización:', error);
-        }
-      }
-    };
-    
-    initOptimization();
-    
-    return () => {
-      optimization.shutdown();
-    };
-  }, [optimization]);
+    console.log('✅ SISTEMA SIMPLIFICADO LISTO');
+  }, []);
 
   useEffect(() => {
     startListening();

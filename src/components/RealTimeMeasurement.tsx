@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useAdvancedMeasurement } from '@/hooks/useAdvancedMeasurement';
+import { workingOpenCV, SimpleDetectionResult } from '@/lib/workingOpenCV';
 import { useCalibration } from '@/hooks/useCalibration';
 import { DetectedObject, RealTimeMeasurement as RealTimeMeasurementType } from '@/lib/types';
 import { Button } from '@/components/ui/button';
@@ -23,61 +23,177 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
   onError
 }) => {
   
-  const { 
-    isInitialized, 
-    isProcessing, 
-    lastMeasurement, 
-    initializeSystem, 
-    measureFromVideo,
-    clearLastMeasurement 
-  } = useAdvancedMeasurement();
-  
-  const { isCalibrated } = useCalibration();
+  const { getPixelsPerMm, isCalibrated } = useCalibration();
   const [clickMode, setClickMode] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [lastMeasurement, setLastMeasurement] = useState<RealTimeMeasurementType | null>(null);
   const automaticIntervalRef = useRef<NodeJS.Timeout>();
   
-  // INICIALIZACIÓN DEL SISTEMA
+  // INICIALIZACIÓN DEL SISTEMA SIMPLE
   useEffect(() => {
     if (!isInitialized) {
-      initializeSystem().catch(error => {
-        console.error('❌ Error inicializando sistema avanzado:', error);
-        onError(`Error de inicialización: ${error.message}`);
+      workingOpenCV.initialize().then(success => {
+        setIsInitialized(success);
+        if (success) {
+          console.log('✅ SISTEMA OPENCV SIMPLE LISTO');
+        } else {
+          console.error('❌ FALLO EN INICIALIZACIÓN');
+          onError('Error inicializando sistema de medición');
+        }
       });
     }
-  }, [isInitialized, initializeSystem, onError]);
+  }, [isInitialized, onError]);
 
+
+  // CAPTURAR FRAME DE VIDEO
+  const captureVideoFrame = useCallback((): ImageData | null => {
+    if (!videoRef?.current) return null;
+    
+    const video = videoRef.current;
+    if (video.readyState !== 4) return null;
+    
+    try {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      
+      if (!ctx) return null;
+      
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0);
+      
+      return ctx.getImageData(0, 0, canvas.width, canvas.height);
+    } catch (error) {
+      console.error('❌ Error capturando frame:', error);
+      return null;
+    }
+  }, [videoRef]);
+
+  // CONVERTIR DETECCIÓN A MEDICIÓN
+  const convertToMeasurement = useCallback((detection: SimpleDetectionResult, clickType: 'manual' | 'auto'): RealTimeMeasurementType => {
+    const pixelsPerMm = isCalibrated() ? getPixelsPerMm() : 1;
+    
+    // Convertir píxeles a unidades reales
+    const width = detection.width / pixelsPerMm;
+    const height = detection.height / pixelsPerMm;
+    const area = detection.area / (pixelsPerMm * pixelsPerMm);
+    const perimeter = detection.perimeter / pixelsPerMm;
+    
+    // Calcular propiedades geométricas
+    const circularity = (4 * Math.PI * detection.area) / (detection.perimeter * detection.perimeter);
+    const solidity = detection.area / (detection.width * detection.height);
+    
+    // Estimaciones 3D simples
+    const depth = width * 0.7;
+    const volume = area * depth * 0.8;
+    const surfaceArea = area * 2.1;
+    const curvature = Math.max(0, 1.0 - circularity);
+    const roughness = Math.max(0.05, 1.0 - detection.confidence) * 0.2;
+    
+    // Calcular incertidumbre
+    const measurementUncertainty = 1 - detection.confidence;
+    const calibrationUncertainty = isCalibrated() ? 0.03 : 0.7;
+    const algorithmUncertainty = 0.1;
+    const totalUncertainty = measurementUncertainty + calibrationUncertainty + algorithmUncertainty;
+    
+    return {
+      width,
+      height,
+      area,
+      perimeter,
+      circularity: Math.max(0, Math.min(1, circularity)),
+      solidity: Math.max(0, Math.min(1, solidity)),
+      confidence: detection.confidence,
+      depth,
+      volume,
+      surfaceArea,
+      curvature,
+      roughness,
+      orientation: { pitch: 0, yaw: 0, roll: 0 },
+      materialProperties: {
+        refractiveIndex: 1.0,
+        scatteringCoefficient: 0.1,
+        absorptionCoefficient: 0.05
+      },
+      uncertainty: {
+        measurement: measurementUncertainty,
+        calibration: calibrationUncertainty,
+        algorithm: algorithmUncertainty,
+        total: totalUncertainty
+      },
+      algorithm: `OpenCV Simple (${clickType})`,
+      processingTime: Date.now(),
+      frameRate: 30,
+      qualityMetrics: {
+        sharpness: detection.confidence,
+        contrast: 0.75,
+        noise: Math.max(0.05, 1 - detection.confidence) * 0.3,
+        blur: Math.max(0.05, 1 - detection.confidence) * 0.2
+      }
+    };
+  }, [isCalibrated, getPixelsPerMm]);
 
   // MEDICIÓN MANUAL POR CLICK
   const measureByClick = useCallback(async (x: number, y: number) => {
     if (isProcessing || !isInitialized) return;
     
     try {
-      console.log('🎯 INICIANDO MEDICIÓN MANUAL EN:', x, y);
+      setIsProcessing(true);
+      console.log('🎯 MEDICIÓN MANUAL EN:', x, y);
       
-      const measurement = await measureFromVideo(videoRef, x, y);
+      const imageData = captureVideoFrame();
+      if (!imageData) {
+        throw new Error('No se pudo capturar frame del video');
+      }
+      
+      const detection = workingOpenCV.detectObjectInImage(imageData, x, y);
+      if (!detection) {
+        throw new Error('No se detectó objeto en la posición seleccionada');
+      }
+      
+      const measurement = convertToMeasurement(detection, 'manual');
+      setLastMeasurement(measurement);
       onMeasurementUpdate(measurement);
       
     } catch (error) {
       console.error('❌ Error en medición manual:', error);
       onError(`Error de medición manual: ${error instanceof Error ? error.message : 'Desconocido'}`);
+    } finally {
+      setIsProcessing(false);
     }
-  }, [isProcessing, isInitialized, measureFromVideo, videoRef, onMeasurementUpdate, onError]);
+  }, [isProcessing, isInitialized, captureVideoFrame, convertToMeasurement, onMeasurementUpdate, onError]);
 
   // MEDICIÓN AUTOMÁTICA
   const measureAutomatic = useCallback(async () => {
     if (isProcessing || !isInitialized) return;
     
     try {
-      console.log('🔄 INICIANDO MEDICIÓN AUTOMÁTICA...');
+      setIsProcessing(true);
+      console.log('🔄 MEDICIÓN AUTOMÁTICA...');
       
-      const measurement = await measureFromVideo(videoRef);
+      const imageData = captureVideoFrame();
+      if (!imageData) {
+        throw new Error('No se pudo capturar frame del video');
+      }
+      
+      const detection = workingOpenCV.detectObjectInImage(imageData);
+      if (!detection) {
+        console.log('⚠️ No se detectaron objetos en la imagen');
+        return; // No es error, simplemente no hay objetos
+      }
+      
+      const measurement = convertToMeasurement(detection, 'auto');
+      setLastMeasurement(measurement);
       onMeasurementUpdate(measurement);
       
     } catch (error) {
       console.error('❌ Error en medición automática:', error);
       onError(`Error de medición automática: ${error instanceof Error ? error.message : 'Desconocido'}`);
+    } finally {
+      setIsProcessing(false);
     }
-  }, [isProcessing, isInitialized, measureFromVideo, videoRef, onMeasurementUpdate, onError]);
+  }, [isProcessing, isInitialized, captureVideoFrame, convertToMeasurement, onMeasurementUpdate, onError]);
 
   // Manejo de click en el video
   const handleVideoClick = (event: React.MouseEvent<HTMLVideoElement>) => {
@@ -139,7 +255,7 @@ export const RealTimeMeasurement: React.FC<RealTimeMeasurementProps> = ({
           }`}></div>
           <span className={`font-semibold text-xs ${isInitialized ? 'text-green-400' : 'text-red-400'}`}>
             <Activity className="inline w-3 h-3 mr-1" />
-            OPENCV AVANZADO {isInitialized ? 'ACTIVO' : 'INICIALIZANDO...'}
+            OPENCV SIMPLE {isInitialized ? 'ACTIVO' : 'INICIALIZANDO...'}
           </span>
         </div>
         

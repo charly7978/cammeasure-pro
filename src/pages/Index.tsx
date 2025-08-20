@@ -175,6 +175,36 @@ const Index = () => {
     }
   };
 
+  const handleMeasurementUpdate = (measurement: any) => {
+    console.log('📊 NUEVA MEDICIÓN RECIBIDA:', measurement);
+    
+    // Convertir medición al formato MeasurementResult
+    const result: MeasurementResult = {
+      distance2D: Math.max(measurement.width, measurement.height),
+      measurements: {
+        width: measurement.width,
+        height: measurement.height,
+        area: measurement.area
+      },
+      unit: calibrationData?.isCalibrated ? 'mm' : 'px',
+      confidence: measurement.confidence,
+      mode: measurementMode,
+      points: [],
+      timestamp: Date.now()
+    };
+    
+    setMeasurementResult(result);
+  };
+
+  const handleMeasurementError = (error: string) => {
+    console.error('❌ ERROR DE MEDICIÓN:', error);
+    toast({
+      title: "Error de Medición",
+      description: error,
+      variant: "destructive"
+    });
+  };
+
   const handleCapture = async () => {
     setActiveTab('camera');
   };
@@ -516,6 +546,8 @@ const Index = () => {
               isActive={activeTab === 'camera'}
               calibrationData={calibrationData}
               onRealTimeObjects={handleRealTimeObjects}
+              onMeasurementUpdate={handleMeasurementUpdate}
+              onError={handleMeasurementError}
             />
             
             {/* Instrucciones */}

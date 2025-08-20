@@ -14,8 +14,8 @@ import {
   Play
 } from 'lucide-react';
 import { useCamera } from '@/hooks/useCamera';
-import { DetectedObject } from '@/lib/types';
-import { TouchObjectSelector } from './TouchObjectSelector';
+import { DetectedObject, RealTimeMeasurement as RealTimeMeasurementType } from '@/lib/types';
+import { RealTimeMeasurement } from './RealTimeMeasurement';
 
 interface CameraViewProps {
   onImageCapture?: (imageData: ImageData) => void;
@@ -25,13 +25,17 @@ interface CameraViewProps {
     isCalibrated: boolean;
   } | null;
   onRealTimeObjects: (objects: DetectedObject[]) => void;
+  onMeasurementUpdate: (measurement: RealTimeMeasurementType) => void;
+  onError: (error: string) => void;
 }
 
 export const CameraView: React.FC<CameraViewProps> = ({
   onImageCapture,
   isActive,
   calibrationData,
-  onRealTimeObjects
+  onRealTimeObjects,
+  onMeasurementUpdate,
+  onError
 }) => {
   const { 
     videoRef, 
@@ -48,33 +52,9 @@ export const CameraView: React.FC<CameraViewProps> = ({
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
   const [currentCamera, setCurrentCamera] = useState<'front' | 'back'>('back');
   const [showGrid, setShowGrid] = useState(true);
-  const [flashEnabled, setFlashEnabled] = useState(false);
-  const [focusPoint, setFocusPoint] = useState<{ x: number; y: number } | null>(null);
   const [hasPermissions, setHasPermissions] = useState(false);
-  const [detectedObjects, setDetectedObjects] = useState<DetectedObject[]>([]);
   const [isRealTimeMeasurement, setIsRealTimeMeasurement] = useState(true);
-  const [videoContainer, setVideoContainer] = useState({ width: 0, height: 0 });
-  
-  // ESTADOS SIMPLIFICADOS
-  const [frameCount, setFrameCount] = useState(0);
-  
-  // ESTADOS PARA SELECCIÓN MANUAL POR TOQUE
-  const [isManualSelectionMode, setIsManualSelectionMode] = useState(false);
-  const [selectedObject, setSelectedObject] = useState<DetectedObject | null>(null);
-  const [manualMeasurements, setManualMeasurements] = useState<any>(null);
 
-  // MANEJAR OBJETO SELECCIONADO MANUALMENTE
-  const handleManualObjectSelection = useCallback((object: DetectedObject, measurements: any) => {
-    console.log('🎯 OBJETO SELECCIONADO MANUALMENTE:', object);
-    setSelectedObject(object);
-    setManualMeasurements(measurements);
-    onRealTimeObjects([object]);
-  }, [onRealTimeObjects]);
-
-  // MANEJAR ERROR EN SELECCIÓN MANUAL  
-  const handleManualSelectionError = useCallback((error: string) => {
-    console.error('❌ Error en selección manual:', error);
-  }, []);
 
   // INICIALIZACIÓN INMEDIATA DE CÁMARA
   useEffect(() => {
@@ -94,7 +74,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
           await startCamera({ facingMode: 'environment' });
           if (!isMounted) return;
           
-          console.log('✅ CÁMARA INICIADA - SILUETAS AUTOMÁTICAS HABILITADAS');
+          console.log('✅ CÁMARA INICIADA - MEDICIÓN OPENCV ACTIVADA');
         }
       } catch (error) {
         console.error('❌ Error inicializando cámara:', error);
@@ -111,7 +91,6 @@ export const CameraView: React.FC<CameraViewProps> = ({
     };
   }, []);
 
-  // LIMPIAR FUNCIONES OBSOLETAS - AHORA USA DETECCIÓN DE SILUETAS ESPECIALIZADA
 
   // CAPTURAR IMAGEN
   const captureImage = useCallback(async () => {
@@ -155,13 +134,9 @@ export const CameraView: React.FC<CameraViewProps> = ({
     }
   }, [currentCamera, switchCamera]);
 
-  // ACTIVAR/DESACTIVAR MODO MANUAL
-  const toggleManualMode = () => {
-    setIsManualSelectionMode(!isManualSelectionMode);
-    if (isManualSelectionMode) {
-      setSelectedObject(null);
-      setManualMeasurements(null);
-    }
+  // ACTIVAR/DESACTIVAR MEDICIÓN EN TIEMPO REAL
+  const toggleRealTimeMode = () => {
+    setIsRealTimeMeasurement(!isRealTimeMeasurement);
   };
 
   // RENDERIZAR COMPONENTE
@@ -208,13 +183,14 @@ export const CameraView: React.FC<CameraViewProps> = ({
           </div>
         )}
 
-        {/* SELECTOR MANUAL DE OBJETOS */}
-        {isManualSelectionMode && (
-          <TouchObjectSelector
+        {/* SELECTOR OPENCV DE MEDICIÓN */}
+        {isRealTimeMeasurement && (
+          <RealTimeMeasurement
             videoRef={videoRef}
             overlayCanvasRef={overlayCanvasRef}
-            onObjectSelected={handleManualObjectSelection}
-            onError={handleManualSelectionError}
+            onObjectsDetected={onRealTimeObjects}
+            onMeasurementUpdate={onMeasurementUpdate}
+            onError={onError}
             isActive={isActive}
           />
         )}
@@ -249,18 +225,9 @@ export const CameraView: React.FC<CameraViewProps> = ({
         </Button>
 
         <Button
-          variant={isManualSelectionMode ? "default" : "secondary"}
-          size="icon"
-          onClick={toggleManualMode}
-          className="bg-black/50 hover:bg-black/70 text-white"
-        >
-          <Target className="h-5 w-5" />
-        </Button>
-
-        <Button
           variant={isRealTimeMeasurement ? "default" : "secondary"}
           size="icon"
-          onClick={() => setIsRealTimeMeasurement(!isRealTimeMeasurement)}
+          onClick={toggleRealTimeMode}
           className="bg-black/50 hover:bg-black/70 text-white"
         >
           {isRealTimeMeasurement ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
@@ -273,26 +240,11 @@ export const CameraView: React.FC<CameraViewProps> = ({
           {hasPermissions ? "Cámara OK" : "Sin permisos"}
         </Badge>
         
-        
-        {detectedObjects.length > 0 && (
-          <Badge variant="default" className="bg-green-500/80 text-white">
-            {detectedObjects.length} objeto{detectedObjects.length !== 1 ? 's' : ''} detectado{detectedObjects.length !== 1 ? 's' : ''}
-          </Badge>
-        )}
-
         <Badge variant="outline" className="bg-black/50 text-white border-white/30">
-          Frame: {frameCount}
+          {isRealTimeMeasurement ? 'MEDICIÓN ACTIVA' : 'PAUSADA'}
         </Badge>
       </div>
 
-      {/* INFORMACIÓN DE MEDICIÓN */}
-      {selectedObject && (
-        <div className="absolute top-4 right-4 bg-black/70 text-white p-3 rounded-lg text-sm">
-          <div className="font-semibold mb-1">Objeto Seleccionado</div>
-          <div>Área: {Math.round(selectedObject.area)} px²</div>
-          <div>Confianza: {Math.round(selectedObject.confidence * 100)}%</div>
-        </div>
-      )}
     </div>
   );
 };

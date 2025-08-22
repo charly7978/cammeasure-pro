@@ -16,7 +16,7 @@ export interface CameraStream {
 export interface CameraError {
   code: string;
   message: string;
-  details?: any;
+  details?: unknown;
 }
 
 export function useCamera() {

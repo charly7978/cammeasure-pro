@@ -230,7 +230,7 @@ export const VanguardAROverlay: React.FC<VanguardAROverlayProps> = ({
     // Líneas de medición con animación
     const drawMeasurementLines = (
       ctx: CanvasRenderingContext2D,
-      bbox: any,
+      bbox: { x: number; y: number; width: number; height: number },
       time: number
     ) => {
       const offset = 20;

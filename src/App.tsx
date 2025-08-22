@@ -21,10 +21,10 @@ import {
 
 function App() {
   const [activeTab, setActiveTab] = useState('camera');
-  const [measurements, setMeasurements] = useState<any[]>([]);
+  const [measurements, setMeasurements] = useState<Record<string, unknown>[]>([]);
 
   // Manejar nueva medición
-  const handleMeasurement = (measurement: any) => {
+  const handleMeasurement = (measurement: Record<string, unknown>) => {
     setMeasurements(prev => [measurement, ...prev]);
   };
 

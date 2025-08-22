@@ -1,6 +1,7 @@
 /**
- * DETECTOR DE CONTORNOS ULTRA AVANZADO
+ * DETECTOR DE CONTORNOS ULTRA AVANZADO - ENFOQUE CENTRAL
  * Implementa algoritmos de detección y análisis de contornos con precisión matemática
+ * OPTIMIZADO para detectar UN SOLO objeto central con máxima precisión
  */
 
 export interface ContourPoint {
@@ -50,7 +51,8 @@ export class ContourDetector {
   }
 
   /**
-   * DETECTAR CONTORNOS CON ALGORITMO SUZUKI-ABE MEJORADO
+   * DETECTAR CONTORNOS CON ALGORITMO SUZUKI-ABE MEJORADO - ENFOQUE CENTRAL
+   * Optimizado para encontrar UN SOLO objeto central con máxima precisión
    */
   findContours(
     edges: Uint8Array,
@@ -59,101 +61,191 @@ export class ContourDetector {
     retrievalMode: 'external' | 'tree' | 'ccomp' | 'list' = 'external',
     approximationMethod: 'none' | 'simple' | 'tc89_l1' | 'tc89_kcos' = 'simple'
   ): DetectedContour[] {
-    console.log(`🔍 Iniciando detección de contornos ${width}x${height}, modo: ${retrievalMode}`);
+    console.log(`🎯 INICIANDO DETECCIÓN CENTRAL DE CONTORNOS ${width}x${height}`);
     
     const contours: DetectedContour[] = [];
     const visited = new Array(width * height).fill(false);
     
-    // Algoritmo Moore Boundary Tracing mejorado
+    // ALGORITMO MEJORADO CON ENFOQUE CENTRAL
     const centerX = Math.floor(width / 2);
     const centerY = Math.floor(height / 2);
     
-    // Lista de puntos candidatos ordenados por proximidad al centro
-    const candidates = this.findContourStartPoints(edges, width, height, centerX, centerY);
+    // BÚSQUEDA INTELIGENTE DE CANDIDATOS CENTRALES
+    const candidates = this.findCentralContourCandidates(edges, width, height, centerX, centerY);
     
-    console.log(`📍 Encontrados ${candidates.length} puntos candidatos`);
+    console.log(`🔍 Encontrados ${candidates.length} candidatos centrales`);
     
     for (const candidate of candidates) {
-      const { x, y, distance } = candidate;
+      const { x, y, distance, edgeStrength } = candidate;
       const idx = y * width + x;
       
       if (!visited[idx] && edges[idx] === 255) {
-        const contour = this.traceContour(
+        const contour = this.traceContourAdvanced(
           edges, visited, x, y, width, height, approximationMethod
         );
         
-        if (contour.length >= 5) { // Contornos muy pequeños permitidos
+        if (contour.length >= 8) { // Contornos mínimos más pequeños
           const properties = this.calculateContourProperties(contour, width, height);
           
-          // Filtrar contornos por calidad
-          if (this.isValidContour(properties, width, height)) {
+          // VALIDACIÓN MEJORADA PARA OBJETOS CENTRALES
+          if (this.isValidCentralContour(properties, width, height, distance)) {
+            const confidence = this.calculateCentralContourConfidence(
+              properties, distance, edgeStrength, width, height
+            );
+            
             const detectedContour: DetectedContour = {
               points: contour,
               properties,
               hierarchy: { parent: -1, child: -1, next: -1, previous: -1 },
               isOuter: true,
-              confidence: this.calculateContourConfidence(properties, distance, width, height)
+              confidence
             };
             
             contours.push(detectedContour);
             
-            console.log(`✅ Contorno válido: área=${properties.area.toFixed(0)}, perímetro=${properties.perimeter.toFixed(1)}, confianza=${detectedContour.confidence.toFixed(2)}`);
+            console.log(`✅ Contorno central válido: área=${properties.area.toFixed(0)}, perímetro=${properties.perimeter.toFixed(1)}, confianza=${confidence.toFixed(3)}, distancia=${distance.toFixed(1)}`);
           }
         }
         
-        // Límite de contornos para evitar sobrecarga
-        if (contours.length >= 8) break;
+        // Límite más bajo para enfocarse en los mejores
+        if (contours.length >= 5) break;
       }
     }
     
-    // Ordenar por confianza y calidad
+    // ORDENAR POR CALIDAD CENTRAL
     contours.sort((a, b) => {
-      const scoreA = a.confidence * a.properties.area;
-      const scoreB = b.confidence * b.properties.area;
+      const scoreA = this.calculateCentralScore(a, centerX, centerY, width, height);
+      const scoreB = this.calculateCentralScore(b, centerX, centerY, width, height);
       return scoreB - scoreA;
     });
     
-    console.log(`✅ Detectados ${contours.length} contornos válidos`);
-    return contours;
+    // Retornar solo los mejores contornos centrales
+    const bestContours = contours.slice(0, 3);
+    
+    console.log(`🏆 DETECTADOS ${bestContours.length} contornos centrales de calidad`);
+    return bestContours;
   }
 
   /**
-   * ENCONTRAR PUNTOS DE INICIO DE CONTORNOS PRIORIZANDO EL CENTRO
+   * ENCONTRAR CANDIDATOS CENTRALES CON ALGORITMO INTELIGENTE
    */
-  private findContourStartPoints(
+  private findCentralContourCandidates(
     edges: Uint8Array,
     width: number,
     height: number,
     centerX: number,
     centerY: number
-  ): Array<{ x: number; y: number; distance: number }> {
-    const candidates: Array<{ x: number; y: number; distance: number }> = [];
+  ): Array<{ x: number; y: number; distance: number; edgeStrength: number }> {
+    const candidates: Array<{ x: number; y: number; distance: number; edgeStrength: number }> = [];
     
-    // Buscar en toda la imagen pero priorizar el centro
-    for (let y = 1; y < height - 1; y++) {
-      for (let x = 1; x < width - 1; x++) {
+    // BÚSQUEDA EN ESPIRAL DESDE EL CENTRO
+    const maxRadius = Math.min(width, height) * 0.4;
+    const radiusStep = 5;
+    
+    for (let radius = 0; radius <= maxRadius; radius += radiusStep) {
+      const points = this.generateSpiralPoints(centerX, centerY, radius, width, height);
+      
+      for (const point of points) {
+        const { x, y } = point;
         const idx = y * width + x;
         
         if (edges[idx] === 255) {
-          // Verificar si es un punto de inicio de contorno
-          if (this.isContourStartPoint(edges, x, y, width, height)) {
+          // Verificar si es un punto de inicio de contorno válido
+          if (this.isValidContourStartPoint(edges, x, y, width, height)) {
             const distance = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2);
-            candidates.push({ x, y, distance });
+            const edgeStrength = this.calculateLocalEdgeStrength(edges, x, y, width, height);
+            
+            candidates.push({ x, y, distance, edgeStrength });
           }
+        }
+      }
+      
+      // Si encontramos suficientes candidatos cerca del centro, no buscar más lejos
+      if (candidates.length >= 20 && radius < maxRadius * 0.3) {
+        break;
+      }
+    }
+    
+    // ORDENAR POR PROXIMIDAD AL CENTRO Y FUERZA DE BORDE
+    candidates.sort((a, b) => {
+      const scoreA = (1 / (1 + a.distance)) * a.edgeStrength;
+      const scoreB = (1 / (1 + b.distance)) * b.edgeStrength;
+      return scoreB - scoreA;
+    });
+    
+    return candidates.slice(0, 15); // Tomar solo los mejores candidatos
+  }
+
+  /**
+   * GENERAR PUNTOS EN ESPIRAL DESDE EL CENTRO
+   */
+  private generateSpiralPoints(
+    centerX: number, 
+    centerY: number, 
+    radius: number, 
+    width: number, 
+    height: number
+  ): Array<{ x: number; y: number }> {
+    const points: Array<{ x: number; y: number }> = [];
+    
+    if (radius === 0) {
+      // Punto central
+      if (centerX >= 0 && centerX < width && centerY >= 0 && centerY < height) {
+        points.push({ x: centerX, y: centerY });
+      }
+      return points;
+    }
+    
+    // Círculo con puntos distribuidos uniformemente
+    const numPoints = Math.max(8, Math.floor(2 * Math.PI * radius / 3));
+    
+    for (let i = 0; i < numPoints; i++) {
+      const angle = (2 * Math.PI * i) / numPoints;
+      const x = Math.round(centerX + radius * Math.cos(angle));
+      const y = Math.round(centerY + radius * Math.sin(angle));
+      
+      if (x >= 1 && x < width - 1 && y >= 1 && y < height - 1) {
+        points.push({ x, y });
+      }
+    }
+    
+    return points;
+  }
+
+  /**
+   * CALCULAR FUERZA LOCAL DE BORDE
+   */
+  private calculateLocalEdgeStrength(
+    edges: Uint8Array,
+    x: number,
+    y: number,
+    width: number,
+    height: number
+  ): number {
+    let strength = 0;
+    let count = 0;
+    
+    // Kernel 5x5 para evaluar fuerza de borde local
+    for (let dy = -2; dy <= 2; dy++) {
+      for (let dx = -2; dx <= 2; dx++) {
+        const nx = x + dx;
+        const ny = y + dy;
+        
+        if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+          const idx = ny * width + nx;
+          strength += edges[idx] / 255;
+          count++;
         }
       }
     }
     
-    // Ordenar por proximidad al centro
-    candidates.sort((a, b) => a.distance - b.distance);
-    
-    return candidates;
+    return count > 0 ? strength / count : 0;
   }
 
   /**
-   * VERIFICAR SI ES PUNTO DE INICIO DE CONTORNO
+   * VERIFICAR SI ES PUNTO DE INICIO DE CONTORNO VÁLIDO MEJORADO
    */
-  private isContourStartPoint(
+  private isValidContourStartPoint(
     edges: Uint8Array,
     x: number,
     y: number,
@@ -163,20 +255,24 @@ export class ContourDetector {
     const idx = y * width + x;
     if (edges[idx] !== 255) return false;
     
-    // Verificar si tiene al menos un vecino no-borde (borde externo)
+    // Verificar conectividad de borde con kernel 3x3
     const neighbors = [
       edges[(y-1) * width + (x-1)], edges[(y-1) * width + x], edges[(y-1) * width + (x+1)],
       edges[y * width + (x-1)],                                 edges[y * width + (x+1)],
       edges[(y+1) * width + (x-1)], edges[(y+1) * width + x], edges[(y+1) * width + (x+1)]
     ];
     
-    return neighbors.some(n => n !== 255);
+    const edgeNeighbors = neighbors.filter(n => n === 255).length;
+    const backgroundNeighbors = neighbors.filter(n => n === 0).length;
+    
+    // Es un buen punto de inicio si tiene suficientes vecinos de borde y algunos de fondo
+    return edgeNeighbors >= 2 && backgroundNeighbors >= 2;
   }
 
   /**
-   * RASTREAR CONTORNO CON ALGORITMO MOORE
+   * RASTREAR CONTORNO CON ALGORITMO MOORE MEJORADO
    */
-  private traceContour(
+  private traceContourAdvanced(
     edges: Uint8Array,
     visited: boolean[],
     startX: number,
@@ -187,7 +283,7 @@ export class ContourDetector {
   ): ContourPoint[] {
     const contour: ContourPoint[] = [];
     
-    // Direcciones Moore (8-conectadas) en sentido horario
+    // Direcciones Moore (8-conectadas) optimizadas
     const directions = [
       { dx: 1, dy: 0 },   // E
       { dx: 1, dy: 1 },   // SE
@@ -202,13 +298,18 @@ export class ContourDetector {
     let currentX = startX;
     let currentY = startY;
     let directionIndex = 0;
+    let stepCount = 0;
+    const maxSteps = Math.max(width, height) * 4; // Límite de seguridad
     
     do {
       contour.push({ x: currentX, y: currentY });
       visited[currentY * width + currentX] = true;
       
-      // Buscar siguiente punto del contorno
+      // Buscar siguiente punto del contorno con mejor heurística
       let found = false;
+      let bestDirection = -1;
+      let bestScore = -1;
+      
       for (let i = 0; i < directions.length; i++) {
         const searchIndex = (directionIndex + i) % directions.length;
         const { dx, dy } = directions[searchIndex];
@@ -219,35 +320,50 @@ export class ContourDetector {
           const nextIdx = nextY * width + nextX;
           
           if (edges[nextIdx] === 255) {
-            currentX = nextX;
-            currentY = nextY;
-            directionIndex = (searchIndex + 6) % directions.length; // Girar hacia la izquierda
-            found = true;
-            break;
+            // Calcular score basado en continuidad y fuerza de borde
+            const continuityScore = 8 - i; // Preferir direcciones consecutivas
+            const edgeScore = this.calculateLocalEdgeStrength(edges, nextX, nextY, width, height);
+            const totalScore = continuityScore + edgeScore * 5;
+            
+            if (totalScore > bestScore) {
+              bestScore = totalScore;
+              bestDirection = searchIndex;
+              found = true;
+            }
           }
         }
       }
       
-      if (!found) break;
+      if (found) {
+        const { dx, dy } = directions[bestDirection];
+        currentX += dx;
+        currentY += dy;
+        directionIndex = (bestDirection + 6) % directions.length; // Girar hacia la izquierda
+      }
       
-    } while ((currentX !== startX || currentY !== startY) && contour.length < 2000);
+      stepCount++;
+      
+    } while (found && 
+             (currentX !== startX || currentY !== startY || stepCount < 8) && 
+             stepCount < maxSteps && 
+             contour.length < 1000);
     
     // Aplicar aproximación si se solicita
-    if (approximation === 'simple' && contour.length > 10) {
-      return this.approximateContourDP(contour, 1.0);
+    if (approximation === 'simple' && contour.length > 15) {
+      return this.approximateContourDPAdvanced(contour, 1.5);
     }
     
     return contour;
   }
 
   /**
-   * APROXIMACIÓN DE CONTORNO DOUGLAS-PEUCKER
+   * APROXIMACIÓN DOUGLAS-PEUCKER AVANZADA
    */
-  private approximateContourDP(
+  private approximateContourDPAdvanced(
     contour: ContourPoint[],
     epsilon: number
   ): ContourPoint[] {
-    if (contour.length <= 2) return contour;
+    if (contour.length <= 3) return contour;
     
     // Encontrar el punto más lejano de la línea
     let maxDistance = 0;
@@ -269,116 +385,106 @@ export class ContourDetector {
     }
     
     // Recursión en ambos segmentos
-    const left = this.approximateContourDP(contour.slice(0, maxIndex + 1), epsilon);
-    const right = this.approximateContourDP(contour.slice(maxIndex), epsilon);
+    const left = this.approximateContourDPAdvanced(contour.slice(0, maxIndex + 1), epsilon);
+    const right = this.approximateContourDPAdvanced(contour.slice(maxIndex), epsilon);
     
     // Combinar resultados eliminando punto duplicado
     return [...left.slice(0, -1), ...right];
   }
 
   /**
-   * DISTANCIA DE PUNTO A LÍNEA
+   * VALIDAR CONTORNO CENTRAL MEJORADO
    */
-  private pointToLineDistance(
-    point: ContourPoint,
-    lineStart: ContourPoint,
-    lineEnd: ContourPoint
-  ): number {
-    const A = lineEnd.x - lineStart.x;
-    const B = lineEnd.y - lineStart.y;
-    const C = point.x - lineStart.x;
-    const D = point.y - lineStart.y;
+  private isValidCentralContour(
+    properties: ContourProperties,
+    imgWidth: number,
+    imgHeight: number,
+    distanceFromCenter: number
+  ): boolean {
+    const totalArea = imgWidth * imgHeight;
+    const minArea = totalArea * 0.0008; // Área mínima muy pequeña (0.08%)
+    const maxArea = totalArea * 0.7;    // Área máxima
     
-    const dot = A * C + B * D;
-    const lenSq = A * A + B * B;
+    // Permitir objetos más cercanos al centro con áreas más pequeñas
+    const maxDistance = Math.sqrt(imgWidth * imgWidth + imgHeight * imgHeight) / 2;
+    const proximityFactor = 1 - (distanceFromCenter / maxDistance);
+    const adjustedMinArea = minArea * (0.5 + proximityFactor * 0.5);
     
-    if (lenSq === 0) {
-      return Math.sqrt(C * C + D * D);
-    }
-    
-    const param = dot / lenSq;
-    
-    let xx, yy;
-    if (param < 0) {
-      xx = lineStart.x;
-      yy = lineStart.y;
-    } else if (param > 1) {
-      xx = lineEnd.x;
-      yy = lineEnd.y;
-    } else {
-      xx = lineStart.x + param * A;
-      yy = lineStart.y + param * B;
-    }
-    
-    const dx = point.x - xx;
-    const dy = point.y - yy;
-    
-    return Math.sqrt(dx * dx + dy * dy);
+    return (
+      properties.area >= adjustedMinArea &&
+      properties.area <= maxArea &&
+      properties.perimeter > 0 &&
+      properties.boundingBox.width >= 3 &&
+      properties.boundingBox.height >= 3 &&
+      properties.circularity <= 1.3 && // Más permisivo para formas irregulares
+      properties.solidity <= 1.2 &&    // Más permisivo
+      properties.aspectRatio >= 0.1 && properties.aspectRatio <= 10 // Rango de aspecto amplio
+    );
   }
 
   /**
-   * CALCULAR PROPIEDADES GEOMÉTRICAS AVANZADAS
+   * CALCULAR CONFIANZA DE CONTORNO CENTRAL MEJORADA
    */
-  private calculateContourProperties(
-    contour: ContourPoint[],
+  private calculateCentralContourConfidence(
+    properties: ContourProperties,
+    distanceFromCenter: number,
+    edgeStrength: number,
     imgWidth: number,
     imgHeight: number
-  ): ContourProperties {
-    // Área usando fórmula Shoelace
-    const area = this.calculateArea(contour);
+  ): number {
+    const maxDistance = Math.sqrt(imgWidth * imgWidth + imgHeight * imgHeight) / 2;
     
-    // Perímetro
-    const perimeter = this.calculatePerimeter(contour);
+    // Score de proximidad al centro (peso alto)
+    const proximityScore = Math.max(0, 1 - (distanceFromCenter / maxDistance));
     
-    // Centroide
-    const centroid = this.calculateCentroid(contour);
+    // Score de forma (circularity, solidity, convexity)
+    const shapeScore = (
+      Math.min(1, properties.circularity) * 0.4 +
+      Math.min(1, properties.solidity) * 0.3 +
+      Math.min(1, properties.convexity) * 0.3
+    );
     
-    // Bounding box
-    const boundingBox = this.calculateBoundingBox(contour);
+    // Score de tamaño relativo
+    const relativeArea = properties.area / (imgWidth * imgHeight);
+    const sizeScore = Math.min(1, relativeArea * 15); // Objetos de 6.7% o más del área total
     
-    // Aspectos geométricos
-    const aspectRatio = boundingBox.width / boundingBox.height;
-    const extent = area / (boundingBox.width * boundingBox.height);
-    const circularity = (4 * Math.PI * area) / (perimeter * perimeter);
+    // Score de fuerza de borde
+    const edgeScore = Math.min(1, edgeStrength);
     
-    // Convex hull
-    const convexHull = this.calculateConvexHull(contour);
-    const convexArea = this.calculateArea(convexHull);
-    const solidity = area / convexArea;
-    const convexity = this.calculatePerimeter(convexHull) / perimeter;
+    // SCORE COMBINADO CON ÉNFASIS EN PROXIMIDAD CENTRAL
+    const centralConfidence = (
+      proximityScore * 0.45 +    // Peso alto para proximidad
+      shapeScore * 0.25 +        // Forma
+      sizeScore * 0.20 +         // Tamaño
+      edgeScore * 0.10           // Fuerza de borde
+    );
     
-    // Compacidad
-    const compactness = (perimeter * perimeter) / area;
+    return Math.max(0.1, Math.min(0.98, centralConfidence));
+  }
+
+  /**
+   * CALCULAR SCORE CENTRAL PARA ORDENAMIENTO
+   */
+  private calculateCentralScore(
+    contour: DetectedContour,
+    centerX: number,
+    centerY: number,
+    imgWidth: number,
+    imgHeight: number
+  ): number {
+    const centroidX = contour.properties.centroid.x;
+    const centroidY = contour.properties.centroid.y;
+    const distanceToCenter = Math.sqrt(
+      (centroidX - centerX) ** 2 + (centroidY - centerY) ** 2
+    );
     
-    // Rectangularidad
-    const rectangularity = area / (boundingBox.width * boundingBox.height);
+    const maxDistance = Math.sqrt(imgWidth * imgWidth + imgHeight * imgHeight) / 2;
+    const proximityScore = 1 - (distanceToCenter / maxDistance);
     
-    // Círculo envolvente mínimo
-    const minEnclosingCircle = this.calculateMinEnclosingCircle(contour);
+    // Score combinado: confianza * proximidad * área relativa
+    const areaScore = Math.min(1, contour.properties.area / (imgWidth * imgHeight * 0.1));
     
-    // Momentos Hu
-    const huMoments = this.calculateHuMoments(contour, centroid);
-    
-    // Orientación principal
-    const orientation = this.calculateOrientation(contour, centroid, area);
-    
-    return {
-      area,
-      perimeter,
-      circularity: Math.max(0, Math.min(1, circularity)),
-      solidity: Math.max(0, Math.min(1, solidity)),
-      aspectRatio,
-      extent: Math.max(0, Math.min(1, extent)),
-      compactness,
-      convexity: Math.max(0, Math.min(1, convexity)),
-      rectangularity: Math.max(0, Math.min(1, rectangularity)),
-      huMoments,
-      centroid,
-      boundingBox,
-      minEnclosingCircle,
-      convexHull,
-      orientation
-    };
+    return contour.confidence * proximityScore * 0.7 + areaScore * 0.3;
   }
 
   /**
@@ -524,7 +630,7 @@ export class ContourDetector {
   }
 
   /**
-   * CALCULAR CÍRCULO ENVOLVENTE MÍNIMO (ALGORITMO WELZL)
+   * CALCULAR CÍRCULO ENVOLVENTE MÍNIMO (ALGORITMO WELZL SIMPLIFICADO)
    */
   private calculateMinEnclosingCircle(contour: ContourPoint[]): { center: { x: number; y: number }; radius: number } {
     if (contour.length === 0) return { center: { x: 0, y: 0 }, radius: 0 };
@@ -547,7 +653,7 @@ export class ContourDetector {
   }
 
   /**
-   * CALCULAR MOMENTOS HU
+   * CALCULAR MOMENTOS HU SIMPLIFICADOS
    */
   private calculateHuMoments(contour: ContourPoint[], centroid: { x: number; y: number }): number[] {
     // Implementación simplificada de momentos centrales
@@ -630,44 +736,107 @@ export class ContourDetector {
   }
 
   /**
-   * VALIDAR CONTORNO
+   * CALCULAR PROPIEDADES GEOMÉTRICAS AVANZADAS
    */
-  private isValidContour(
-    properties: ContourProperties,
+  private calculateContourProperties(
+    contour: ContourPoint[],
     imgWidth: number,
     imgHeight: number
-  ): boolean {
-    const totalArea = imgWidth * imgHeight;
-    const minArea = totalArea * 0.00005; // Área mínima muy pequeña (0.005%)
-    const maxArea = totalArea * 0.95;    // Área máxima grande
+  ): ContourProperties {
+    // Área usando fórmula Shoelace
+    const area = this.calculateArea(contour);
     
-    return (
-      properties.area >= minArea &&
-      properties.area <= maxArea &&
-      properties.perimeter > 0 &&
-      properties.boundingBox.width > 1 &&
-      properties.boundingBox.height > 1 &&
-      properties.circularity <= 1.2 && // Permitir valores ligeramente > 1 por ruido
-      properties.solidity <= 1.1       // Permitir valores ligeramente > 1 por ruido
-    );
+    // Perímetro
+    const perimeter = this.calculatePerimeter(contour);
+    
+    // Centroide
+    const centroid = this.calculateCentroid(contour);
+    
+    // Bounding box
+    const boundingBox = this.calculateBoundingBox(contour);
+    
+    // Aspectos geométricos
+    const aspectRatio = boundingBox.width / boundingBox.height;
+    const extent = area / (boundingBox.width * boundingBox.height);
+    const circularity = (4 * Math.PI * area) / (perimeter * perimeter);
+    
+    // Convex hull
+    const convexHull = this.calculateConvexHull(contour);
+    const convexArea = this.calculateArea(convexHull);
+    const solidity = convexArea > 0 ? area / convexArea : 0;
+    const convexity = perimeter > 0 ? this.calculatePerimeter(convexHull) / perimeter : 0;
+    
+    // Compacidad
+    const compactness = area > 0 ? (perimeter * perimeter) / area : 0;
+    
+    // Rectangularidad
+    const rectangularity = (boundingBox.width * boundingBox.height) > 0 ? area / (boundingBox.width * boundingBox.height) : 0;
+    
+    // Círculo envolvente mínimo
+    const minEnclosingCircle = this.calculateMinEnclosingCircle(contour);
+    
+    // Momentos Hu
+    const huMoments = this.calculateHuMoments(contour, centroid);
+    
+    // Orientación principal
+    const orientation = this.calculateOrientation(contour, centroid, area);
+    
+    return {
+      area,
+      perimeter,
+      circularity: Math.max(0, Math.min(2, circularity)), // Permitir valores hasta 2 para formas irregulares
+      solidity: Math.max(0, Math.min(1.1, solidity)),
+      aspectRatio,
+      extent: Math.max(0, Math.min(1, extent)),
+      compactness,
+      convexity: Math.max(0, Math.min(1.1, convexity)),
+      rectangularity: Math.max(0, Math.min(1, rectangularity)),
+      huMoments,
+      centroid,
+      boundingBox,
+      minEnclosingCircle,
+      convexHull,
+      orientation
+    };
   }
 
   /**
-   * CALCULAR CONFIANZA DEL CONTORNO
+   * DISTANCIA DE PUNTO A LÍNEA
    */
-  private calculateContourConfidence(
-    properties: ContourProperties,
-    distanceFromCenter: number,
-    imgWidth: number,
-    imgHeight: number
+  private pointToLineDistance(
+    point: ContourPoint,
+    lineStart: ContourPoint,
+    lineEnd: ContourPoint
   ): number {
-    const maxDistance = Math.sqrt(imgWidth * imgWidth + imgHeight * imgHeight) / 2;
-    const proximityScore = 1 - (distanceFromCenter / maxDistance);
+    const A = lineEnd.x - lineStart.x;
+    const B = lineEnd.y - lineStart.y;
+    const C = point.x - lineStart.x;
+    const D = point.y - lineStart.y;
     
-    const shapeScore = (properties.circularity + properties.solidity + properties.convexity) / 3;
+    const dot = A * C + B * D;
+    const lenSq = A * A + B * B;
     
-    const sizeScore = Math.min(1, properties.area / (imgWidth * imgHeight * 0.1));
+    if (lenSq === 0) {
+      return Math.sqrt(C * C + D * D);
+    }
     
-    return Math.max(0, Math.min(1, (proximityScore * 0.4 + shapeScore * 0.4 + sizeScore * 0.2)));
+    const param = dot / lenSq;
+    
+    let xx, yy;
+    if (param < 0) {
+      xx = lineStart.x;
+      yy = lineStart.y;
+    } else if (param > 1) {
+      xx = lineEnd.x;
+      yy = lineEnd.y;
+    } else {
+      xx = lineStart.x + param * A;
+      yy = lineStart.y + param * B;
+    }
+    
+    const dx = point.x - xx;
+    const dy = point.y - yy;
+    
+    return Math.sqrt(dx * dx + dy * dy);
   }
 }

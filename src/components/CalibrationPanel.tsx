@@ -118,34 +118,52 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
         // Ignorar errores de fullscreen
       }
 
+      // Bloquear scroll y overscroll para evitar temblor visual
+      document.body.style.overflow = 'hidden';
+      document.documentElement.style.overscrollBehavior = 'none';
+      (document.body.style as any).touchAction = 'none';
+
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: { 
           facingMode: 'environment',
           width: { ideal: 1280 },
           height: { ideal: 720 }
-        } 
+        },
+        audio: false
       });
       setCameraStream(stream);
       if (videoRef.current) {
         // Asegurar atributos para autoplay en móviles
         videoRef.current.setAttribute('playsinline', '');
+        videoRef.current.setAttribute('webkit-playsinline', '');
         videoRef.current.muted = true;
         videoRef.current.srcObject = stream;
+
+        const syncCanvasToVideo = () => {
+          const v = videoRef.current!;
+          const c = canvasRef.current;
+          if (c && v.videoWidth && v.videoHeight) {
+            c.width = v.videoWidth;
+            c.height = v.videoHeight;
+          }
+        };
 
         const tryPlay = async () => {
           try {
             await videoRef.current?.play();
           } catch (err) {
-            // Retentar en el siguiente frame para evitar pantallas negras
             requestAnimationFrame(() => {
               videoRef.current?.play().catch(() => {});
             });
           }
         };
 
-        // Reproducir al cargar metadatos y también intentar inmediatamente
         videoRef.current.onloadedmetadata = () => {
+          syncCanvasToVideo();
           tryPlay();
+        };
+        videoRef.current.oncanplay = () => {
+          syncCanvasToVideo();
         };
         await tryPlay();
       }
@@ -165,12 +183,15 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
     }
     setIsCalibrating(false);
     setCalibrationPoints([]);
-    // Salir de fullscreen si está activo
+    // Salir de fullscreen si está activo y restaurar scroll
     try {
       if (document.fullscreenElement) {
         document.exitFullscreen().catch(() => {});
       }
     } catch {}
+    document.body.style.overflow = '';
+    document.documentElement.style.overscrollBehavior = '';
+    (document.body.style as any).touchAction = '';
   };
 
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -186,7 +207,6 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
     const newPoints = [...calibrationPoints, { x, y }];
     setCalibrationPoints(newPoints);
 
-    // Dibujar punto en el canvas
     const ctx = canvas.getContext('2d');
     if (ctx) {
       ctx.fillStyle = '#84cc16';
@@ -198,7 +218,6 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
       ctx.font = '12px Arial';
       ctx.fillText(`${newPoints.length}`, x + 8, y - 8);
 
-      // Si tenemos 2 puntos, dibujar línea
       if (newPoints.length === 2) {
         ctx.strokeStyle = '#84cc16';
         ctx.lineWidth = 2;
@@ -207,7 +226,6 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
         ctx.lineTo(newPoints[1].x, newPoints[1].y);
         ctx.stroke();
 
-        // Calcular distancia en píxeles
         const pixelDistance = Math.sqrt(
           Math.pow(newPoints[1].x - newPoints[0].x, 2) + 
           Math.pow(newPoints[1].y - newPoints[0].y, 2)
@@ -215,6 +233,20 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
         setReferencePixelLength(pixelDistance);
       }
     }
+  };
+
+  const handleCanvasPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    const canvas = canvasRef.current;
+    if (!canvas || !isCalibrating || calibrationPoints.length >= 2) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    handleCanvasClick({
+      ...e,
+      clientX: x + rect.left,
+      clientY: y + rect.top
+    } as unknown as React.MouseEvent<HTMLCanvasElement>);
   };
 
   const completeCalibration = () => {
@@ -427,7 +459,7 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
 
         {/* Vista de calibración con cámara */}
         {isCalibrating && (
-          <div className="fixed inset-0 z-50">
+          <div className="fixed inset-0 z-50" style={{ overscrollBehavior: 'none' }}>
             <ImmersiveMode>
               <div className="relative w-full h-full bg-black">
                 <video
@@ -435,23 +467,24 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
                   autoPlay
                   playsInline
                   muted
-                  className="absolute inset-0 w-full h-full object-cover"
+                  className="absolute inset-0 w-full h-full object-cover z-10"
                 />
                 <canvas
                   ref={canvasRef}
-                  className="absolute inset-0 w-full h-full cursor-crosshair"
+                  className="absolute inset-0 w-full h-full z-20"
                   onClick={handleCanvasClick}
+                  onPointerDown={handleCanvasPointerDown}
                 />
                 
                 {/* Instrucciones superpuestas */}
-                <div className="absolute top-4 left-4 bg-black/70 text-white p-2 rounded text-sm">
+                <div className="absolute top-4 left-4 bg-black/70 text-white p-2 rounded text-sm z-30 pointer-events-none">
                   {calibrationPoints.length === 0 && "1. Toca un extremo del objeto"}
                   {calibrationPoints.length === 1 && "2. Toca el otro extremo"}
                   {calibrationPoints.length === 2 && `Distancia: ${referencePixelLength.toFixed(1)} px`}
                 </div>
 
                 {/* Acciones */}
-                <div className="absolute bottom-4 left-4 right-4 flex gap-2">
+                <div className="absolute bottom-4 left-4 right-4 flex gap-2 z-30">
                   {referencePixelLength > 0 && (
                     <Button
                       onClick={completeCalibration}

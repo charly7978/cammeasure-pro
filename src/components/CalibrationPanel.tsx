@@ -118,9 +118,15 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
       setCameraStream(stream);
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        // Asegurar reproducción inmediata en algunos navegadores
+        // Reproducir cuando los metadatos estén listos (evita pantalla negra)
+        videoRef.current.onloadedmetadata = () => {
+          videoRef.current?.play().catch(() => {});
+        };
+        // Intentar también reproducir inmediatamente
         try { await videoRef.current.play(); } catch {}
       }
+      // Desactivar scroll para evitar saltos visuales durante la calibración
+      document.body.style.overflow = 'hidden';
       setIsCalibrating(true);
       setCalibrationPoints([]);
       setReferencePixelLength(0);
@@ -137,6 +143,8 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
     }
     setIsCalibrating(false);
     setCalibrationPoints([]);
+    // Restaurar scroll
+    document.body.style.overflow = '';
   };
 
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {

@@ -16,6 +16,14 @@
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:site" content="@lovable_dev" />
     <meta name="twitter:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <script>
+      // Debug para errores
+      window.addEventListener('error', (e) => {
+        console.error('Error global:', e.error);
+        document.body.innerHTML = '<div style="padding: 20px; color: red; font-family: monospace;"><h2>Error:</h2><pre>' + e.error.stack + '</pre></div>';
+      });
+    </script>
   </head>
 
   <body>

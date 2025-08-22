@@ -16,6 +16,7 @@ import {
 import { useCamera } from '@/hooks/useCamera';
 import { DetectedObject } from '@/lib/types';
 import { unifiedOpenCV } from '@/lib/unifiedOpenCVSystem';
+import { EnhancedCameraOverlay } from './EnhancedCameraOverlay';
 
 interface CameraViewProps {
   onImageCapture?: (imageData: ImageData) => void;
@@ -54,11 +55,13 @@ export const CameraView: React.FC<CameraViewProps> = ({
   const [detectedObjects, setDetectedObjects] = useState<DetectedObject[]>([]);
   const [isRealTimeMeasurement, setIsRealTimeMeasurement] = useState(true);
   const [videoContainer, setVideoContainer] = useState({ width: 0, height: 0 });
+  const [showDebugOverlay, setShowDebugOverlay] = useState(false);
   
   // ESTADOS PARA MEDICIÓN AUTOMÁTICA
   const [isProcessing, setIsProcessing] = useState(false);
   const [frameCount, setFrameCount] = useState(0);
   const processingInterval = useRef<NodeJS.Timeout | null>(null);
+  const lastProcessTime = useRef<number>(0);
 
   // INICIALIZACIÓN INMEDIATA DE CÁMARA
   useEffect(() => {
@@ -85,9 +88,14 @@ export const CameraView: React.FC<CameraViewProps> = ({
           if (isActive && isRealTimeMeasurement) {
             intervalId = setInterval(async () => {
               if (isMounted && videoRef.current && videoRef.current.readyState === 4) {
-                await processVideoFrame();
+                const now = Date.now();
+                // Limitar a 10 FPS para mejor rendimiento
+                if (now - lastProcessTime.current >= 100) {
+                  lastProcessTime.current = now;
+                  await processVideoFrame();
+                }
               }
-            }, 3000); // Procesar cada 3 segundos para mejor estabilidad
+            }, 100); // Verificar cada 100ms
           }
         }
       } catch (error) {
@@ -108,13 +116,42 @@ export const CameraView: React.FC<CameraViewProps> = ({
     };
   }, [isActive, isRealTimeMeasurement]);
 
+  // Actualizar dimensiones del video cuando cambie
+  useEffect(() => {
+    const updateVideoDimensions = () => {
+      if (videoRef.current && videoRef.current.videoWidth > 0) {
+        setVideoContainer({
+          width: videoRef.current.videoWidth,
+          height: videoRef.current.videoHeight
+        });
+      }
+    };
+
+    const video = videoRef.current;
+    if (video) {
+      video.addEventListener('loadedmetadata', updateVideoDimensions);
+      video.addEventListener('resize', updateVideoDimensions);
+      
+      // Verificar dimensiones iniciales
+      if (video.videoWidth > 0) {
+        updateVideoDimensions();
+      }
+    }
+
+    return () => {
+      if (video) {
+        video.removeEventListener('loadedmetadata', updateVideoDimensions);
+        video.removeEventListener('resize', updateVideoDimensions);
+      }
+    };
+  }, [videoRef.current]);
+
   // PROCESAR FRAME DE VIDEO CON OPENCV AVANZADO Y DEBUG
   const processVideoFrame = async () => {
-    if (!videoRef.current || !canvasRef.current) return;
+    if (!videoRef.current || !canvasRef.current || isProcessing) return;
     
     try {
       setIsProcessing(true);
-      console.log('🎯 PROCESANDO FRAME CON OPENCV...');
       
       const video = videoRef.current;
       const canvas = canvasRef.current;
@@ -125,7 +162,6 @@ export const CameraView: React.FC<CameraViewProps> = ({
       canvas.height = video.videoHeight;
       
       if (canvas.width === 0 || canvas.height === 0) {
-        console.log('❌ Canvas sin dimensiones válidas');
         return;
       }
       
@@ -133,35 +169,22 @@ export const CameraView: React.FC<CameraViewProps> = ({
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
       
-      console.log(`📏 Procesando imagen: ${imageData.width}x${imageData.height}, calibrado: ${calibrationData?.isCalibrated ? 'SÍ' : 'NO'}`);
-      
-      // DETECCIÓN AVANZADA CON OPENCV UNIFICADO Y CALIBRACIÓN APLICADA
+      // DETECCIÓN HÍPER AVANZADA CON OPENCV
       const result = await unifiedOpenCV.detectObjectSilhouettes(imageData, calibrationData);
       
       if (result.objects.length > 0) {
-        const obj = result.objects[0];
-        console.log(`✅ OpenCV detectó ${result.objects.length} objetos en ${result.processingTime.toFixed(1)}ms`);
-        console.log(`📊 Objeto principal: ${obj.dimensions.width.toFixed(1)}x${obj.dimensions.height.toFixed(1)} ${obj.dimensions.unit}, área: ${obj.dimensions.area.toFixed(0)} ${obj.dimensions.unit}²`);
+        console.log(`✅ Detectados ${result.objects.length} objetos en ${result.processingTime.toFixed(1)}ms`);
         
         setDetectedObjects(result.objects);
         onRealTimeObjects(result.objects);
-        
-        // Dibujar overlay con siluetas reales
-        if (overlayCanvasRef.current) {
-          unifiedOpenCV.drawDetectionOverlay(overlayCanvasRef.current, result);
-        }
       } else {
-        console.log('❌ No se detectaron objetos - reintentando con parámetros más sensibles...');
-        setDetectedObjects([]);
-        onRealTimeObjects([]);
-        
-        // Limpiar overlay
-        if (overlayCanvasRef.current) {
-          const ctx = overlayCanvasRef.current.getContext('2d');
-          if (ctx) {
-            ctx.clearRect(0, 0, overlayCanvasRef.current.width, overlayCanvasRef.current.height);
+        // Si no se detectan objetos, mantener los anteriores por un momento
+        setTimeout(() => {
+          if (!isProcessing) {
+            setDetectedObjects([]);
+            onRealTimeObjects([]);
           }
-        }
+        }, 500);
       }
       
       setFrameCount(prev => prev + 1);
@@ -172,26 +195,6 @@ export const CameraView: React.FC<CameraViewProps> = ({
       setIsProcessing(false);
     }
   };
-
-  // CONFIGURAR CANVAS OVERLAY CUANDO CAMBIE EL TAMAÑO DE VIDEO
-  useEffect(() => {
-    if (overlayCanvasRef.current && videoRef.current) {
-      const video = videoRef.current;
-      const overlay = overlayCanvasRef.current;
-      
-      const updateCanvasSize = () => {
-        overlay.width = video.videoWidth;
-        overlay.height = video.videoHeight;
-      };
-      
-      if (video.videoWidth > 0) {
-        updateCanvasSize();
-      }
-      
-      video.addEventListener('loadedmetadata', updateCanvasSize);
-      return () => video.removeEventListener('loadedmetadata', updateCanvasSize);
-    }
-  }, [videoRef.current]);
 
   // CAPTURAR IMAGEN
   const captureImage = useCallback(async () => {
@@ -249,15 +252,16 @@ export const CameraView: React.FC<CameraViewProps> = ({
           style={{ transform: currentCamera === 'front' ? 'scaleX(-1)' : 'none' }}
         />
         
-        {/* CANVAS OVERLAY PARA SILUETAS */}
-        <canvas
-          ref={overlayCanvasRef}
-          className="absolute top-0 left-0 w-full h-full pointer-events-none"
-          style={{ 
-            transform: currentCamera === 'front' ? 'scaleX(-1)' : 'none',
-            zIndex: 2
-          }}
-        />
+        {/* ENHANCED CAMERA OVERLAY */}
+        {videoContainer.width > 0 && videoContainer.height > 0 && (
+          <EnhancedCameraOverlay
+            detectedObjects={detectedObjects}
+            width={videoContainer.width}
+            height={videoContainer.height}
+            isCalibrated={calibrationData?.isCalibrated || false}
+            showDebugInfo={showDebugOverlay}
+          />
+        )}
         
         {/* CANVAS OCULTO PARA PROCESAMIENTO */}
         <canvas
@@ -280,13 +284,13 @@ export const CameraView: React.FC<CameraViewProps> = ({
         )}
       </div>
 
-      {/* CONTROLES */}
+      {/* CONTROLES MEJORADOS */}
       <div className="absolute bottom-4 left-0 right-0 flex justify-center items-center gap-4 px-4">
         <Button
           variant="secondary"
           size="icon"
           onClick={handleSwitchCamera}
-          className="bg-black/50 hover:bg-black/70 text-white"
+          className="bg-black/50 hover:bg-black/70 text-white backdrop-blur-sm"
         >
           <SwitchCamera className="h-5 w-5" />
         </Button>
@@ -295,7 +299,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
           variant={showGrid ? "default" : "secondary"}
           size="icon"
           onClick={() => setShowGrid(!showGrid)}
-          className="bg-black/50 hover:bg-black/70 text-white"
+          className="bg-black/50 hover:bg-black/70 text-white backdrop-blur-sm"
         >
           <Grid3X3 className="h-5 w-5" />
         </Button>
@@ -303,7 +307,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
         <Button
           size="lg"
           onClick={captureImage}
-          className="bg-white text-black hover:bg-gray-200 rounded-full w-16 h-16"
+          className="bg-white text-black hover:bg-gray-200 rounded-full w-16 h-16 shadow-lg"
         >
           <Camera className="h-6 w-6" />
         </Button>
@@ -312,86 +316,92 @@ export const CameraView: React.FC<CameraViewProps> = ({
           variant={isRealTimeMeasurement ? "default" : "secondary"}
           size="icon"
           onClick={() => setIsRealTimeMeasurement(!isRealTimeMeasurement)}
-          className="bg-black/50 hover:bg-black/70 text-white"
+          className="bg-black/50 hover:bg-black/70 text-white backdrop-blur-sm"
         >
           {isRealTimeMeasurement ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
         </Button>
+
+        <Button
+          variant={showDebugOverlay ? "default" : "secondary"}
+          size="icon"
+          onClick={() => setShowDebugOverlay(!showDebugOverlay)}
+          className="bg-black/50 hover:bg-black/70 text-white backdrop-blur-sm"
+        >
+          <Settings className="h-5 w-5" />
+        </Button>
       </div>
 
-      {/* INDICADORES DE ESTADO */}
+      {/* INDICADORES DE ESTADO MEJORADOS */}
       <div className="absolute top-4 left-4 flex flex-col gap-2">
-        <Badge variant={hasPermissions ? "default" : "destructive"}>
+        <Badge variant={hasPermissions ? "default" : "destructive"} className="backdrop-blur-sm">
           {hasPermissions ? "Cámara OK" : "Sin permisos"}
         </Badge>
         
         {isProcessing && (
-          <Badge variant="secondary" className="bg-blue-500/80 text-white">
-            Procesando...
+          <Badge variant="secondary" className="bg-blue-500/80 text-white backdrop-blur-sm">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+              Analizando...
+            </div>
           </Badge>
         )}
         
         {detectedObjects.length > 0 && (
-          <Badge variant="default" className="bg-green-500/80 text-white">
-            {detectedObjects.length} objeto{detectedObjects.length !== 1 ? 's' : ''} detectado{detectedObjects.length !== 1 ? 's' : ''}
+          <Badge variant="default" className="bg-green-500/80 text-white backdrop-blur-sm">
+            <Target className="w-3 h-3 mr-1 inline" />
+            Objeto detectado
           </Badge>
         )}
 
-        <Badge variant="outline" className="bg-black/50 text-white border-white/30">
+        <Badge variant="outline" className="bg-black/50 text-white border-white/30 backdrop-blur-sm">
           Frame: {frameCount}
         </Badge>
+
+        {!calibrationData?.isCalibrated && (
+          <Badge variant="outline" className="bg-amber-500/20 text-amber-300 border-amber-500/50 backdrop-blur-sm">
+            ⚠️ Sin calibrar
+          </Badge>
+        )}
       </div>
 
-      {/* INFORMACIÓN DE MEDICIÓN MEJORADA */}
-      {detectedObjects.length > 0 && (
-        <div className="absolute top-4 right-4 bg-black/80 text-white p-3 rounded-lg text-sm max-w-64">
-          <div className="font-semibold mb-2 flex items-center gap-2">
+      {/* Panel de información rápida mejorado */}
+      {detectedObjects.length > 0 && !showDebugOverlay && (
+        <div className="absolute top-4 right-4 bg-black/80 backdrop-blur-md text-white p-4 rounded-lg shadow-xl max-w-xs border border-white/10">
+          <div className="font-semibold mb-3 flex items-center gap-2">
             <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-            🔍 Detección OpenCV Avanzada
+            <Target className="w-4 h-4" />
+            Objeto Predominante
           </div>
           
-          {(() => {
-            const obj = detectedObjects[0];
-            if (!obj) return null;
-            
-            return (
-              <div className="space-y-1">
-                <div className="flex justify-between">
-                  <span>Ancho:</span>
-                  <span className="font-mono text-green-400">
-                    {obj.dimensions.width.toFixed(1)} {obj.dimensions.unit}
-                  </span>
+          {detectedObjects[0] && (
+            <div className="space-y-2 text-sm">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <p className="text-gray-400 text-xs">Ancho</p>
+                  <p className="font-mono font-bold text-green-400">
+                    {detectedObjects[0].dimensions.width.toFixed(1)} {detectedObjects[0].dimensions.unit}
+                  </p>
                 </div>
-                <div className="flex justify-between">
-                  <span>Alto:</span>
-                  <span className="font-mono text-cyan-400">
-                    {obj.dimensions.height.toFixed(1)} {obj.dimensions.unit}
-                  </span>
+                <div>
+                  <p className="text-gray-400 text-xs">Alto</p>
+                  <p className="font-mono font-bold text-cyan-400">
+                    {detectedObjects[0].dimensions.height.toFixed(1)} {detectedObjects[0].dimensions.unit}
+                  </p>
                 </div>
-                <div className="flex justify-between">
-                  <span>Área:</span>
-                  <span className="font-mono text-blue-400">
-                    {obj.dimensions.area.toFixed(0)} {obj.dimensions.unit}²
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Confianza:</span>
-                  <span className="font-mono text-yellow-400">
-                    {Math.round(obj.confidence * 100)}%
-                  </span>
-                </div>
-                {calibrationData?.isCalibrated && (
-                  <div className="mt-2 pt-2 border-t border-white/20 text-xs text-green-300">
-                    ✅ Medición calibrada en {obj.dimensions.unit}
-                  </div>
-                )}
-                {!calibrationData?.isCalibrated && obj.dimensions.unit === 'px' && (
-                  <div className="mt-2 pt-2 border-t border-white/20 text-xs text-amber-300">
-                    ⚠️ Sin calibrar - valores en píxeles
-                  </div>
-                )}
               </div>
-            );
-          })()}
+              <div className="pt-2 border-t border-white/10">
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-400 text-xs">Confianza</span>
+                  <span className="font-mono text-yellow-400">
+                    {Math.round(detectedObjects[0].confidence * 100)}%
+                  </span>
+                </div>
+              </div>
+              <div className="text-xs text-gray-400 mt-2">
+                Solo se detecta el objeto más grande y centrado en pantalla
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

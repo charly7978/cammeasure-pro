@@ -6,6 +6,7 @@
 import { ImageProcessor } from '../core/ImageProcessor';
 import { CannyEdgeDetector } from '../algorithms/CannyEdgeDetector';
 import { ContourDetector } from '../algorithms/ContourDetector';
+import { HyperAdvancedSilhouetteDetector } from './HyperAdvancedSilhouetteDetector';
 import type { DetectedObject } from '../../types';
 
 export interface SilhouetteDetectionResult {
@@ -31,11 +32,13 @@ export class SilhouetteDetector {
   private imageProcessor: ImageProcessor;
   private edgeDetector: CannyEdgeDetector;
   private contourDetector: ContourDetector;
+  private hyperAdvancedDetector: HyperAdvancedSilhouetteDetector;
 
   private constructor() {
     this.imageProcessor = ImageProcessor.getInstance();
     this.edgeDetector = CannyEdgeDetector.getInstance();
     this.contourDetector = ContourDetector.getInstance();
+    this.hyperAdvancedDetector = HyperAdvancedSilhouetteDetector.getInstance();
   }
 
   public static getInstance(): SilhouetteDetector {
@@ -53,9 +56,48 @@ export class SilhouetteDetector {
     calibrationData: CalibrationData | null = null
   ): Promise<SilhouetteDetectionResult> {
     const startTime = performance.now();
+    
+    console.log(`🎯 INICIANDO DETECCIÓN HÍPER AVANZADA DE SILUETAS`);
+    
+    try {
+      // Usar el detector híper avanzado
+      const hyperResult = await this.hyperAdvancedDetector.detectSilhouettes(imageData, calibrationData);
+      
+      // Convertir resultado a formato SilhouetteDetectionResult
+      const result: SilhouetteDetectionResult = {
+        objects: hyperResult.objects,
+        processingTime: hyperResult.processingTime,
+        edgeMap: hyperResult.edgeMap,
+        contours: hyperResult.contours,
+        debugInfo: {
+          edgePixels: hyperResult.debugInfo.edgePixels,
+          contoursFound: hyperResult.debugInfo.contoursFound,
+          validContours: hyperResult.debugInfo.validContours,
+          averageConfidence: hyperResult.debugInfo.averageConfidence
+        }
+      };
+      
+      return result;
+      
+    } catch (error) {
+      console.error('❌ Error en detección híper avanzada, usando fallback:', error);
+      
+      // Fallback al sistema anterior si falla
+      return this.detectSilhouettesClassic(imageData, calibrationData);
+    }
+  }
+
+  /**
+   * DETECCIÓN CLÁSICA (FALLBACK)
+   */
+  private async detectSilhouettesClassic(
+    imageData: ImageData,
+    calibrationData: CalibrationData | null = null
+  ): Promise<SilhouetteDetectionResult> {
+    const startTime = performance.now();
     const { width, height } = imageData;
     
-    console.log(`🎯 INICIANDO DETECCIÓN DE SILUETAS ${width}x${height}`);
+    console.log(`🎯 INICIANDO DETECCIÓN DE SILUETAS CLÁSICA ${width}x${height}`);
     
     try {
       // PASO 1: PROCESAMIENTO DE IMAGEN OPTIMIZADO

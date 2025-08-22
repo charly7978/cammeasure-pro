@@ -42,10 +42,11 @@ export const EnhancedCameraOverlay: React.FC<EnhancedCameraOverlayProps> = ({
       // Limpiar canvas
       ctx.clearRect(0, 0, width, height);
 
-      // Dibujar cada objeto detectado
-      detectedObjects.forEach((obj, index) => {
-        drawEnhancedSilhouette(ctx, obj, index, timestamp);
-      });
+      // Dibujar solo el objeto predominante (si existe)
+      if (detectedObjects.length > 0) {
+        const predominantObject = detectedObjects[0]; // Solo el primero
+        drawEnhancedSilhouette(ctx, predominantObject, 0, timestamp);
+      }
 
       // Debug info si está habilitado
       if (showDebugInfo && detectedObjects.length > 0) {
@@ -62,17 +63,8 @@ export const EnhancedCameraOverlay: React.FC<EnhancedCameraOverlayProps> = ({
       index: number,
       timestamp: number
     ) => {
-      const colors = [
-        '#00ff41', // Verde neón
-        '#ff6b35', // Naranja vibrante
-        '#4ecdc4', // Turquesa
-        '#45b7d1', // Azul cielo
-        '#f9ca24', // Amarillo dorado
-        '#ff00ff', // Magenta
-        '#00ffff'  // Cian
-      ];
-      
-      const color = colors[index % colors.length];
+      // Color verde neón para objeto único
+      const color = '#00ff41';
       const pulse = Math.sin(timestamp * 0.003) * 0.3 + 0.7; // Efecto pulsante
 
       // Configurar estilos
@@ -165,48 +157,51 @@ export const EnhancedCameraOverlay: React.FC<EnhancedCameraOverlayProps> = ({
         const labelY = Math.max(30, obj.boundingBox.y - 20);
 
         // Crear gradiente para el fondo
-        const gradient = ctx.createLinearGradient(labelX, labelY - 20, labelX, labelY + 40);
-        gradient.addColorStop(0, 'rgba(0, 0, 0, 0.9)');
-        gradient.addColorStop(1, 'rgba(0, 0, 0, 0.7)');
+        const gradient = ctx.createLinearGradient(labelX, labelY - 20, labelX, labelY + 60);
+        gradient.addColorStop(0, 'rgba(0, 0, 0, 0.95)');
+        gradient.addColorStop(1, 'rgba(0, 0, 0, 0.85)');
 
         // Texto principal con dimensiones
         const mainText = `${obj.dimensions.width.toFixed(1)} × ${obj.dimensions.height.toFixed(1)} ${obj.dimensions.unit}`;
-        ctx.font = 'bold 14px system-ui';
+        ctx.font = 'bold 16px system-ui';
         const mainMetrics = ctx.measureText(mainText);
 
         // Texto secundario con detalles
-        const detailText = `${(obj.confidence * 100).toFixed(0)}% • ${obj.dimensions.area.toFixed(0)} ${obj.dimensions.unit}²`;
-        ctx.font = '11px system-ui';
-        const detailMetrics = ctx.measureText(detailText);
+        const areaText = `Área: ${obj.dimensions.area.toFixed(0)} ${obj.dimensions.unit}²`;
+        const confidenceText = `Confianza: ${(obj.confidence * 100).toFixed(0)}%`;
+        ctx.font = '12px system-ui';
+        const areaMetrics = ctx.measureText(areaText);
+        const confidenceMetrics = ctx.measureText(confidenceText);
 
-        const boxWidth = Math.max(mainMetrics.width, detailMetrics.width) + 20;
-        const boxHeight = 45;
+        const boxWidth = Math.max(mainMetrics.width, areaMetrics.width, confidenceMetrics.width) + 30;
+        const boxHeight = 65;
 
         // Dibujar caja con bordes redondeados
         ctx.fillStyle = gradient;
         ctx.strokeStyle = color;
         ctx.lineWidth = 2;
         
-        roundRect(ctx, labelX - 5, labelY - 20, boxWidth, boxHeight, 5);
+        roundRect(ctx, labelX - 5, labelY - 20, boxWidth, boxHeight, 8);
         ctx.fill();
         ctx.stroke();
 
         // Textos
         ctx.fillStyle = color;
-        ctx.font = 'bold 14px system-ui';
+        ctx.font = 'bold 16px system-ui';
         ctx.fillText(mainText, labelX + 5, labelY);
 
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-        ctx.font = '11px system-ui';
-        ctx.fillText(detailText, labelX + 5, labelY + 18);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+        ctx.font = '12px system-ui';
+        ctx.fillText(areaText, labelX + 5, labelY + 20);
+        ctx.fillText(confidenceText, labelX + 5, labelY + 38);
 
-        // Icono de objeto
+        // Icono de objeto detectado
         ctx.fillStyle = color;
-        ctx.font = '16px system-ui';
-        ctx.fillText('📦', labelX + boxWidth - 25, labelY);
+        ctx.font = '20px system-ui';
+        ctx.fillText('🎯', labelX + boxWidth - 30, labelY);
       }
 
-      // Centro del objeto con cruz animada
+      // Centro del objeto con cruz animada y círculos
       if (obj.centerX !== undefined && obj.centerY !== undefined) {
         const rotation = timestamp * 0.001;
         
@@ -214,45 +209,100 @@ export const EnhancedCameraOverlay: React.FC<EnhancedCameraOverlayProps> = ({
         ctx.translate(obj.centerX, obj.centerY);
         ctx.rotate(rotation);
         
+        // Círculos concéntricos animados
+        for (let i = 0; i < 3; i++) {
+          const radius = 10 + i * 10 + Math.sin(timestamp * 0.002 + i) * 3;
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 2 - i * 0.5;
+          ctx.globalAlpha = 0.8 - i * 0.2;
+          
+          ctx.beginPath();
+          ctx.arc(0, 0, radius, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        
+        ctx.globalAlpha = 1;
         ctx.strokeStyle = color;
         ctx.lineWidth = 2;
-        ctx.globalAlpha = 0.8;
         
         // Cruz central
         ctx.beginPath();
-        ctx.moveTo(-10, 0);
-        ctx.lineTo(10, 0);
-        ctx.moveTo(0, -10);
-        ctx.lineTo(0, 10);
+        ctx.moveTo(-15, 0);
+        ctx.lineTo(15, 0);
+        ctx.moveTo(0, -15);
+        ctx.lineTo(0, 15);
         ctx.stroke();
         
-        // Círculo central
+        // Punto central
+        ctx.fillStyle = color;
         ctx.beginPath();
-        ctx.arc(0, 0, 5, 0, Math.PI * 2);
-        ctx.stroke();
+        ctx.arc(0, 0, 3, 0, Math.PI * 2);
+        ctx.fill();
         
         ctx.restore();
-        ctx.globalAlpha = 1;
       }
 
-      // Líneas de medición visual
-      if (obj.boundingBox && index === 0) { // Solo para el objeto principal
+      // Líneas de medición visual mejoradas
+      if (obj.boundingBox) {
         ctx.strokeStyle = color;
         ctx.lineWidth = 1;
         ctx.globalAlpha = 0.5;
         ctx.setLineDash([5, 5]);
         
-        // Línea horizontal
+        const offsetAnimation = timestamp * 0.01 % 10;
+        ctx.lineDashOffset = offsetAnimation;
+        
+        // Línea horizontal con etiqueta
+        const midY = obj.boundingBox.y + obj.boundingBox.height / 2;
         ctx.beginPath();
-        ctx.moveTo(obj.boundingBox.x - 20, obj.boundingBox.y + obj.boundingBox.height / 2);
-        ctx.lineTo(obj.boundingBox.x + obj.boundingBox.width + 20, obj.boundingBox.y + obj.boundingBox.height / 2);
+        ctx.moveTo(obj.boundingBox.x - 30, midY);
+        ctx.lineTo(obj.boundingBox.x + obj.boundingBox.width + 30, midY);
         ctx.stroke();
         
-        // Línea vertical
+        // Etiqueta de ancho
+        ctx.setLineDash([]);
+        ctx.fillStyle = color;
+        ctx.font = 'bold 12px system-ui';
+        ctx.globalAlpha = 0.9;
+        const widthText = `${obj.dimensions.width.toFixed(1)} ${obj.dimensions.unit}`;
+        const widthMetrics = ctx.measureText(widthText);
+        ctx.fillRect(
+          obj.boundingBox.x + obj.boundingBox.width / 2 - widthMetrics.width / 2 - 5,
+          midY - 18,
+          widthMetrics.width + 10,
+          16
+        );
+        ctx.fillStyle = 'black';
+        ctx.fillText(
+          widthText,
+          obj.boundingBox.x + obj.boundingBox.width / 2 - widthMetrics.width / 2,
+          midY - 5
+        );
+        
+        // Línea vertical con etiqueta
+        ctx.setLineDash([5, 5]);
+        ctx.lineDashOffset = offsetAnimation;
+        ctx.strokeStyle = color;
+        ctx.globalAlpha = 0.5;
+        const midX = obj.boundingBox.x + obj.boundingBox.width / 2;
         ctx.beginPath();
-        ctx.moveTo(obj.boundingBox.x + obj.boundingBox.width / 2, obj.boundingBox.y - 20);
-        ctx.lineTo(obj.boundingBox.x + obj.boundingBox.width / 2, obj.boundingBox.y + obj.boundingBox.height + 20);
+        ctx.moveTo(midX, obj.boundingBox.y - 30);
+        ctx.lineTo(midX, obj.boundingBox.y + obj.boundingBox.height + 30);
         ctx.stroke();
+        
+        // Etiqueta de alto
+        ctx.setLineDash([]);
+        ctx.fillStyle = color;
+        ctx.globalAlpha = 0.9;
+        const heightText = `${obj.dimensions.height.toFixed(1)} ${obj.dimensions.unit}`;
+        ctx.save();
+        ctx.translate(midX + 10, obj.boundingBox.y + obj.boundingBox.height / 2);
+        ctx.rotate(Math.PI / 2);
+        const heightMetrics = ctx.measureText(heightText);
+        ctx.fillRect(-heightMetrics.width / 2 - 5, -8, heightMetrics.width + 10, 16);
+        ctx.fillStyle = 'black';
+        ctx.fillText(heightText, -heightMetrics.width / 2, 4);
+        ctx.restore();
         
         ctx.setLineDash([]);
         ctx.globalAlpha = 1;
@@ -261,21 +311,23 @@ export const EnhancedCameraOverlay: React.FC<EnhancedCameraOverlayProps> = ({
 
     // Función para dibujar información de debug
     const drawDebugInfo = (ctx: CanvasRenderingContext2D, objects: DetectedObject[]) => {
+      const obj = objects[0]; // Solo el objeto predominante
       const debugInfo = [
-        `Objetos detectados: ${objects.length}`,
-        `Confianza promedio: ${(objects.reduce((sum, obj) => sum + obj.confidence, 0) / objects.length * 100).toFixed(1)}%`,
+        `Objeto detectado: SÍ`,
+        `Tamaño: ${obj.dimensions.width.toFixed(1)}×${obj.dimensions.height.toFixed(1)} ${obj.dimensions.unit}`,
+        `Confianza: ${(obj.confidence * 100).toFixed(1)}%`,
         `Calibrado: ${isCalibrated ? 'Sí' : 'No'}`,
-        `FPS: ${(1000 / 16.67).toFixed(1)}` // Aproximado
+        `FPS: ${(1000 / 16.67).toFixed(1)}`
       ];
 
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-      roundRect(ctx, 10, height - 100, 250, 90, 5);
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.9)';
+      roundRect(ctx, 10, height - 120, 280, 110, 5);
       ctx.fill();
 
       ctx.fillStyle = '#00ff41';
       ctx.font = '12px monospace';
       debugInfo.forEach((text, i) => {
-        ctx.fillText(text, 20, height - 75 + i * 20);
+        ctx.fillText(text, 20, height - 95 + i * 20);
       });
     };
 

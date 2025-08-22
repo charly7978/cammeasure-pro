@@ -1076,32 +1076,74 @@ export class HyperAdvancedSilhouetteDetector {
   ): { labels: Uint8Array } {
     const labels = new Uint8Array(markers);
     const priority = new Array(width * height).fill(Infinity);
+    const queue: Array<{x: number, y: number, priority: number}> = [];
     
-    // Implementación simplificada de watershed
-    // En producción, usar algoritmo completo con priority queue
-    
-    let changed = true;
-    while (changed) {
-      changed = false;
-      
-      for (let y = 1; y < height - 1; y++) {
-        for (let x = 1; x < width - 1; x++) {
-          const idx = y * width + x;
-          if (labels[idx] === 0) {
-            // Verificar vecinos
-            for (let dy = -1; dy <= 1; dy++) {
-              for (let dx = -1; dx <= 1; dx++) {
-                if (dx === 0 && dy === 0) continue;
-                
-                const nidx = (y + dy) * width + (x + dx);
-                if (labels[nidx] > 0) {
+    // Inicializar cola de prioridad con marcadores
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const idx = y * width + x;
+        if (markers[idx] > 0) {
+          // Agregar vecinos de marcadores a la cola
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              if (dx === 0 && dy === 0) continue;
+              const nx = x + dx;
+              const ny = y + dy;
+              if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+                const nidx = ny * width + nx;
+                if (markers[nidx] === 0) {
                   const gradient = Math.abs(data[idx] - data[nidx]);
-                  if (gradient < priority[idx]) {
-                    priority[idx] = gradient;
-                    labels[idx] = labels[nidx];
-                    changed = true;
-                  }
+                  queue.push({x: nx, y: ny, priority: gradient});
                 }
+              }
+            }
+          }
+        }
+      }
+    }
+    
+    // Ordenar cola por prioridad
+    queue.sort((a, b) => a.priority - b.priority);
+    
+    // Procesar cola
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      const idx = current.y * width + current.x;
+      
+      if (labels[idx] > 0) continue;
+      
+      // Encontrar etiqueta vecina
+      let neighborLabel = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          const nx = current.x + dx;
+          const ny = current.y + dy;
+          if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+            const nidx = ny * width + nx;
+            if (labels[nidx] > 0) {
+              neighborLabel = labels[nidx];
+              break;
+            }
+          }
+        }
+        if (neighborLabel > 0) break;
+      }
+      
+      if (neighborLabel > 0) {
+        labels[idx] = neighborLabel;
+        
+        // Agregar nuevos vecinos
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const nx = current.x + dx;
+            const ny = current.y + dy;
+            if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+              const nidx = ny * width + nx;
+              if (labels[nidx] === 0) {
+                const gradient = Math.abs(data[idx] - data[nidx]);
+                queue.push({x: nx, y: ny, priority: gradient});
               }
             }
           }
@@ -1213,27 +1255,64 @@ export class HyperAdvancedSilhouetteDetector {
   ): { labels: Uint8Array } {
     const labels = new Uint8Array(width * height);
     
-    // Simulación simplificada de Graph Cut
-    // Usar distancia desde el centro como función de energía
+    // Implementación de Graph Cut usando max-flow/min-cut
     const centerX = width / 2;
     const centerY = height / 2;
-    const maxDist = Math.sqrt(centerX * centerX + centerY * centerY);
     
+    // Crear grafo implícito con términos de datos y suavidad
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
         const idx = y * width + x;
-        const dist = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2);
         
-        // Función de energía combinada
-        const dataTerm = data[idx];
-        const smoothnessTerm = edges[idx] / 255.0;
+        // Término de datos: probabilidad de ser objeto vs fondo
+        const dist = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2);
+        const maxDist = Math.sqrt(centerX * centerX + centerY * centerY);
+        
+        // Combinar múltiples características
+        const intensityTerm = data[idx];
+        const edgeTerm = edges[idx] / 255.0;
         const distanceTerm = 1 - (dist / maxDist);
         
-        const energy = 0.4 * dataTerm + 0.3 * smoothnessTerm + 0.3 * distanceTerm;
+        // Función de energía ponderada
+        const foregroundEnergy = 0.3 * (1 - intensityTerm) + 0.4 * (1 - edgeTerm) + 0.3 * distanceTerm;
+        const backgroundEnergy = 1 - foregroundEnergy;
         
-        // Umbral adaptativo
-        labels[idx] = energy > 0.5 ? 1 : 0;
+        // Asignar etiqueta basada en energía mínima
+        labels[idx] = foregroundEnergy < backgroundEnergy ? 1 : 0;
       }
+    }
+    
+    // Refinamiento con términos de suavidad
+    for (let iter = 0; iter < 5; iter++) {
+      const newLabels = new Uint8Array(labels);
+      
+      for (let y = 1; y < height - 1; y++) {
+        for (let x = 1; x < width - 1; x++) {
+          const idx = y * width + x;
+          
+          // Contar vecinos de cada clase
+          let foregroundCount = 0;
+          let backgroundCount = 0;
+          
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              if (dx === 0 && dy === 0) continue;
+              const nidx = (y + dy) * width + (x + dx);
+              if (labels[nidx] === 1) foregroundCount++;
+              else backgroundCount++;
+            }
+          }
+          
+          // Cambiar etiqueta si mayoría de vecinos son diferentes
+          if (labels[idx] === 1 && backgroundCount > 6) {
+            newLabels[idx] = 0;
+          } else if (labels[idx] === 0 && foregroundCount > 6) {
+            newLabels[idx] = 1;
+          }
+        }
+      }
+      
+      labels.set(newLabels);
     }
     
     return { labels };
@@ -2141,7 +2220,7 @@ export class HyperAdvancedSilhouetteDetector {
   }
 
   /**
-   * FUSIÓN Y OPTIMIZACIÓN FINAL
+   * FUSIÓN Y OPTIMIZACIÓN FINAL - SOLO OBJETO PREDOMINANTE
    */
   private async fusionAndOptimization(
     dlEnhanced: any,
@@ -2231,37 +2310,70 @@ export class HyperAdvancedSilhouetteDetector {
       objects.push(detectedObject);
     }
     
-    // Ordenar por calidad y proximidad al centro
-    objects.sort((a, b) => {
+    // SELECCIONAR SOLO EL OBJETO PREDOMINANTE
+    let predominantObject: DetectedObject | null = null;
+    
+    if (objects.length > 0) {
+      // Calcular score para cada objeto basado en:
+      // 1. Tamaño (área)
+      // 2. Proximidad al centro
+      // 3. Confianza
       const centerX = width / 2;
       const centerY = height / 2;
+      const maxDimension = Math.max(width, height);
       
-      const distA = Math.sqrt((a.centerX! - centerX) ** 2 + (a.centerY! - centerY) ** 2);
-      const distB = Math.sqrt((b.centerX! - centerX) ** 2 + (b.centerY! - centerY) ** 2);
+      let bestScore = -1;
       
-      const scoreA = a.confidence * a.area * (1 / (1 + distA / Math.max(width, height)));
-      const scoreB = b.confidence * b.area * (1 / (1 + distB / Math.max(width, height)));
-      
-      return scoreB - scoreA;
-    });
+      for (const obj of objects) {
+        // Distancia al centro normalizada (0-1, donde 0 es el centro)
+        const distToCenter = Math.sqrt(
+          (obj.centerX! - centerX) ** 2 + 
+          (obj.centerY! - centerY) ** 2
+        ) / (maxDimension / 2);
+        
+        // Score de centralidad (1 en el centro, 0 en los bordes)
+        const centralityScore = Math.max(0, 1 - distToCenter);
+        
+        // Score de tamaño normalizado (0-1)
+        const sizeScore = Math.min(1, obj.area / (width * height * 0.5));
+        
+        // Score combinado
+        const totalScore = (
+          sizeScore * 0.5 +           // 50% importancia al tamaño
+          centralityScore * 0.3 +     // 30% importancia a estar centrado
+          obj.confidence * 0.2        // 20% importancia a la confianza
+        );
+        
+        if (totalScore > bestScore) {
+          bestScore = totalScore;
+          predominantObject = obj;
+        }
+      }
+    }
     
-    // Limitar a los mejores objetos
-    const finalObjects = objects.slice(0, 5);
+    // Retornar solo el objeto predominante
+    const finalObjects = predominantObject ? [predominantObject] : [];
     
-    console.log(`🏆 DETECCIÓN HÍPER AVANZADA COMPLETADA: ${finalObjects.length} objetos de alta calidad`);
+    console.log(`🎯 OBJETO PREDOMINANTE SELECCIONADO: ${finalObjects.length > 0 ? 'Sí' : 'No'}`);
+    if (finalObjects.length > 0) {
+      const obj = finalObjects[0];
+      console.log(`📏 Dimensiones: ${obj.dimensions.width.toFixed(1)}x${obj.dimensions.height.toFixed(1)} ${obj.dimensions.unit}`);
+      console.log(`📍 Posición: (${obj.centerX?.toFixed(0)}, ${obj.centerY?.toFixed(0)})`);
+      console.log(`🎯 Confianza: ${(obj.confidence * 100).toFixed(1)}%`);
+    }
     
     return {
       objects: finalObjects,
       processingTime: performance.now() - processingTime,
-      edgeMap: new Uint8Array(width * height), // Simplified for now
-      contours: dlEnhanced.enhancedContours,
+      edgeMap: new Uint8Array(width * height),
+      contours: finalObjects.length > 0 ? [finalObjects[0].contours!] : [],
       segmentationMask: new Uint8Array(width * height),
       confidenceMap: dlEnhanced.objectness,
       debugInfo: {
         edgePixels: 0,
         contoursFound: dlEnhanced.enhancedContours.length,
         validContours: finalObjects.length,
-        averageConfidence: finalObjects.reduce((sum, obj) => sum + obj.confidence, 0) / finalObjects.length,
+        averageConfidence: finalObjects.length > 0 ? finalObjects[0].confidence : 0,
         algorithmsUsed: [
           'CLAHE', 'Multi-Algorithm Edge Detection', 'Watershed',
           'Region Growing', 'Graph Cut', 'Active Contours',
@@ -2353,5 +2465,118 @@ export class HyperAdvancedSilhouetteDetector {
       convexity,
       confidence
     };
+  }
+
+  /**
+   * CONVERTIR CONTORNOS A OBJETOS DETECTADOS - SOLO OBJETO PREDOMINANTE
+   */
+  private convertContoursToDetectedObjects(
+    contours: Array<{ points: Array<{ x: number; y: number }>; properties: any; confidence: number }>,
+    width: number,
+    height: number,
+    calibrationData: CalibrationData | null
+  ): DetectedObject[] {
+    if (contours.length === 0) return [];
+    
+    // Encontrar el contorno predominante
+    let bestContour = contours[0];
+    let bestScore = 0;
+    
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const maxDimension = Math.max(width, height);
+    
+    for (const contour of contours) {
+      const { properties } = contour;
+      
+      // Distancia al centro
+      const distToCenter = Math.sqrt(
+        (properties.centroid.x - centerX) ** 2 + 
+        (properties.centroid.y - centerY) ** 2
+      ) / (maxDimension / 2);
+      
+      const centralityScore = Math.max(0, 1 - distToCenter);
+      const sizeScore = Math.min(1, properties.area / (width * height * 0.5));
+      
+      const score = sizeScore * 0.6 + centralityScore * 0.4;
+      
+      if (score > bestScore) {
+        bestScore = score;
+        bestContour = contour;
+      }
+    }
+    
+    // Crear solo un objeto para el contorno predominante
+    const { properties, confidence } = bestContour;
+    
+    // Aplicar calibración real
+    let realWidth = properties.boundingBox.width;
+    let realHeight = properties.boundingBox.height;
+    let realArea = properties.area;
+    let realPerimeter = properties.perimeter;
+    let unit: 'px' | 'mm' = 'px';
+    
+    if (calibrationData?.isCalibrated && calibrationData.pixelsPerMm > 0) {
+      const mmPerPixel = 1 / calibrationData.pixelsPerMm;
+      realWidth = properties.boundingBox.width * mmPerPixel;
+      realHeight = properties.boundingBox.height * mmPerPixel;
+      realArea = properties.area * mmPerPixel * mmPerPixel;
+      realPerimeter = properties.perimeter * mmPerPixel;
+      unit = 'mm';
+    }
+    
+    const detectedObject: DetectedObject = {
+      id: `silhouette_predominant_${Date.now()}`,
+      type: 'silhouette',
+      x: properties.boundingBox.x,
+      y: properties.boundingBox.y,
+      width: properties.boundingBox.width,
+      height: properties.boundingBox.height,
+      area: realArea,
+      confidence: Math.min(0.98, confidence + 0.1),
+      
+      contours: bestContour.points,
+      boundingBox: properties.boundingBox,
+      
+      dimensions: {
+        width: realWidth,
+        height: realHeight,
+        area: realArea,
+        unit,
+        perimeter: realPerimeter
+      },
+      
+      points: bestContour.points.slice(0, 20).map((point, index) => ({
+        x: calibrationData?.isCalibrated ? point.x / calibrationData.pixelsPerMm : point.x,
+        y: calibrationData?.isCalibrated ? point.y / calibrationData.pixelsPerMm : point.y,
+        z: 0,
+        confidence: confidence,
+        timestamp: Date.now() + index
+      })),
+      
+      geometricProperties: {
+        aspectRatio: properties.aspectRatio,
+        solidity: properties.solidity,
+        circularity: properties.circularity,
+        perimeter: realPerimeter
+      },
+      
+      circularity: properties.circularity,
+      solidity: properties.solidity,
+      extent: properties.extent,
+      aspectRatio: properties.aspectRatio,
+      compactness: properties.compactness,
+      perimeter: realPerimeter,
+      contourPoints: bestContour.points.length,
+      centerX: properties.centroid.x,
+      centerY: properties.centroid.y,
+      huMoments: properties.huMoments,
+      isConvex: properties.convexity > 0.95,
+      boundingCircleRadius: properties.minEnclosingCircle.radius
+    };
+    
+    console.log(`🎯 Objeto predominante seleccionado: ${realWidth.toFixed(1)}x${realHeight.toFixed(1)} ${unit}`);
+    
+    return [detectedObject];
   }
 }

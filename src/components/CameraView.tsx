@@ -341,7 +341,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
           <Badge variant="secondary" className="bg-blue-500/80 text-white backdrop-blur-sm">
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
-              Procesando...
+              Analizando...
             </div>
           </Badge>
         )}
@@ -349,7 +349,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
         {detectedObjects.length > 0 && (
           <Badge variant="default" className="bg-green-500/80 text-white backdrop-blur-sm">
             <Target className="w-3 h-3 mr-1 inline" />
-            {detectedObjects.length} objeto{detectedObjects.length !== 1 ? 's' : ''}
+            Objeto detectado
           </Badge>
         )}
 
@@ -370,7 +370,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
           <div className="font-semibold mb-3 flex items-center gap-2">
             <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
             <Target className="w-4 h-4" />
-            Detección Híper Avanzada
+            Objeto Predominante
           </div>
           
           {detectedObjects[0] && (
@@ -396,6 +396,9 @@ export const CameraView: React.FC<CameraViewProps> = ({
                     {Math.round(detectedObjects[0].confidence * 100)}%
                   </span>
                 </div>
+              </div>
+              <div className="text-xs text-gray-400 mt-2">
+                Solo se detecta el objeto más grande y centrado en pantalla
               </div>
             </div>
           )}

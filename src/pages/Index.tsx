@@ -329,7 +329,7 @@ const Index = () => {
               }`}
             >
               <Target className="w-3 h-3 mr-1" />
-              {realTimeObjects[0] && hasEstimated3D(realTimeObjects[0]) ? '🎯 3D ESTIMADO' : '🎯 Detectado'}
+              {realTimeObjects[0] && hasEstimated3D(realTimeObjects[0]) ? 'Objeto 3D' : 'Objeto Detectado'}
             </Badge>
           )}
 
@@ -375,16 +375,17 @@ const Index = () => {
             realTimeObjects[0] && hasEstimated3D(realTimeObjects[0]) ? 'text-purple-400' : 'text-green-400'
           }`}>
             {realTimeObjects[0] && hasEstimated3D(realTimeObjects[0]) ? <Box className="w-4 h-4" /> : <Target className="w-4 h-4" />}
-            {realTimeObjects[0] && hasEstimated3D(realTimeObjects[0]) ? '🎯 OBJETO 3D ESTIMADO' : '🎯 Objeto Detectado'} 
+            {realTimeObjects[0] && hasEstimated3D(realTimeObjects[0]) ? '🎯 OBJETO PREDOMINANTE 3D' : '🎯 Objeto Predominante Detectado'} 
             {!calibrationData?.isCalibrated && '(en píxeles)'}
           </h3>
           
-          {realTimeObjects.slice(0, 1).map((obj, index) => {
+          {(() => {
+            const obj = realTimeObjects[0];
             const measurements3D = get3DMeasurements(obj);
             const hasEst3D = hasEstimated3D(obj);
             
             return (
-              <div key={obj.id} className="space-y-4">
+              <div className="space-y-4">
                 {/* Mediciones 2D básicas */}
                 <div className="grid grid-cols-3 gap-4">
                   <div className="space-y-1">
@@ -474,12 +475,12 @@ const Index = () => {
                     <div className={hasEst3D ? 'text-purple-300 font-bold' : ''}>
                       {hasEst3D ? 'Modo: 3D ESTIMADO' : 'Modo: 2D'}
                     </div>
-                    <div>{hasEst3D ? 'Estimación rápida' : 'Detección básica'}</div>
+                    <div>Objeto Predominante</div>
                   </div>
                 </div>
               </div>
             );
-          })}
+          })()}
         </Card>
       )}
 
@@ -522,14 +523,14 @@ const Index = () => {
             <Card className="p-3 bg-primary/5 border-primary/20">
               <h4 className="font-medium mb-2 text-primary text-sm">🎯 Instrucciones Optimizadas</h4>
               <ul className="text-xs text-muted-foreground space-y-1">
-                <li>• Apunta hacia el objeto y mantén centrado</li>
+                <li>• Apunta hacia el objeto y mantén centrado en pantalla</li>
+                <li>• La app detecta automáticamente el objeto predominante</li>
                 <li>• {calibrationData?.isCalibrated ? 
-                  'Sistema calibrado: mediciones precisas disponibles' : 
+                  'Sistema calibrado: mediciones precisas en mm/cm/m' : 
                   'Calibra primero para mediciones precisas (actualmente en píxeles)'
                 }</li>
-                <li>• Sistema optimizado para rendimiento sin congelación</li>
-                <li>• Las estimaciones 3D aparecen automáticamente</li>
-                <li>• Procesamiento rápido para mejor experiencia</li>
+                <li>• Solo se mide un objeto a la vez (el más grande/centrado)</li>
+                <li>• Las estimaciones 3D aparecen automáticamente cuando están disponibles</li>
               </ul>
             </Card>
           </TabsContent>
@@ -575,16 +576,17 @@ const Index = () => {
                     <h4 className={`font-medium mb-3 ${
                       realTimeObjects[0] && hasEstimated3D(realTimeObjects[0]) ? 'text-purple-400' : 'text-green-400'
                     }`}>
-                      {realTimeObjects[0] && hasEstimated3D(realTimeObjects[0]) ? '🎯 Objeto 3D Estimado' : '🎯 Objeto en Tiempo Real'} 
+                      {realTimeObjects[0] && hasEstimated3D(realTimeObjects[0]) ? '🎯 Objeto Predominante 3D' : '🎯 Objeto Predominante'} 
                       {!calibrationData?.isCalibrated && '(píxeles)'}
                     </h4>
                     <div className="space-y-3">
-                      {realTimeObjects.slice(0, 1).map((obj, index) => {
+                      {(() => {
+                        const obj = realTimeObjects[0];
                         const measurements3D = get3DMeasurements(obj);
                         const hasEst3D = hasEstimated3D(obj);
                         
                         return (
-                          <div key={obj.id} className="p-4 bg-black/20 rounded-lg">
+                          <div className="p-4 bg-black/20 rounded-lg">
                             <div className="grid grid-cols-2 gap-4">
                               <div className="space-y-2">
                                 <div>
@@ -636,7 +638,7 @@ const Index = () => {
                             </div>
                           </div>
                         );
-                      })}
+                      })()}
                     </div>
                   </Card>
                 )}

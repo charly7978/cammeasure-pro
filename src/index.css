@@ -246,3 +246,203 @@ All colors MUST be HSL.
   max-width: 100vw;
   max-height: 100vh;
 }
+
+/* Estabilización de la interfaz y prevención de saltos */
+* {
+  /* Prevenir parpadeos y transiciones bruscas */
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Estabilizar el layout principal */
+#root {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow: hidden;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+/* Contenedor inmersivo mejorado */
+.immersive-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow: hidden;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  will-change: transform;
+}
+
+/* Prevenir saltos en las pestañas */
+[role="tabpanel"] {
+  position: relative;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+/* Estabilizar videos y canvas */
+video, canvas {
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  image-rendering: optimizeQuality;
+  -webkit-image-rendering: optimizeQuality;
+}
+
+/* Animaciones suaves para transiciones */
+.tab-transition {
+  transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
+}
+
+/* Prevenir el rebote de scroll en iOS */
+.no-bounce {
+  position: fixed;
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Optimización de rendimiento para elementos pesados */
+.gpu-accelerated {
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  perspective: 1000px;
+  -webkit-perspective: 1000px;
+}
+
+/* Modo inmersivo activo */
+.immersive-active {
+  background: black;
+}
+
+/* Pantalla de bienvenida fullscreen */
+.welcome-screen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9999;
+  background: linear-gradient(135deg, #0f0f0f 0%, #1a1a2e 50%, #16213e 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.5s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* Elementos flotantes AR */
+.ar-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px) translateZ(0);
+  }
+  50% {
+    transform: translateY(-10px) translateZ(0);
+  }
+}
+
+/* Transparencias AR */
+.ar-transparent {
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Efectos de aparición/desaparición */
+.ar-fade-in {
+  animation: arFadeIn 0.5s ease-in-out forwards;
+}
+
+.ar-fade-out {
+  animation: arFadeOut 0.5s ease-in-out forwards;
+}
+
+@keyframes arFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9) translateZ(0);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateZ(0);
+  }
+}
+
+@keyframes arFadeOut {
+  from {
+    opacity: 1;
+    transform: scale(1) translateZ(0);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.9) translateZ(0);
+  }
+}
+
+/* Animación de escaneo AR */
+@keyframes scan {
+  0% {
+    top: -5%;
+  }
+  100% {
+    top: 105%;
+  }
+}
+
+/* Efectos de brillo y resplandor */
+.glow-blue {
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.5),
+              0 0 40px rgba(59, 130, 246, 0.3),
+              0 0 60px rgba(59, 130, 246, 0.1);
+}
+
+.glow-green {
+  box-shadow: 0 0 20px rgba(34, 197, 94, 0.5),
+              0 0 40px rgba(34, 197, 94, 0.3),
+              0 0 60px rgba(34, 197, 94, 0.1);
+}
+
+/* Optimización para elementos AR */
+.ar-element {
+  contain: layout style paint;
+  will-change: transform, opacity;
+}

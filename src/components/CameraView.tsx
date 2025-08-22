@@ -251,162 +251,198 @@ export const CameraView: React.FC<CameraViewProps> = ({
 
   // RENDERIZAR COMPONENTE
   return (
-    <div className="fixed inset-0 w-full h-full bg-black" ref={containerRef}>
-      {/* VIDEO PRINCIPAL */}
-      <div className="relative w-full h-full overflow-hidden">
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          muted
-          className="w-full h-full object-cover"
-          style={{ transform: currentCamera === 'front' ? 'scaleX(-1)' : 'none' }}
-        />
-        
-        {/* CANVAS OVERLAY PARA SILUETAS */}
-        <canvas
-          ref={overlayCanvasRef}
-          className="absolute top-0 left-0 w-full h-full pointer-events-none"
-          style={{ 
-            transform: currentCamera === 'front' ? 'scaleX(-1)' : 'none',
-            zIndex: 2
-          }}
-        />
-        
-        {/* CANVAS OCULTO PARA PROCESAMIENTO */}
-        <canvas
-          ref={canvasRef}
-          className="hidden"
-        />
-
-        {/* GRILLA OPCIONAL */}
-        {showGrid && (
-          <div className="absolute inset-0 pointer-events-none z-1">
-            <svg className="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
-              <defs>
-                <pattern id="grid" width="33.33" height="33.33" patternUnits="userSpaceOnUse">
-                  <path d="M 33.33 0 L 0 0 0 33.33" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="0.5"/>
-                </pattern>
-              </defs>
-              <rect width="100" height="100" fill="url(#grid)" />
-            </svg>
+    <div className="relative h-[calc(100vh-200px)] bg-black rounded-lg overflow-hidden gpu-accelerated">
+      {!hasPermissions ? (
+        <Card className="h-full flex items-center justify-center bg-gray-900/50 backdrop-blur-sm">
+          <div className="text-center p-8">
+            <Camera className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+            <h3 className="text-lg font-semibold mb-2">Permisos de Cámara Requeridos</h3>
+            <p className="text-muted-foreground mb-4">
+              Necesitamos acceso a tu cámara para realizar mediciones
+            </p>
+            <Button onClick={handleRequestPermissions} className="bg-gradient-primary">
+              <Camera className="w-4 h-4 mr-2" />
+              Permitir Acceso
+            </Button>
           </div>
-        )}
-      </div>
-
-      {/* CONTROLES */}
-      <div className="absolute bottom-4 left-0 right-0 flex justify-center items-center gap-4 px-4">
-        <Button
-          variant="secondary"
-          size="icon"
-          onClick={handleSwitchCamera}
-          className="bg-black/50 hover:bg-black/70 text-white"
-        >
-          <SwitchCamera className="h-5 w-5" />
-        </Button>
-
-        <Button
-          variant={showGrid ? "default" : "secondary"}
-          size="icon"
-          onClick={() => setShowGrid(!showGrid)}
-          className="bg-black/50 hover:bg-black/70 text-white"
-        >
-          <Grid3X3 className="h-5 w-5" />
-        </Button>
-
-        <Button
-          size="lg"
-          onClick={captureImage}
-          className="bg-white text-black hover:bg-gray-200 rounded-full w-16 h-16"
-        >
-          <Camera className="h-6 w-6" />
-        </Button>
-
-        <Button
-          variant={isRealTimeMeasurement ? "default" : "secondary"}
-          size="icon"
-          onClick={() => setIsRealTimeMeasurement(!isRealTimeMeasurement)}
-          className="bg-black/50 hover:bg-black/70 text-white"
-        >
-          {isRealTimeMeasurement ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
-        </Button>
-      </div>
-
-      {/* INDICADORES DE ESTADO */}
-      <div className="absolute top-4 left-4 flex flex-col gap-2">
-        <Badge variant={hasPermissions ? "default" : "destructive"}>
-          {hasPermissions ? "Cámara OK" : "Sin permisos"}
-        </Badge>
-        
-        {isProcessing && (
-          <Badge variant="secondary" className="bg-blue-500/80 text-white">
-            Procesando...
-          </Badge>
-        )}
-        
-        {detectedObjects.length > 0 && (
-          <Badge variant="default" className="bg-green-500/80 text-white">
-            {detectedObjects.length} objeto{detectedObjects.length !== 1 ? 's' : ''} detectado{detectedObjects.length !== 1 ? 's' : ''}
-          </Badge>
-        )}
-
-        <Badge variant="outline" className="bg-black/50 text-white border-white/30">
-          Frame: {frameCount}
-        </Badge>
-      </div>
-
-      {/* INFORMACIÓN DE MEDICIÓN MEJORADA */}
-      {detectedObjects.length > 0 && (
-        <div className="absolute top-4 right-4 bg-black/80 text-white p-3 rounded-lg text-sm max-w-64">
-          <div className="font-semibold mb-2 flex items-center gap-2">
-            <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-            🔍 Detección OpenCV Avanzada
+        </Card>
+      ) : (
+        <>
+          {/* Video principal con overlay AR */}
+          <div className="relative h-full">
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              className="w-full h-full object-cover gpu-accelerated"
+            />
+            
+            {/* Canvas para procesamiento (oculto) */}
+            <canvas ref={canvasRef} className="hidden" />
+            
+            {/* Canvas overlay para detección AR */}
+            <canvas
+              ref={overlayCanvasRef}
+              className="absolute inset-0 w-full h-full pointer-events-none gpu-accelerated"
+            />
+            
+            {/* Efectos AR de ambiente */}
+            <div className="absolute inset-0 pointer-events-none">
+              {/* Efecto de escaneo animado */}
+              <div className="absolute inset-x-0 h-1 bg-gradient-to-r from-transparent via-blue-400 to-transparent opacity-50"
+                   style={{
+                     animation: 'scan 3s linear infinite',
+                     top: `${(Date.now() / 30) % 100}%`
+                   }} />
+              
+              {/* Partículas AR flotantes */}
+              {isRealTimeMeasurement && [...Array(10)].map((_, i) => (
+                <div
+                  key={i}
+                  className="absolute w-1 h-1 bg-blue-400/30 rounded-full ar-float"
+                  style={{
+                    left: `${20 + Math.random() * 60}%`,
+                    top: `${20 + Math.random() * 60}%`,
+                    animationDelay: `${Math.random() * 3}s`,
+                    animationDuration: `${2 + Math.random() * 3}s`
+                  }}
+                />
+              ))}
+            </div>
+            
+            {/* Grid overlay AR */}
+            {showGrid && (
+              <div className="absolute inset-0 pointer-events-none">
+                <svg className="w-full h-full opacity-20">
+                  <defs>
+                    <pattern id="ar-grid" width="40" height="40" patternUnits="userSpaceOnUse">
+                      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="currentColor" strokeWidth="0.5" className="text-blue-400" />
+                    </pattern>
+                  </defs>
+                  <rect width="100%" height="100%" fill="url(#ar-grid)" />
+                </svg>
+              </div>
+            )}
+            
+            {/* Focus indicator AR */}
+            {focusPoint && (
+              <div
+                className="absolute w-16 h-16 -translate-x-1/2 -translate-y-1/2 pointer-events-none ar-fade-in"
+                style={{ left: focusPoint.x, top: focusPoint.y }}
+              >
+                <div className="w-full h-full border-2 border-blue-400 rounded-lg animate-pulse">
+                  <div className="absolute inset-0 border border-blue-400/50 rounded-lg scale-150 animate-ping" />
+                </div>
+              </div>
+            )}
+            
+            {/* Panel de información AR transparente */}
+            {detectedObjects.length > 0 && (
+              <div className="absolute top-4 left-4 right-4 ar-transparent rounded-xl p-4 ar-fade-in">
+                <div className="flex items-center gap-2 mb-2">
+                  <Target className="w-4 h-4 text-green-400 animate-pulse" />
+                  <span className="text-green-400 font-semibold text-sm">Objeto Detectado</span>
+                </div>
+                <div className="text-white text-xs space-y-1">
+                  <p>Dimensiones: {detectedObjects[0].dimensions.width.toFixed(1)} x {detectedObjects[0].dimensions.height.toFixed(1)} {detectedObjects[0].dimensions.unit}</p>
+                  <p>Confianza: {(detectedObjects[0].confidence * 100).toFixed(0)}%</p>
+                </div>
+              </div>
+            )}
+            
+            {/* Controles AR flotantes */}
+            <div className="absolute bottom-20 left-0 right-0 px-4">
+              <div className="flex justify-center gap-3">
+                {/* Botón de Grid */}
+                <button
+                  onClick={() => setShowGrid(!showGrid)}
+                  className={`p-3 rounded-full ar-transparent backdrop-blur-md transition-all transform hover:scale-110 ${
+                    showGrid ? 'bg-blue-500/30 text-blue-400' : 'text-gray-400'
+                  }`}
+                >
+                  <Grid3X3 className="w-5 h-5" />
+                </button>
+                
+                {/* Botón de Flash */}
+                <button
+                  onClick={toggleFlash}
+                  className={`p-3 rounded-full ar-transparent backdrop-blur-md transition-all transform hover:scale-110 ${
+                    flashEnabled ? 'bg-yellow-500/30 text-yellow-400' : 'text-gray-400'
+                  }`}
+                >
+                  <Zap className="w-5 h-5" />
+                </button>
+                
+                {/* Botón de Cambiar Cámara */}
+                <button
+                  onClick={handleSwitchCamera}
+                  className="p-3 rounded-full ar-transparent backdrop-blur-md text-gray-400 hover:text-white transition-all transform hover:scale-110"
+                >
+                  <SwitchCamera className="w-5 h-5" />
+                </button>
+                
+                {/* Botón de Medición en Tiempo Real */}
+                <button
+                  onClick={() => setIsRealTimeMeasurement(!isRealTimeMeasurement)}
+                  className={`p-3 rounded-full ar-transparent backdrop-blur-md transition-all transform hover:scale-110 ${
+                    isRealTimeMeasurement ? 'bg-green-500/30 text-green-400' : 'text-gray-400'
+                  }`}
+                >
+                  {isRealTimeMeasurement ? <Play className="w-5 h-5" /> : <Pause className="w-5 h-5" />}
+                </button>
+              </div>
+            </div>
+            
+            {/* Estado de procesamiento AR */}
+            {isProcessing && (
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
+                <div className="ar-transparent rounded-full p-4 ar-fade-in">
+                  <div className="w-8 h-8 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                </div>
+              </div>
+            )}
+            
+            {/* Indicadores de esquina AR */}
+            <div className="absolute inset-4 pointer-events-none">
+              {/* Esquina superior izquierda */}
+              <div className="absolute top-0 left-0 w-12 h-12">
+                <div className="absolute top-0 left-0 w-full h-0.5 bg-gradient-to-r from-blue-400 to-transparent" />
+                <div className="absolute top-0 left-0 h-full w-0.5 bg-gradient-to-b from-blue-400 to-transparent" />
+              </div>
+              {/* Esquina superior derecha */}
+              <div className="absolute top-0 right-0 w-12 h-12">
+                <div className="absolute top-0 right-0 w-full h-0.5 bg-gradient-to-l from-blue-400 to-transparent" />
+                <div className="absolute top-0 right-0 h-full w-0.5 bg-gradient-to-b from-blue-400 to-transparent" />
+              </div>
+              {/* Esquina inferior izquierda */}
+              <div className="absolute bottom-0 left-0 w-12 h-12">
+                <div className="absolute bottom-0 left-0 w-full h-0.5 bg-gradient-to-r from-blue-400 to-transparent" />
+                <div className="absolute bottom-0 left-0 h-full w-0.5 bg-gradient-to-t from-blue-400 to-transparent" />
+              </div>
+              {/* Esquina inferior derecha */}
+              <div className="absolute bottom-0 right-0 w-12 h-12">
+                <div className="absolute bottom-0 right-0 w-full h-0.5 bg-gradient-to-l from-blue-400 to-transparent" />
+                <div className="absolute bottom-0 right-0 h-full w-0.5 bg-gradient-to-t from-blue-400 to-transparent" />
+              </div>
+            </div>
           </div>
           
-          {(() => {
-            const obj = detectedObjects[0];
-            if (!obj) return null;
-            
-            return (
-              <div className="space-y-1">
-                <div className="flex justify-between">
-                  <span>Ancho:</span>
-                  <span className="font-mono text-green-400">
-                    {obj.dimensions.width.toFixed(1)} {obj.dimensions.unit}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Alto:</span>
-                  <span className="font-mono text-cyan-400">
-                    {obj.dimensions.height.toFixed(1)} {obj.dimensions.unit}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Área:</span>
-                  <span className="font-mono text-blue-400">
-                    {obj.dimensions.area.toFixed(0)} {obj.dimensions.unit}²
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Confianza:</span>
-                  <span className="font-mono text-yellow-400">
-                    {Math.round(obj.confidence * 100)}%
-                  </span>
-                </div>
-                {calibrationData?.isCalibrated && (
-                  <div className="mt-2 pt-2 border-t border-white/20 text-xs text-green-300">
-                    ✅ Medición calibrada en {obj.dimensions.unit}
-                  </div>
-                )}
-                {!calibrationData?.isCalibrated && obj.dimensions.unit === 'px' && (
-                  <div className="mt-2 pt-2 border-t border-white/20 text-xs text-amber-300">
-                    ⚠️ Sin calibrar - valores en píxeles
-                  </div>
-                )}
+          {/* Panel de información inferior AR */}
+          <div className="absolute bottom-0 left-0 right-0 ar-transparent backdrop-blur-md p-4">
+            <div className="flex justify-between items-center text-xs">
+              <div className="flex items-center gap-2">
+                <div className={`w-2 h-2 rounded-full ${isCapturing ? 'bg-green-400' : 'bg-red-400'} animate-pulse`} />
+                <span className="text-gray-300">{isCapturing ? 'Cámara Activa' : 'Cámara Inactiva'}</span>
               </div>
-            );
-          })()}
-        </div>
+              <div className="flex items-center gap-2 text-gray-300">
+                <span>FPS: {frameCount}</span>
+                <span>•</span>
+                <span>{videoContainer.width}x{videoContainer.height}</span>
+              </div>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );

@@ -27,6 +27,14 @@ export default defineConfig(({ mode }) => ({
   },
   build: {
     rollupOptions: {
+      external: [
+        '@tensorflow/tfjs',
+        '@tensorflow/tfjs-backend-webgl',
+        '@tensorflow/tfjs-backend-cpu',
+        '@tensorflow-models/coco-ssd',
+        '@mediapipe/tasks-vision',
+        'ml-matrix'
+      ],
       output: {
         assetFileNames: (assetInfo) => {
           if (assetInfo.name === 'measurementWorker.js') {
@@ -34,6 +42,14 @@ export default defineConfig(({ mode }) => ({
           }
           return 'assets/[name]-[hash][extname]';
         },
+        globals: {
+          '@tensorflow/tfjs': 'tf',
+          '@tensorflow/tfjs-backend-webgl': 'tf',
+          '@tensorflow/tfjs-backend-cpu': 'tf',
+          '@tensorflow-models/coco-ssd': 'cocoSsd',
+          '@mediapipe/tasks-vision': 'mediapipe',
+          'ml-matrix': 'mlMatrix'
+        }
       },
     },
   },

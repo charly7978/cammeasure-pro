@@ -237,15 +237,15 @@ export const CameraView: React.FC<CameraViewProps> = ({
 
   // RENDERIZAR COMPONENTE
   return (
-    <div className="relative w-full h-full bg-black" ref={containerRef}>
-      {/* VIDEO PRINCIPAL */}
+    <div className="camera-container relative w-full h-full bg-black" ref={containerRef}>
+      {/* VIDEO PRINCIPAL - PANTALLA COMPLETA */}
       <div className="relative w-full h-full overflow-hidden">
         <video
           ref={videoRef}
           autoPlay
           playsInline
           muted
-          className="w-full h-full object-cover"
+          className="camera-view w-full h-full object-cover"
           style={{ transform: currentCamera === 'front' ? 'scaleX(-1)' : 'none' }}
         />
         
@@ -280,13 +280,13 @@ export const CameraView: React.FC<CameraViewProps> = ({
         )}
       </div>
 
-      {/* CONTROLES */}
-      <div className="absolute bottom-4 left-0 right-0 flex justify-center items-center gap-4 px-4">
+      {/* CONTROLES REDISEÑADOS - POSICIONAMIENTO INTELIGENTE */}
+      <div className="bottom-center-ui ui-overlay flex justify-center items-center gap-4 px-6 py-3 floating-element">
         <Button
           variant="secondary"
           size="icon"
           onClick={handleSwitchCamera}
-          className="bg-black/50 hover:bg-black/70 text-white"
+          className="bg-white/10 hover:bg-white/20 text-white border-white/20 backdrop-blur-sm"
         >
           <SwitchCamera className="h-5 w-5" />
         </Button>
@@ -295,7 +295,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
           variant={showGrid ? "default" : "secondary"}
           size="icon"
           onClick={() => setShowGrid(!showGrid)}
-          className="bg-black/50 hover:bg-black/70 text-white"
+          className="bg-white/10 hover:bg-white/20 text-white border-white/20 backdrop-blur-sm"
         >
           <Grid3X3 className="h-5 w-5" />
         </Button>
@@ -303,7 +303,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
         <Button
           size="lg"
           onClick={captureImage}
-          className="bg-white text-black hover:bg-gray-200 rounded-full w-16 h-16"
+          className="bg-white/90 text-black hover:bg-white rounded-full w-16 h-16 shadow-lg backdrop-blur-sm"
         >
           <Camera className="h-6 w-6" />
         </Button>
@@ -312,86 +312,103 @@ export const CameraView: React.FC<CameraViewProps> = ({
           variant={isRealTimeMeasurement ? "default" : "secondary"}
           size="icon"
           onClick={() => setIsRealTimeMeasurement(!isRealTimeMeasurement)}
-          className="bg-black/50 hover:bg-black/70 text-white"
+          className="bg-white/10 hover:bg-white/20 text-white border-white/20 backdrop-blur-sm"
         >
           {isRealTimeMeasurement ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
         </Button>
       </div>
 
-      {/* INDICADORES DE ESTADO */}
-      <div className="absolute top-4 left-4 flex flex-col gap-2">
-        <Badge variant={hasPermissions ? "default" : "destructive"}>
-          {hasPermissions ? "Cámara OK" : "Sin permisos"}
-        </Badge>
+      {/* INDICADORES DE ESTADO - POSICIÓN TOP LEFT */}
+      <div className="top-left-ui flex flex-col gap-2 floating-element">
+        <div className="status-indicator">
+          <Badge variant={hasPermissions ? "default" : "destructive"} className="bg-transparent border-none">
+            {hasPermissions ? "📹 Cámara OK" : "❌ Sin permisos"}
+          </Badge>
+        </div>
         
         {isProcessing && (
-          <Badge variant="secondary" className="bg-blue-500/80 text-white">
-            Procesando...
-          </Badge>
+          <div className="status-indicator">
+            <Badge variant="secondary" className="bg-blue-500/80 text-white border-none">
+              🔄 Procesando...
+            </Badge>
+          </div>
         )}
         
         {detectedObjects.length > 0 && (
-          <Badge variant="default" className="bg-green-500/80 text-white">
-            {detectedObjects.length} objeto{detectedObjects.length !== 1 ? 's' : ''} detectado{detectedObjects.length !== 1 ? 's' : ''}
-          </Badge>
+          <div className="status-indicator">
+            <Badge variant="default" className="bg-green-500/80 text-white border-none">
+              🎯 {detectedObjects.length} objeto{detectedObjects.length !== 1 ? 's' : ''} detectado{detectedObjects.length !== 1 ? 's' : ''}
+            </Badge>
+          </div>
         )}
 
-        <Badge variant="outline" className="bg-black/50 text-white border-white/30">
-          Frame: {frameCount}
-        </Badge>
+        <div className="status-indicator">
+          <Badge variant="outline" className="bg-white/10 text-white border-white/30">
+            📊 Frame: {frameCount}
+          </Badge>
+        </div>
       </div>
 
-      {/* INFORMACIÓN DE MEDICIÓN MEJORADA */}
+      {/* INFORMACIÓN DE MEDICIÓN MEJORADA - POSICIÓN TOP RIGHT */}
       {detectedObjects.length > 0 && (
-        <div className="absolute top-4 right-4 bg-black/80 text-white p-3 rounded-lg text-sm max-w-64">
-          <div className="font-semibold mb-2 flex items-center gap-2">
-            <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-            🔍 Detección OpenCV Avanzada
-          </div>
-          
-          {(() => {
-            const obj = detectedObjects[0];
-            if (!obj) return null;
+        <div className="top-right-ui ui-overlay floating-element max-w-80">
+          <div className="text-white">
+            <div className="font-semibold mb-3 flex items-center gap-2">
+              <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
+              <span className="text-lg">🔍 Detección OpenCV</span>
+            </div>
             
-            return (
-              <div className="space-y-1">
-                <div className="flex justify-between">
-                  <span>Ancho:</span>
-                  <span className="font-mono text-green-400">
-                    {obj.dimensions.width.toFixed(1)} {obj.dimensions.unit}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Alto:</span>
-                  <span className="font-mono text-cyan-400">
-                    {obj.dimensions.height.toFixed(1)} {obj.dimensions.unit}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Área:</span>
-                  <span className="font-mono text-blue-400">
-                    {obj.dimensions.area.toFixed(0)} {obj.dimensions.unit}²
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Confianza:</span>
-                  <span className="font-mono text-yellow-400">
-                    {Math.round(obj.confidence * 100)}%
-                  </span>
-                </div>
-                {calibrationData?.isCalibrated && (
-                  <div className="mt-2 pt-2 border-t border-white/20 text-xs text-green-300">
-                    ✅ Medición calibrada en {obj.dimensions.unit}
+            {(() => {
+              const obj = detectedObjects[0];
+              if (!obj) return null;
+              
+              return (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <div>
+                        <span className="text-sm text-gray-300">↔️ Ancho</span>
+                        <div className="font-mono text-green-400 text-xl font-bold">
+                          {obj.dimensions.width.toFixed(1)} {obj.dimensions.unit}
+                        </div>
+                      </div>
+                      <div>
+                        <span className="text-sm text-gray-300">📐 Área</span>
+                        <div className="font-mono text-blue-400 text-lg font-bold">
+                          {obj.dimensions.area.toFixed(0)} {obj.dimensions.unit}²
+                        </div>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <div>
+                        <span className="text-sm text-gray-300">↕️ Alto</span>
+                        <div className="font-mono text-cyan-400 text-xl font-bold">
+                          {obj.dimensions.height.toFixed(1)} {obj.dimensions.unit}
+                        </div>
+                      </div>
+                      <div>
+                        <span className="text-sm text-gray-300">🎯 Confianza</span>
+                        <div className="font-mono text-yellow-400 text-lg font-bold">
+                          {Math.round(obj.confidence * 100)}%
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                )}
-                {!calibrationData?.isCalibrated && obj.dimensions.unit === 'px' && (
-                  <div className="mt-2 pt-2 border-t border-white/20 text-xs text-amber-300">
-                    ⚠️ Sin calibrar - valores en píxeles
-                  </div>
-                )}
-              </div>
-            );
-          })()}
+                  
+                  {calibrationData?.isCalibrated && (
+                    <div className="mt-3 pt-3 border-t border-white/20 text-sm text-green-300">
+                      ✅ Medición calibrada en {obj.dimensions.unit}
+                    </div>
+                  )}
+                  {!calibrationData?.isCalibrated && obj.dimensions.unit === 'px' && (
+                    <div className="mt-3 pt-3 border-t border-white/20 text-sm text-amber-300">
+                      ⚠️ Sin calibrar - valores en píxeles
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
         </div>
       )}
     </div>

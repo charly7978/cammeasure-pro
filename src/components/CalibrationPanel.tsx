@@ -42,6 +42,89 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const [videoSize, setVideoSize] = useState({ width: 0, height: 0 });
+
+  // NUEVO: Sincronizar dimensiones del canvas con el video
+  useEffect(() => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    
+    if (!video || !canvas) return;
+
+    const updateCanvasSize = () => {
+      // Obtener dimensiones reales del video
+      const videoWidth = video.videoWidth;
+      const videoHeight = video.videoHeight;
+      
+      if (videoWidth > 0 && videoHeight > 0) {
+        // Actualizar canvas para que coincida con el video
+        canvas.width = videoWidth;
+        canvas.height = videoHeight;
+        setVideoSize({ width: videoWidth, height: videoHeight });
+        
+        console.log(`📹 Canvas sincronizado: ${videoWidth}x${videoHeight}`);
+        
+        // Limpiar canvas cuando cambie el tamaño
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.clearRect(0, 0, videoWidth, videoHeight);
+        }
+        
+        // Redibujar puntos existentes si los hay
+        if (calibrationPoints.length > 0) {
+          redrawCalibrationPoints();
+        }
+      }
+    };
+
+    // Escuchar eventos de cambio de metadatos del video
+    video.addEventListener('loadedmetadata', updateCanvasSize);
+    video.addEventListener('resize', updateCanvasSize);
+    
+    // Verificar dimensiones inmediatamente si el video ya está cargado
+    if (video.readyState >= 1) {
+      updateCanvasSize();
+    }
+
+    return () => {
+      video.removeEventListener('loadedmetadata', updateCanvasSize);
+      video.removeEventListener('resize', updateCanvasSize);
+    };
+  }, [isCalibrating, calibrationPoints]);
+
+  // NUEVO: Función para redibujar puntos de calibración
+  const redrawCalibrationPoints = () => {
+    const canvas = canvasRef.current;
+    if (!canvas || calibrationPoints.length === 0) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Limpiar canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Redibujar puntos
+    calibrationPoints.forEach((point, index) => {
+      ctx.fillStyle = '#84cc16';
+      ctx.beginPath();
+      ctx.arc(point.x, point.y, 5, 0, 2 * Math.PI);
+      ctx.fill();
+      
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '12px Arial';
+      ctx.fillText(`${index + 1}`, point.x + 8, point.y - 8);
+    });
+
+    // Dibujar línea si hay 2 puntos
+    if (calibrationPoints.length === 2) {
+      ctx.strokeStyle = '#84cc16';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(calibrationPoints[0].x, calibrationPoints[0].y);
+      ctx.lineTo(calibrationPoints[1].x, calibrationPoints[1].y);
+      ctx.stroke();
+    }
+  };
 
   useEffect(() => {
     // Solo enviar calibración inicial si está realmente calibrada
@@ -103,13 +186,21 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: { 
           facingMode: 'environment',
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
+          width: { ideal: 1280, min: 640, max: 1920 },
+          height: { ideal: 720, min: 480, max: 1080 }
         } 
       });
       setCameraStream(stream);
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        // Esperar a que el video se cargue completamente
+        await new Promise<void>((resolve) => {
+          if (videoRef.current) {
+            videoRef.current.onloadedmetadata = () => {
+              resolve();
+            };
+          }
+        });
       }
       setIsCalibrating(true);
       setCalibrationPoints([]);
@@ -127,6 +218,7 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
     }
     setIsCalibrating(false);
     setCalibrationPoints([]);
+    setVideoSize({ width: 0, height: 0 });
   };
 
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -136,8 +228,12 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
     if (!canvas) return;
 
     const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    // CORREGIDO: Calcular coordenadas relativas al canvas real, no al contenedor
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
 
     const newPoints = [...calibrationPoints, { x, y }];
     setCalibrationPoints(newPoints);
@@ -381,31 +477,67 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
           </Button>
         )}
 
-        {/* Vista de calibración con cámara */}
+        {/* Vista de calibración con cámara - MEJORADA PARA MODO INMERSIVO */}
         {isCalibrating && (
           <div className="space-y-4">
-            <div className="relative">
+            <div className="calibration-video-container relative bg-black rounded-lg overflow-hidden">
               <video
                 ref={videoRef}
                 autoPlay
                 playsInline
                 muted
-                className="w-full h-64 object-cover rounded-lg bg-black"
+                className="w-full h-64 object-cover bg-black camera-view"
               />
               <canvas
                 ref={canvasRef}
-                width={320}
-                height={240}
-                className="absolute inset-0 w-full h-full cursor-crosshair"
+                className="absolute inset-0 w-full h-full cursor-crosshair measurement-active"
                 onClick={handleCanvasClick}
+                style={{
+                  // CORREGIDO: Asegurar que el canvas se escale correctamente
+                  objectFit: 'cover'
+                }}
               />
               
-              {/* Instrucciones superpuestas */}
-              <div className="absolute top-2 left-2 bg-black/80 text-white p-2 rounded text-sm">
-                {calibrationPoints.length === 0 && "1. Haz clic en un extremo del objeto"}
-                {calibrationPoints.length === 1 && "2. Haz clic en el otro extremo"}
-                {calibrationPoints.length === 2 && `Distancia: ${referencePixelLength.toFixed(1)} píxeles`}
+              {/* Instrucciones superpuestas - MEJORADAS */}
+              <div className="absolute top-4 left-4 ui-overlay floating-element">
+                <div className="text-white text-sm font-medium">
+                  {calibrationPoints.length === 0 && "1️⃣ Haz clic en un extremo del objeto"}
+                  {calibrationPoints.length === 1 && "2️⃣ Haz clic en el otro extremo"}
+                  {calibrationPoints.length === 2 && (
+                    <div className="space-y-1">
+                      <div>✅ Puntos seleccionados</div>
+                      <div className="text-green-400">📏 {referencePixelLength.toFixed(1)} píxeles</div>
+                    </div>
+                  )}
+                </div>
               </div>
+
+              {/* NUEVO: Información de dimensiones del video - MEJORADA */}
+              {videoSize.width > 0 && (
+                <div className="absolute top-4 right-4 ui-overlay floating-element">
+                  <div className="text-white text-xs">
+                    <div className="flex items-center gap-2">
+                      <span>📹</span>
+                      <span>{videoSize.width}x{videoSize.height}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* NUEVO: Indicador de objeto seleccionado */}
+              {selectedObjectType && (
+                <div className="absolute bottom-4 left-4 ui-overlay floating-element">
+                  <div className="text-white text-sm">
+                    <div className="flex items-center gap-2">
+                      <span>🎯</span>
+                      <span>{realCalibrationSystem.getReferenceObjects()[selectedObjectType as keyof ReturnType<typeof realCalibrationSystem.getReferenceObjects>]?.name}</span>
+                      <span className="text-green-400">
+                        ({realCalibrationSystem.getReferenceObjects()[selectedObjectType as keyof ReturnType<typeof realCalibrationSystem.getReferenceObjects>]?.size}mm)
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="flex gap-2">

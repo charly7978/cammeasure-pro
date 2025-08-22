@@ -285,8 +285,8 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-background p-4 space-y-4">
-      {/* Header */}
-      <div className="text-center space-y-3">
+      {/* Header - Ocultar en modo inmersivo */}
+      <div className="text-center space-y-3 hide-in-immersive">
         <div className="flex items-center justify-center gap-3">
           <div className="p-2 bg-gradient-primary rounded-lg shadow-measurement">
             <Ruler className="w-6 h-6 text-primary-foreground" />
@@ -343,9 +343,9 @@ const Index = () => {
         </div>
       </div>
 
-      {/* Advertencia de calibración */}
+      {/* Advertencia de calibración - Ocultar en modo inmersivo */}
       {!calibrationData?.isCalibrated && (
-        <Card className="p-4 bg-amber-500/10 border-amber-500/30">
+        <Card className="p-4 bg-amber-500/10 border-amber-500/30 hide-in-immersive">
           <div className="flex items-center gap-3">
             <AlertTriangle className="w-5 h-5 text-amber-500" />
             <div className="flex-1">
@@ -364,9 +364,9 @@ const Index = () => {
         </Card>
       )}
 
-      {/* Panel de información en tiempo real - OPTIMIZADO */}
+      {/* Panel de información en tiempo real - SOLO EN MODO NO INMERSIVO */}
       {realTimeObjects.length > 0 && (
-        <Card className={`p-4 border ${
+        <Card className={`p-4 border hide-in-immersive ${
           realTimeObjects[0] && hasEstimated3D(realTimeObjects[0])
             ? 'bg-gradient-to-r from-purple-900/20 to-blue-900/20 border-purple-500/30' 
             : 'bg-gradient-to-r from-green-900/20 to-blue-900/20 border-green-500/30'
@@ -485,7 +485,7 @@ const Index = () => {
 
       {/* Main Interface */}
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as any)}>
-        <TabsList className="grid w-full grid-cols-3 bg-card border border-border">
+        <TabsList className="tabs-container grid w-full grid-cols-3 bg-card border border-border">
           <TabsTrigger 
             value="camera" 
             className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
@@ -510,7 +510,7 @@ const Index = () => {
         </TabsList>
 
         <div className="mt-4">
-          <TabsContent value="camera" className="space-y-4">
+          <TabsContent value="camera" className="space-y-4 measurement-container">
             <CameraView
               onImageCapture={handleImageCapture}
               isActive={activeTab === 'camera'}
@@ -518,8 +518,8 @@ const Index = () => {
               onRealTimeObjects={handleRealTimeObjects}
             />
             
-            {/* Instrucciones */}
-            <Card className="p-3 bg-primary/5 border-primary/20">
+            {/* Instrucciones - Ocultar en modo inmersivo */}
+            <Card className="p-3 bg-primary/5 border-primary/20 hide-in-immersive">
               <h4 className="font-medium mb-2 text-primary text-sm">🎯 Instrucciones Optimizadas</h4>
               <ul className="text-xs text-muted-foreground space-y-1">
                 <li>• Apunta hacia el objeto y mantén centrado</li>
@@ -658,6 +658,23 @@ const Index = () => {
           </TabsContent>
         </div>
       </Tabs>
+
+      {/* NUEVO: Status compacto para modo inmersivo */}
+      <div className="immersive-status-overlay top-left-ui ui-overlay floating-element" style={{ display: 'none' }}>
+        <div className="flex items-center gap-2 text-sm text-white">
+          <Badge 
+            variant={calibrationData?.isCalibrated ? "default" : "destructive"}
+            className="bg-transparent border-none text-xs"
+          >
+            {calibrationData?.isCalibrated ? '🎯 Calibrado' : '⚠️ Sin Calibrar'}
+          </Badge>
+          {objectCount > 0 && (
+            <Badge className="bg-green-500/80 text-white border-none text-xs">
+              🎯 {objectCount}
+            </Badge>
+          )}
+        </div>
+      </div>
     </div>
   );
 };

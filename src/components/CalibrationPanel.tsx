@@ -99,6 +99,14 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
   };
 
   const startCameraCalibration = async () => {
+    // Si hay una cámara de medición activa, detenerla para evitar conflictos de hardware
+    if (window.stopMeasurementCamera) {
+      try {
+        await window.stopMeasurementCamera();
+      } catch (e) {
+        console.warn('No se pudo detener cámara de medición previamente activa:', e);
+      }
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: { 
@@ -110,6 +118,8 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
       setCameraStream(stream);
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        // Asegurar reproducción inmediata en algunos navegadores
+        try { await videoRef.current.play(); } catch {}
       }
       setIsCalibrating(true);
       setCalibrationPoints([]);
@@ -394,8 +404,6 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
               />
               <canvas
                 ref={canvasRef}
-                width={320}
-                height={240}
                 className="absolute inset-0 w-full h-full cursor-crosshair"
                 onClick={handleCanvasClick}
               />

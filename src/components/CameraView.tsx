@@ -17,6 +17,13 @@ import { useCamera } from '@/hooks/useCamera';
 import { DetectedObject } from '@/lib/types';
 import { unifiedOpenCV } from '@/lib/unifiedOpenCVSystem';
 
+// Exponer función global para detener la cámara de medición cuando otra sección la necesite
+declare global {
+  interface Window {
+    stopMeasurementCamera?: () => Promise<void>;
+  }
+}
+
 interface CameraViewProps {
   onImageCapture?: (imageData: ImageData) => void;
   isActive: boolean;
@@ -81,6 +88,9 @@ export const CameraView: React.FC<CameraViewProps> = ({
           
           console.log('✅ CÁMARA INICIADA CORRECTAMENTE');
           
+          // Exponer la función para que otras partes (p. ej. calibración) puedan detener la cámara
+          window.stopMeasurementCamera = stopCamera;
+          
           // INICIAR DETECCIÓN AUTOMÁTICA CUANDO LA CÁMARA ESTÉ LISTA
           if (isActive && isRealTimeMeasurement) {
             intervalId = setInterval(async () => {
@@ -104,6 +114,10 @@ export const CameraView: React.FC<CameraViewProps> = ({
       isMounted = false;
       if (intervalId) {
         clearInterval(intervalId);
+      }
+      // Limpiar referencia global al salir
+      if (window.stopMeasurementCamera === stopCamera) {
+        delete window.stopMeasurementCamera;
       }
     };
   }, [isActive, isRealTimeMeasurement]);
@@ -237,7 +251,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
 
   // RENDERIZAR COMPONENTE
   return (
-    <div className="relative w-full h-full bg-black" ref={containerRef}>
+    <div className="fixed inset-0 w-full h-full bg-black" ref={containerRef}>
       {/* VIDEO PRINCIPAL */}
       <div className="relative w-full h-full overflow-hidden">
         <video

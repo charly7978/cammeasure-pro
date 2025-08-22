@@ -118,15 +118,11 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
       setCameraStream(stream);
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-<<<<<<< Current (Your changes)
-        // Asegurar reproducción inmediata en algunos navegadores
-=======
         // Reproducir cuando los metadatos estén listos (evita pantalla negra)
         videoRef.current.onloadedmetadata = () => {
           videoRef.current?.play().catch(() => {});
         };
         // Intentar también reproducir inmediatamente
->>>>>>> Incoming (Background Agent changes)
         try { await videoRef.current.play(); } catch {}
       }
       // Desactivar scroll para evitar saltos visuales durante la calibración

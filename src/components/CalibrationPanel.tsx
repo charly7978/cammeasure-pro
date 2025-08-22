@@ -126,7 +126,7 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
         try { await videoRef.current.play(); } catch {}
       }
       // Desactivar scroll para evitar saltos visuales durante la calibración
-      document.body.style.overflow = 'hidden';
+      // Opcional: podrías desactivar scroll aquí, pero causa saltos en algunos navegadores
       setIsCalibrating(true);
       setCalibrationPoints([]);
       setReferencePixelLength(0);
@@ -144,7 +144,7 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
     setIsCalibrating(false);
     setCalibrationPoints([]);
     // Restaurar scroll
-    document.body.style.overflow = '';
+    // document.body.style.overflow = '';
   };
 
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -402,17 +402,17 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
         {/* Vista de calibración con cámara */}
         {isCalibrating && (
           <div className="space-y-4">
-            <div className="relative">
+            <div className="relative w-full h-[60vh] rounded-lg overflow-hidden bg-black">
               <video
                 ref={videoRef}
                 autoPlay
                 playsInline
                 muted
-                className="w-full h-64 object-cover rounded-lg bg-black"
+                className="absolute inset-0 w-full h-full object-cover"
               />
               <canvas
                 ref={canvasRef}
-                className="absolute inset-0 w-full h-full cursor-crosshair"
+                className="absolute inset-0 w-full h-full cursor-crosshair bg-transparent"
                 onClick={handleCanvasClick}
               />
               

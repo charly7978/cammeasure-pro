@@ -103,36 +103,86 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
     if (window.stopMeasurementCamera) {
       try {
         await window.stopMeasurementCamera();
+        // Esperar un poco para asegurar que la cámara se libere completamente
+        await new Promise(resolve => setTimeout(resolve, 500));
       } catch (e) {
         console.warn('No se pudo detener cámara de medición previamente activa:', e);
       }
     }
+    
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { 
-          facingMode: 'environment',
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
-        } 
-      });
-      setCameraStream(stream);
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        // Reproducir cuando los metadatos estén listos (evita pantalla negra)
-        videoRef.current.onloadedmetadata = () => {
-          videoRef.current?.play().catch(() => {});
-        };
-        // Intentar también reproducir inmediatamente
-        try { await videoRef.current.play(); } catch {}
-      }
-      // Desactivar scroll para evitar saltos visuales durante la calibración
-      document.body.style.overflow = 'hidden';
+      // Configurar el estado antes de solicitar la cámara
       setIsCalibrating(true);
       setCalibrationPoints([]);
       setReferencePixelLength(0);
+      
+      // Desactivar scroll para evitar saltos visuales durante la calibración
+      document.body.style.overflow = 'hidden';
+      
+      // Configurar el video antes de obtener el stream
+      if (videoRef.current) {
+        videoRef.current.setAttribute('autoplay', 'true');
+        videoRef.current.setAttribute('playsinline', 'true');
+        videoRef.current.setAttribute('muted', 'true');
+      }
+      
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { 
+          facingMode: 'environment',
+          width: { ideal: 1920, min: 640 },
+          height: { ideal: 1080, min: 480 },
+          aspectRatio: { ideal: 16/9 }
+        } 
+      });
+      
+      setCameraStream(stream);
+      
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        
+        // Esperar a que el video esté completamente cargado antes de reproducir
+        await new Promise<void>((resolve) => {
+          if (videoRef.current) {
+            videoRef.current.onloadedmetadata = async () => {
+              try {
+                if (videoRef.current) {
+                  // Asegurar dimensiones correctas del canvas
+                  if (canvasRef.current && videoRef.current.videoWidth > 0) {
+                    canvasRef.current.width = videoRef.current.videoWidth;
+                    canvasRef.current.height = videoRef.current.videoHeight;
+                  }
+                  await videoRef.current.play();
+                  console.log('✅ Video de calibración iniciado correctamente');
+                }
+              } catch (playError) {
+                console.error('Error reproduciendo video:', playError);
+              }
+              resolve();
+            };
+            
+            // Timeout de seguridad
+            setTimeout(resolve, 3000);
+          }
+        });
+      }
+      
     } catch (error) {
       console.error('Error accessing camera:', error);
-      alert('No se pudo acceder a la cámara. Usa calibración manual.');
+      setIsCalibrating(false);
+      document.body.style.overflow = '';
+      
+      let errorMessage = 'No se pudo acceder a la cámara.';
+      if (error instanceof Error) {
+        if (error.name === 'NotAllowedError') {
+          errorMessage = 'Permiso de cámara denegado. Por favor, permite el acceso a la cámara.';
+        } else if (error.name === 'NotFoundError') {
+          errorMessage = 'No se encontró una cámara disponible.';
+        } else if (error.name === 'NotReadableError') {
+          errorMessage = 'La cámara está siendo usada por otra aplicación.';
+        }
+      }
+      
+      alert(errorMessage + ' Usa calibración manual.');
     }
   };
 

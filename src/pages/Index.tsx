@@ -284,11 +284,11 @@ const Index = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background p-4 space-y-4">
+    <div className="min-h-screen bg-background p-4 space-y-4 no-bounce">
       {/* Header */}
-      <div className="text-center space-y-3">
+      <div className="text-center space-y-3 ar-fade-in">
         <div className="flex items-center justify-center gap-3">
-          <div className="p-2 bg-gradient-primary rounded-lg shadow-measurement">
+          <div className="p-2 bg-gradient-primary rounded-lg shadow-measurement glow-blue">
             <Ruler className="w-6 h-6 text-primary-foreground" />
           </div>
           <div>
@@ -305,7 +305,7 @@ const Index = () => {
         <div className="flex items-center justify-center gap-2 flex-wrap">
           <Badge 
             variant="default"
-            className="text-xs bg-green-500 text-white"
+            className="text-xs bg-green-500 text-white glow-green"
           >
             <Zap className="w-3 h-3 mr-1" />
             OPTIMIZADO
@@ -313,7 +313,7 @@ const Index = () => {
           
           <Badge 
             variant={calibrationData?.isCalibrated ? "default" : "destructive"}
-            className={`text-xs ${calibrationData?.isCalibrated ? "bg-calibration text-background" : ""}`}
+            className={`text-xs ${calibrationData?.isCalibrated ? "bg-calibration text-background glow-green" : ""}`}
           >
             <Target className="w-3 h-3 mr-1" />
             {calibrationData?.isCalibrated ? 'Calibrado' : 'Sin Calibrar'}
@@ -345,7 +345,7 @@ const Index = () => {
 
       {/* Advertencia de calibración */}
       {!calibrationData?.isCalibrated && (
-        <Card className="p-4 bg-amber-500/10 border-amber-500/30">
+        <Card className="p-4 bg-amber-500/10 border-amber-500/30 ar-fade-in">
           <div className="flex items-center gap-3">
             <AlertTriangle className="w-5 h-5 text-amber-500" />
             <div className="flex-1">
@@ -356,7 +356,7 @@ const Index = () => {
             </div>
             <button 
               onClick={() => setActiveTab('calibration')}
-              className="px-3 py-1 bg-amber-500 text-black rounded text-sm font-medium hover:bg-amber-400"
+              className="px-3 py-1 bg-amber-500 text-black rounded text-sm font-medium hover:bg-amber-400 transform hover:scale-105 transition-all"
             >
               Calibrar
             </button>
@@ -366,10 +366,10 @@ const Index = () => {
 
       {/* Panel de información en tiempo real - OPTIMIZADO */}
       {realTimeObjects.length > 0 && (
-        <Card className={`p-4 border ${
+        <Card className={`p-4 border ar-fade-in ${
           realTimeObjects[0] && hasEstimated3D(realTimeObjects[0])
-            ? 'bg-gradient-to-r from-purple-900/20 to-blue-900/20 border-purple-500/30' 
-            : 'bg-gradient-to-r from-green-900/20 to-blue-900/20 border-green-500/30'
+            ? 'bg-gradient-to-r from-purple-900/20 to-blue-900/20 border-purple-500/30 glow-purple' 
+            : 'bg-gradient-to-r from-green-900/20 to-blue-900/20 border-green-500/30 glow-green'
         }`}>
           <h3 className={`font-semibold mb-3 flex items-center gap-2 ${
             realTimeObjects[0] && hasEstimated3D(realTimeObjects[0]) ? 'text-purple-400' : 'text-green-400'
@@ -485,24 +485,24 @@ const Index = () => {
 
       {/* Main Interface */}
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as any)}>
-        <TabsList className="grid w-full grid-cols-3 bg-card border border-border">
+        <TabsList className="grid w-full grid-cols-3 bg-card border border-border ar-transparent">
           <TabsTrigger 
             value="camera" 
-            className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+            className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all duration-300"
           >
             <Camera className="w-4 h-4 mr-2" />
             Cámara
           </TabsTrigger>
           <TabsTrigger 
             value="calibration"
-            className="data-[state=active]:bg-calibration data-[state=active]:text-background"
+            className="data-[state=active]:bg-calibration data-[state=active]:text-background transition-all duration-300"
           >
             <Target className="w-4 h-4 mr-2" />
             Calibración
           </TabsTrigger>
           <TabsTrigger 
             value="measurements"
-            className="data-[state=active]:bg-accent data-[state=active]:text-accent-foreground"
+            className="data-[state=active]:bg-accent data-[state=active]:text-accent-foreground transition-all duration-300"
           >
             <Ruler className="w-4 h-4 mr-2" />
             Mediciones
@@ -510,7 +510,7 @@ const Index = () => {
         </TabsList>
 
         <div className="mt-4">
-          <TabsContent value="camera" className="space-y-4">
+          <TabsContent value="camera" className="space-y-4 tab-transition">
             {activeTab === 'camera' ? (
               <ImmersiveMode>
                 <CameraView
@@ -523,7 +523,7 @@ const Index = () => {
             ) : null}
             
             {/* Instrucciones */}
-            <Card className="p-3 bg-primary/5 border-primary/20">
+            <Card className="p-3 bg-primary/5 border-primary/20 ar-transparent">
               <h4 className="font-medium mb-2 text-primary text-sm">🎯 Instrucciones Optimizadas</h4>
               <ul className="text-xs text-muted-foreground space-y-1">
                 <li>• Apunta hacia el objeto y mantén centrado</li>
@@ -538,18 +538,18 @@ const Index = () => {
             </Card>
           </TabsContent>
 
-          <TabsContent value="calibration" className="space-y-4">
+          <TabsContent value="calibration" className="space-y-4 tab-transition">
             <CalibrationPanel
               onCalibrationChange={handleCalibrationChange}
               deviceInfo={sensorData?.deviceInfo}
             />
           </TabsContent>
 
-          <TabsContent value="measurements" className="space-y-4">
+          <TabsContent value="measurements" className="space-y-4 tab-transition">
             <div className="grid lg:grid-cols-2 gap-6">
               <div className="space-y-4">
                 {capturedImage && (
-                  <Card className="p-4">
+                  <Card className="p-4 ar-transparent">
                     <h4 className="font-medium mb-3">Imagen Capturada - {measurementMode.toUpperCase()}</h4>
                     <div className="text-center p-8 bg-muted/20 rounded-lg">
                       <Camera className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
@@ -561,7 +561,7 @@ const Index = () => {
                 )}
                 
                 {!capturedImage && realTimeObjects.length === 0 && (
-                  <Card className="p-8 text-center">
+                  <Card className="p-8 text-center ar-transparent">
                     <Camera className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
                     <h3 className="text-lg font-semibold mb-2">Sin datos</h3>
                     <p className="text-muted-foreground">
@@ -571,7 +571,7 @@ const Index = () => {
                 )}
 
                 {realTimeObjects.length > 0 && (
-                  <Card className={`p-4 ${
+                  <Card className={`p-4 ar-transparent ${
                     realTimeObjects[0] && hasEstimated3D(realTimeObjects[0])
                       ? 'bg-gradient-to-r from-purple-900/10 to-blue-900/10 border-purple-500/20' 
                       : 'bg-gradient-to-r from-green-900/10 to-blue-900/10 border-green-500/20'

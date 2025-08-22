@@ -96,6 +96,19 @@ export class HyperAdvancedSilhouetteDetector {
       return this.lastResult || this.getEmptyResult();
     }
 
+    // MODO DE EMERGENCIA: Detección rápida básica si el sistema avanzado falla
+    try {
+      // Primero intentar detección básica rápida
+      const quickResult = await this.quickDetection(imageData, calibrationData);
+      if (quickResult && quickResult.objects.length > 0) {
+        console.log('✅ Detección rápida exitosa');
+        this.lastResult = quickResult;
+        return quickResult;
+      }
+    } catch (e) {
+      console.log('⚠️ Detección rápida falló, continuando con pipeline completo');
+    }
+
     // Optimizar imagen según capacidades del dispositivo
     const optimizedImageData = this.performanceOptimizer.optimizeImageData(imageData);
     const { width, height } = optimizedImageData;
@@ -1889,5 +1902,235 @@ export class HyperAdvancedSilhouetteDetector {
       ctx.fillText(`Contornos encontrados: ${result.debugInfo.contoursFound}`, 20, 90);
       ctx.fillText(`Algoritmos: ${result.debugInfo.algorithmsUsed.length}`, 20, 110);
     }
+  }
+
+  /**
+   * DETECCIÓN RÁPIDA DE EMERGENCIA
+   */
+  private async quickDetection(
+    imageData: ImageData,
+    calibrationData: CalibrationData | null
+  ): Promise<HyperAdvancedDetectionResult> {
+    const { data, width, height } = imageData;
+    const startTime = performance.now();
+    
+    // Conversión rápida a escala de grises
+    const grayscale = new Uint8Array(width * height);
+    for (let i = 0; i < data.length; i += 4) {
+      grayscale[i / 4] = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
+    }
+    
+    // Detección de bordes simple con Sobel
+    const edges = new Uint8Array(width * height);
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        const idx = y * width + x;
+        
+        const gx = 
+          -grayscale[(y-1) * width + (x-1)] - 2*grayscale[y * width + (x-1)] - grayscale[(y+1) * width + (x-1)] +
+          grayscale[(y-1) * width + (x+1)] + 2*grayscale[y * width + (x+1)] + grayscale[(y+1) * width + (x+1)];
+        
+        const gy = 
+          -grayscale[(y-1) * width + (x-1)] - 2*grayscale[(y-1) * width + x] - grayscale[(y-1) * width + (x+1)] +
+          grayscale[(y+1) * width + (x-1)] + 2*grayscale[(y+1) * width + x] + grayscale[(y+1) * width + (x+1)];
+        
+        const magnitude = Math.sqrt(gx * gx + gy * gy);
+        edges[idx] = magnitude > 30 ? 255 : 0;
+      }
+    }
+    
+    // Encontrar componentes conectados simples
+    const visited = new Array(width * height).fill(false);
+    const components: Array<{
+      pixels: number;
+      minX: number;
+      maxX: number;
+      minY: number;
+      maxY: number;
+      points: Array<{x: number, y: number}>;
+    }> = [];
+    
+    // Escanear imagen en pasos para encontrar objetos
+    for (let y = 10; y < height - 10; y += 20) {
+      for (let x = 10; x < width - 10; x += 20) {
+        const idx = y * width + x;
+        
+        if (!visited[idx] && edges[idx] === 0 && grayscale[idx] < 200) {
+          const component = this.floodFillQuick(edges, grayscale, visited, x, y, width, height);
+          
+          if (component.pixels > 500) { // Área mínima
+            components.push(component);
+          }
+        }
+      }
+    }
+    
+    // Seleccionar el componente más grande y centrado
+    let bestComponent = null;
+    let bestScore = -1;
+    
+    const centerX = width / 2;
+    const centerY = height / 2;
+    
+    for (const comp of components) {
+      const compCenterX = (comp.minX + comp.maxX) / 2;
+      const compCenterY = (comp.minY + comp.maxY) / 2;
+      const distToCenter = Math.sqrt((compCenterX - centerX) ** 2 + (compCenterY - centerY) ** 2);
+      const centralityScore = 1 - (distToCenter / Math.sqrt(centerX * centerX + centerY * centerY));
+      const sizeScore = comp.pixels / (width * height);
+      const score = sizeScore * 0.6 + centralityScore * 0.4;
+      
+      if (score > bestScore) {
+        bestScore = score;
+        bestComponent = comp;
+      }
+    }
+    
+    // Crear objeto detectado
+    const objects: DetectedObject[] = [];
+    
+    if (bestComponent) {
+      const w = bestComponent.maxX - bestComponent.minX + 1;
+      const h = bestComponent.maxY - bestComponent.minY + 1;
+      
+      // Aplicar calibración
+      let realWidth = w;
+      let realHeight = h;
+      let unit: 'px' | 'mm' = 'px';
+      
+      if (calibrationData?.isCalibrated && calibrationData.pixelsPerMm > 0) {
+        realWidth = w / calibrationData.pixelsPerMm;
+        realHeight = h / calibrationData.pixelsPerMm;
+        unit = 'mm';
+      }
+      
+      objects.push({
+        id: `quick_${Date.now()}`,
+        type: 'predominant',
+        x: bestComponent.minX,
+        y: bestComponent.minY,
+        width: w,
+        height: h,
+        area: bestComponent.pixels,
+        confidence: 0.75,
+        contours: bestComponent.points.slice(0, 100),
+        boundingBox: {
+          x: bestComponent.minX,
+          y: bestComponent.minY,
+          width: w,
+          height: h
+        },
+        dimensions: {
+          width: realWidth,
+          height: realHeight,
+          area: realWidth * realHeight,
+          unit,
+          perimeter: 2 * (realWidth + realHeight)
+        },
+        points: bestComponent.points.slice(0, 20).map((p, i) => ({
+          x: p.x,
+          y: p.y,
+          z: 0,
+          confidence: 0.75,
+          timestamp: Date.now() + i
+        })),
+        centerX: (bestComponent.minX + bestComponent.maxX) / 2,
+        centerY: (bestComponent.minY + bestComponent.maxY) / 2
+      });
+    }
+    
+    return {
+      objects,
+      processingTime: performance.now() - startTime,
+      edgeMap: edges,
+      contours: objects.length > 0 ? [objects[0].contours!] : [],
+      segmentationMask: new Uint8Array(width * height),
+      confidenceMap: new Float32Array(width * height),
+      debugInfo: {
+        edgePixels: edges.filter(e => e > 0).length,
+        contoursFound: components.length,
+        validContours: objects.length,
+        averageConfidence: 0.75,
+        algorithmsUsed: ['Quick Detection', 'Sobel', 'Flood Fill'],
+        segmentationQuality: 0.75
+      }
+    };
+  }
+
+  /**
+   * FLOOD FILL RÁPIDO
+   */
+  private floodFillQuick(
+    edges: Uint8Array,
+    grayscale: Uint8Array,
+    visited: boolean[],
+    startX: number,
+    startY: number,
+    width: number,
+    height: number
+  ): any {
+    const stack = [{x: startX, y: startY}];
+    const component = {
+      pixels: 0,
+      minX: width,
+      maxX: 0,
+      minY: height,
+      maxY: 0,
+      points: [] as Array<{x: number, y: number}>
+    };
+    
+    const seedValue = grayscale[startY * width + startX];
+    
+    while (stack.length > 0 && component.pixels < 100000) {
+      const {x, y} = stack.pop()!;
+      const idx = y * width + x;
+      
+      if (x < 0 || x >= width || y < 0 || y >= height || visited[idx] || edges[idx] !== 0) {
+        continue;
+      }
+      
+      // Verificar similitud de color
+      const diff = Math.abs(grayscale[idx] - seedValue);
+      if (diff > 40) continue;
+      
+      visited[idx] = true;
+      component.pixels++;
+      component.minX = Math.min(component.minX, x);
+      component.maxX = Math.max(component.maxX, x);
+      component.minY = Math.min(component.minY, y);
+      component.maxY = Math.max(component.maxY, y);
+      
+      // Guardar algunos puntos del contorno
+      if (component.points.length < 200) {
+        // Es punto de borde?
+        let isBorder = false;
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const nx = x + dx;
+            const ny = y + dy;
+            if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+              if (edges[ny * width + nx] !== 0) {
+                isBorder = true;
+                break;
+              }
+            }
+          }
+          if (isBorder) break;
+        }
+        
+        if (isBorder) {
+          component.points.push({x, y});
+        }
+      }
+      
+      // Agregar vecinos
+      stack.push({x: x + 1, y});
+      stack.push({x: x - 1, y});
+      stack.push({x, y: y + 1});
+      stack.push({x, y: y - 1});
+    }
+    
+    return component;
   }
 }

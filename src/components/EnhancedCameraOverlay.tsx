@@ -42,10 +42,22 @@ export const EnhancedCameraOverlay: React.FC<EnhancedCameraOverlayProps> = ({
       // Limpiar canvas
       ctx.clearRect(0, 0, width, height);
 
+      // INDICADOR DE FUNCIONAMIENTO - Punto verde parpadeante en esquina
+      ctx.fillStyle = `rgba(0, 255, 65, ${Math.sin(timestamp / 300) * 0.5 + 0.5})`;
+      ctx.beginPath();
+      ctx.arc(20, 20, 5, 0, Math.PI * 2);
+      ctx.fill();
+
       // Dibujar solo el objeto predominante (si existe)
       if (detectedObjects.length > 0) {
         const predominantObject = detectedObjects[0]; // Solo el primero
         drawEnhancedSilhouette(ctx, predominantObject, 0, timestamp);
+      } else {
+        // Si no hay objetos, mostrar texto de estado
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+        ctx.font = '14px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('Buscando objeto...', width / 2, height / 2);
       }
 
       // Debug info si está habilitado
@@ -368,7 +380,14 @@ export const EnhancedCameraOverlay: React.FC<EnhancedCameraOverlayProps> = ({
     <canvas
       ref={canvasRef}
       className="absolute top-0 left-0 w-full h-full pointer-events-none"
-      style={{ zIndex: 10 }}
+      style={{ 
+        zIndex: 10,
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%'
+      }}
     />
   );
 };

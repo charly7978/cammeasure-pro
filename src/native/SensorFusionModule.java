@@ -7,7 +7,6 @@
  */
 package com.cammeasurepro.sensorfusion;
 
-// Corregido: Importaciones necesarias para sensores en Android
 import android.content.Context;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;

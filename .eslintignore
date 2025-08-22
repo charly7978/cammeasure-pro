@@ -1,9 +1,0 @@
-# Archivos y directorios de build de Android
-android/
-ios/
-dist/
-node_modules/
-*.min.js
-build/
-.next/
-out/

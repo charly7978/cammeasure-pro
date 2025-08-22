@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test de Detección de Siluetas</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            background: #222;
+            color: white;
+        }
+        
+        #container {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        
+        canvas {
+            border: 2px solid #444;
+            max-width: 100%;
+        }
+        
+        #info {
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+        
+        button {
+            background: #00ff41;
+            color: black;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        
+        button:hover {
+            background: #00cc33;
+        }
+        
+        #status {
+            margin-top: 10px;
+            padding: 10px;
+            background: rgba(0, 255, 65, 0.1);
+            border: 1px solid #00ff41;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Test de Detección de Siluetas</h1>
+    
+    <div>
+        <button onclick="startTest()">Iniciar Test</button>
+        <button onclick="createTestImage()">Crear Imagen de Prueba</button>
+    </div>
+    
+    <div id="status"></div>
+    
+    <div id="container">
+        <div>
+            <h3>Original</h3>
+            <canvas id="canvas" width="640" height="480"></canvas>
+        </div>
+        <div>
+            <h3>Detección</h3>
+            <canvas id="overlay" width="640" height="480"></canvas>
+        </div>
+    </div>
+    
+    <div id="info"></div>
+    
+    <script>
+        const canvas = document.getElementById('canvas');
+        const overlay = document.getElementById('overlay');
+        const ctx = canvas.getContext('2d');
+        const overlayCtx = overlay.getContext('2d');
+        const status = document.getElementById('status');
+        const info = document.getElementById('info');
+        
+        function updateStatus(msg) {
+            status.innerHTML = msg;
+            console.log(msg);
+        }
+        
+        function createTestImage() {
+            // Limpiar canvas
+            ctx.fillStyle = '#f0f0f0';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Dibujar objetos de prueba
+            // Objeto 1: Rectángulo grande centrado
+            ctx.fillStyle = '#333';
+            ctx.fillRect(200, 150, 240, 180);
+            
+            // Objeto 2: Círculo
+            ctx.beginPath();
+            ctx.arc(100, 100, 60, 0, Math.PI * 2);
+            ctx.fillStyle = '#666';
+            ctx.fill();
+            
+            // Objeto 3: Triángulo
+            ctx.beginPath();
+            ctx.moveTo(500, 100);
+            ctx.lineTo(450, 200);
+            ctx.lineTo(550, 200);
+            ctx.closePath();
+            ctx.fillStyle = '#999';
+            ctx.fill();
+            
+            updateStatus('✅ Imagen de prueba creada');
+        }
+        
+        async function startTest() {
+            updateStatus('🔄 Iniciando prueba de detección...');
+            
+            // Obtener datos de imagen
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            
+            // Simular detección básica con solo JavaScript
+            const result = detectSimple(imageData);
+            
+            // Dibujar resultados
+            drawResults(result);
+            
+            updateStatus(`✅ Detección completada: ${result.objects.length} objetos encontrados`);
+        }
+        
+        function detectSimple(imageData) {
+            const { data, width, height } = imageData;
+            const startTime = performance.now();
+            
+            // Convertir a escala de grises
+            const grayscale = new Uint8Array(width * height);
+            for (let i = 0; i < data.length; i += 4) {
+                grayscale[i / 4] = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
+            }
+            
+            // Detección de bordes simple (Sobel)
+            const edges = new Uint8Array(width * height);
+            for (let y = 1; y < height - 1; y++) {
+                for (let x = 1; x < width - 1; x++) {
+                    const idx = y * width + x;
+                    
+                    // Gradientes Sobel
+                    const gx = 
+                        -1 * grayscale[(y-1) * width + (x-1)] +
+                        -2 * grayscale[y * width + (x-1)] +
+                        -1 * grayscale[(y+1) * width + (x-1)] +
+                        1 * grayscale[(y-1) * width + (x+1)] +
+                        2 * grayscale[y * width + (x+1)] +
+                        1 * grayscale[(y+1) * width + (x+1)];
+                    
+                    const gy = 
+                        -1 * grayscale[(y-1) * width + (x-1)] +
+                        -2 * grayscale[(y-1) * width + x] +
+                        -1 * grayscale[(y-1) * width + (x+1)] +
+                        1 * grayscale[(y+1) * width + (x-1)] +
+                        2 * grayscale[(y+1) * width + x] +
+                        1 * grayscale[(y+1) * width + (x+1)];
+                    
+                    const magnitude = Math.sqrt(gx * gx + gy * gy);
+                    edges[idx] = magnitude > 50 ? 255 : 0;
+                }
+            }
+            
+            // Encontrar objetos simples (componentes conectados)
+            const objects = findConnectedComponents(edges, width, height);
+            
+            return {
+                objects: objects.slice(0, 1), // Solo el objeto más grande
+                processingTime: performance.now() - startTime,
+                edges: edges
+            };
+        }
+        
+        function findConnectedComponents(edges, width, height) {
+            const visited = new Array(width * height).fill(false);
+            const objects = [];
+            
+            for (let y = 10; y < height - 10; y += 20) {
+                for (let x = 10; x < width - 10; x += 20) {
+                    const idx = y * width + x;
+                    
+                    if (!visited[idx] && edges[idx] === 0) {
+                        const component = floodFill(edges, visited, x, y, width, height);
+                        
+                        if (component.pixels > 100) {
+                            objects.push({
+                                x: component.minX,
+                                y: component.minY,
+                                width: component.maxX - component.minX + 1,
+                                height: component.maxY - component.minY + 1,
+                                area: component.pixels,
+                                confidence: 0.8,
+                                dimensions: {
+                                    width: component.maxX - component.minX + 1,
+                                    height: component.maxY - component.minY + 1,
+                                    unit: 'px'
+                                }
+                            });
+                        }
+                    }
+                }
+            }
+            
+            // Ordenar por área y devolver el más grande
+            objects.sort((a, b) => b.area - a.area);
+            return objects;
+        }
+        
+        function floodFill(edges, visited, startX, startY, width, height) {
+            const stack = [{x: startX, y: startY}];
+            const component = {
+                pixels: 0,
+                minX: width,
+                maxX: 0,
+                minY: height,
+                maxY: 0
+            };
+            
+            while (stack.length > 0) {
+                const {x, y} = stack.pop();
+                const idx = y * width + x;
+                
+                if (x < 0 || x >= width || y < 0 || y >= height || visited[idx] || edges[idx] !== 0) {
+                    continue;
+                }
+                
+                visited[idx] = true;
+                component.pixels++;
+                component.minX = Math.min(component.minX, x);
+                component.maxX = Math.max(component.maxX, x);
+                component.minY = Math.min(component.minY, y);
+                component.maxY = Math.max(component.maxY, y);
+                
+                // Agregar vecinos
+                stack.push({x: x + 1, y});
+                stack.push({x: x - 1, y});
+                stack.push({x, y: y + 1});
+                stack.push({x, y: y - 1});
+            }
+            
+            return component;
+        }
+        
+        function drawResults(result) {
+            // Limpiar overlay
+            overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
+            
+            // Dibujar objetos detectados
+            overlayCtx.strokeStyle = '#00ff41';
+            overlayCtx.lineWidth = 3;
+            overlayCtx.font = '16px Arial';
+            overlayCtx.fillStyle = '#00ff41';
+            
+            result.objects.forEach((obj, index) => {
+                // Bounding box
+                overlayCtx.strokeRect(obj.x, obj.y, obj.width, obj.height);
+                
+                // Información
+                const text = `${obj.width} x ${obj.height} px`;
+                overlayCtx.fillText(text, obj.x, obj.y - 5);
+                
+                // Centro
+                const centerX = obj.x + obj.width / 2;
+                const centerY = obj.y + obj.height / 2;
+                overlayCtx.beginPath();
+                overlayCtx.arc(centerX, centerY, 5, 0, Math.PI * 2);
+                overlayCtx.fill();
+            });
+            
+            // Mostrar información
+            info.innerHTML = `
+                <h3>Resultados de la Detección</h3>
+                <p>Objetos detectados: ${result.objects.length}</p>
+                <p>Tiempo de procesamiento: ${result.processingTime.toFixed(1)}ms</p>
+                ${result.objects.map((obj, i) => `
+                    <div style="margin-top: 10px;">
+                        <strong>Objeto ${i + 1}:</strong><br>
+                        Posición: (${obj.x}, ${obj.y})<br>
+                        Tamaño: ${obj.width} x ${obj.height} px<br>
+                        Área: ${obj.area} px²<br>
+                        Confianza: ${(obj.confidence * 100).toFixed(0)}%
+                    </div>
+                `).join('')}
+            `;
+        }
+        
+        // Crear imagen de prueba al cargar
+        window.onload = () => {
+            createTestImage();
+        };
+    </script>
+</body>
+</html>

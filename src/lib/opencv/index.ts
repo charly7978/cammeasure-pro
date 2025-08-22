@@ -3,7 +3,10 @@
  * Arquitectura modular profesional con algoritmos matemáticos precisos
  */
 
-import { SilhouetteDetector } from './processors/SilhouetteDetector';
+import { ImageProcessor } from './core/ImageProcessor';
+import { CannyEdgeDetector } from './algorithms/CannyEdgeDetector';
+import { ContourDetector } from './algorithms/ContourDetector';
+import { HyperAdvancedSilhouetteDetector } from './processors/HyperAdvancedSilhouetteDetector';
 import type { DetectedObject } from '../types';
 
 export interface OpenCVSystemResult {
@@ -22,13 +25,21 @@ export interface CalibrationData {
  * SISTEMA OPENCV UNIFICADO ULTRA AVANZADO
  * Clase principal que orquesta todos los componentes especializados
  */
-class OpenCVSystem {
+export class OpenCVSystem {
   private static instance: OpenCVSystem;
-  private silhouetteDetector: SilhouetteDetector;
-  private isInitialized = false;
+  private isInitialized: boolean = false;
+  
+  // Componentes del sistema
+  private imageProcessor: ImageProcessor;
+  private edgeDetector: CannyEdgeDetector;
+  private contourDetector: ContourDetector;
+  private silhouetteDetector: HyperAdvancedSilhouetteDetector;
 
   private constructor() {
-    this.silhouetteDetector = SilhouetteDetector.getInstance();
+    this.imageProcessor = ImageProcessor.getInstance();
+    this.edgeDetector = CannyEdgeDetector.getInstance();
+    this.contourDetector = ContourDetector.getInstance();
+    this.silhouetteDetector = HyperAdvancedSilhouetteDetector.getInstance();
   }
 
   public static getInstance(): OpenCVSystem {
@@ -180,7 +191,7 @@ export const initializeOpenCV = async (): Promise<void> => {
 };
 
 // Exportar componentes para uso avanzado
-export { SilhouetteDetector } from './processors/SilhouetteDetector';
+export { HyperAdvancedSilhouetteDetector } from './processors/HyperAdvancedSilhouetteDetector';
 export { ImageProcessor } from './core/ImageProcessor';
 export { CannyEdgeDetector } from './algorithms/CannyEdgeDetector';
 export { ContourDetector } from './algorithms/ContourDetector';

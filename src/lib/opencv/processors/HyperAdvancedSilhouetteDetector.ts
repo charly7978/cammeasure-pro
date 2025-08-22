@@ -88,8 +88,11 @@ export class HyperAdvancedSilhouetteDetector {
     const startTime = performance.now();
     this.frameCount++;
 
+    console.log(`🔍 Iniciando detección - Frame ${this.frameCount}, Tamaño: ${imageData.width}x${imageData.height}`);
+
     // Verificar si debemos procesar este frame
     if (!this.performanceOptimizer.shouldProcessFrame(this.frameCount)) {
+      console.log('⏭️ Frame saltado por optimización');
       return this.lastResult || this.getEmptyResult();
     }
 
@@ -106,19 +109,36 @@ export class HyperAdvancedSilhouetteDetector {
       // PIPELINE COMPLETO DE PROCESAMIENTO
       
       // 1. Pre-procesamiento avanzado
+      console.log('📸 1. Pre-procesamiento...');
       const preprocessed = await this.advancedPreprocessing(optimizedImageData);
       
       // 2. Detección de bordes multi-escala
+      console.log('🔍 2. Detección de bordes...');
       const edges = await this.multiScaleEdgeDetection(preprocessed, width, height);
+      console.log(`   → Píxeles de borde detectados: ${this.countEdgePixels(edges.combined)}`);
       
       // 3. Segmentación por componentes conectados con análisis morfológico
+      console.log('🎯 3. Segmentación morfológica...');
       const segmentation = await this.morphologicalSegmentation(preprocessed, edges, width, height);
+      console.log(`   → Regiones encontradas: ${segmentation.regions.length}`);
       
       // 4. Extracción y análisis de características
+      console.log('📊 4. Extracción de características...');
       const features = await this.extractFeatures(segmentation, preprocessed, width, height);
+      console.log(`   → Características extraídas de ${features.regions.length} regiones`);
       
       // 5. Clasificación y selección del objeto predominante
+      console.log('🏆 5. Selección del objeto predominante...');
       const predominantObject = await this.selectPredominantObject(features, calibrationData, width, height);
+      
+      if (predominantObject) {
+        console.log(`✅ Objeto predominante detectado:`);
+        console.log(`   → Posición: (${predominantObject.x}, ${predominantObject.y})`);
+        console.log(`   → Tamaño: ${predominantObject.width}x${predominantObject.height}`);
+        console.log(`   → Confianza: ${(predominantObject.confidence * 100).toFixed(1)}%`);
+      } else {
+        console.log('❌ No se detectó ningún objeto predominante');
+      }
       
       // Construir resultado
       const result: HyperAdvancedDetectionResult = {
@@ -147,6 +167,7 @@ export class HyperAdvancedSilhouetteDetector {
 
       // Escalar coordenadas si la imagen fue reducida
       if (params.scaleFactor < 1.0) {
+        console.log(`📏 Escalando resultados por factor ${1 / params.scaleFactor}`);
         this.scaleResultsBack(result, 1 / params.scaleFactor);
       }
 
@@ -154,6 +175,7 @@ export class HyperAdvancedSilhouetteDetector {
       this.performanceOptimizer.updateMetrics(result.processingTime);
       this.lastResult = result;
 
+      console.log(`⏱️ Procesamiento completado en ${result.processingTime.toFixed(1)}ms`);
       return result;
       
     } catch (error) {
@@ -772,7 +794,7 @@ export class HyperAdvancedSilhouetteDetector {
               if (labels[nidx] === 0 && markers[nidx] > 0) {
                 const gradient = Math.abs(image[nidx] - image[y * width + x]);
                 
-                if (gradient < 30) {
+                if (gradient < 50) { // Aumentado de 30 a 50 para ser menos estricto
                   labels[nidx] = currentLabel;
                   queue.push({x: nx, y: ny});
                 }
@@ -941,23 +963,40 @@ export class HyperAdvancedSilhouetteDetector {
     width: number,
     height: number
   ): Array<any> {
-    const minArea = width * height * 0.001; // Mínimo 0.1% del área total
-    const maxArea = width * height * 0.8;   // Máximo 80% del área total
+    const minArea = width * height * 0.0005; // Reducido de 0.001 a 0.0005 (0.05% del área total)
+    const maxArea = width * height * 0.9;   // Aumentado de 0.8 a 0.9 (90% del área total)
     
-    return regions.filter(region => {
+    console.log(`🔍 Filtrando ${regions.length} regiones...`);
+    console.log(`   → Área mínima: ${minArea.toFixed(0)} px`);
+    console.log(`   → Área máxima: ${maxArea.toFixed(0)} px`);
+    
+    const filtered = regions.filter(region => {
       // Filtrar por área
-      if (region.pixels < minArea || region.pixels > maxArea) return false;
+      if (region.pixels < minArea || region.pixels > maxArea) {
+        console.log(`   ❌ Región descartada por área: ${region.pixels} px`);
+        return false;
+      }
       
-      // Filtrar por aspect ratio
+      // Filtrar por aspect ratio - más permisivo
       const aspectRatio = region.boundingBox.width / region.boundingBox.height;
-      if (aspectRatio < 0.1 || aspectRatio > 10) return false;
+      if (aspectRatio < 0.05 || aspectRatio > 20) { // Más permisivo que antes (0.1 a 10)
+        console.log(`   ❌ Región descartada por aspect ratio: ${aspectRatio.toFixed(2)}`);
+        return false;
+      }
       
-      // Filtrar por solidez (área / área del bounding box)
+      // Filtrar por solidez (área / área del bounding box) - más permisivo
       const solidity = region.pixels / (region.boundingBox.width * region.boundingBox.height);
-      if (solidity < 0.3) return false;
+      if (solidity < 0.2) { // Reducido de 0.3 a 0.2
+        console.log(`   ❌ Región descartada por solidez: ${solidity.toFixed(2)}`);
+        return false;
+      }
       
+      console.log(`   ✅ Región aceptada: ${region.pixels} px, AR: ${aspectRatio.toFixed(2)}, Solidez: ${solidity.toFixed(2)}`);
       return true;
     });
+    
+    console.log(`   → Regiones después del filtrado: ${filtered.length}`);
+    return filtered;
   }
 
   /**
@@ -1762,5 +1801,93 @@ export class HyperAdvancedSilhouetteDetector {
         segmentationQuality: 0
       }
     };
+  }
+
+  /**
+   * DIBUJAR OVERLAY DE DETECCIÓN
+   */
+  drawDetectionOverlay(
+    canvas: HTMLCanvasElement,
+    result: HyperAdvancedDetectionResult,
+    showEdges: boolean = false,
+    showDebug: boolean = false
+  ): void {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    const { width, height } = canvas;
+    
+    // Limpiar canvas
+    ctx.clearRect(0, 0, width, height);
+    
+    // Dibujar bordes si está habilitado
+    if (showEdges && result.edgeMap.length > 0) {
+      const imageData = ctx.createImageData(width, height);
+      for (let i = 0; i < result.edgeMap.length; i++) {
+        const value = result.edgeMap[i];
+        imageData.data[i * 4] = value;
+        imageData.data[i * 4 + 1] = value;
+        imageData.data[i * 4 + 2] = value;
+        imageData.data[i * 4 + 3] = 128; // Semi-transparente
+      }
+      ctx.putImageData(imageData, 0, 0);
+    }
+    
+    // Dibujar objetos detectados
+    for (const obj of result.objects) {
+      // Color verde neón para el objeto predominante
+      ctx.strokeStyle = '#00ff41';
+      ctx.lineWidth = 3;
+      ctx.fillStyle = 'rgba(0, 255, 65, 0.1)';
+      
+      // Dibujar bounding box
+      ctx.strokeRect(obj.x, obj.y, obj.width, obj.height);
+      ctx.fillRect(obj.x, obj.y, obj.width, obj.height);
+      
+      // Dibujar contorno si está disponible
+      if (obj.contours && obj.contours.length > 0) {
+        ctx.strokeStyle = '#00ff41';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(obj.contours[0].x, obj.contours[0].y);
+        for (let i = 1; i < obj.contours.length; i++) {
+          ctx.lineTo(obj.contours[i].x, obj.contours[i].y);
+        }
+        ctx.closePath();
+        ctx.stroke();
+      }
+      
+      // Dibujar información
+      ctx.fillStyle = '#00ff41';
+      ctx.font = 'bold 16px Arial';
+      ctx.fillText(
+        `${obj.dimensions.width.toFixed(1)} x ${obj.dimensions.height.toFixed(1)} ${obj.dimensions.unit}`,
+        obj.x,
+        obj.y - 10
+      );
+      
+      // Dibujar confianza
+      ctx.fillStyle = '#ffff00';
+      ctx.font = '14px Arial';
+      ctx.fillText(
+        `${(obj.confidence * 100).toFixed(0)}%`,
+        obj.x + obj.width - 40,
+        obj.y - 10
+      );
+    }
+    
+    // Información de debug
+    if (showDebug) {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+      ctx.fillRect(10, 10, 300, 120);
+      
+      ctx.fillStyle = '#00ff41';
+      ctx.font = '12px monospace';
+      ctx.fillText(`Tiempo: ${result.processingTime.toFixed(1)}ms`, 20, 30);
+      ctx.fillText(`Objetos detectados: ${result.objects.length}`, 20, 50);
+      ctx.fillText(`Píxeles de borde: ${result.debugInfo.edgePixels}`, 20, 70);
+      ctx.fillText(`Contornos encontrados: ${result.debugInfo.contoursFound}`, 20, 90);
+      ctx.fillText(`Algoritmos: ${result.debugInfo.algorithmsUsed.length}`, 20, 110);
+    }
   }
 }

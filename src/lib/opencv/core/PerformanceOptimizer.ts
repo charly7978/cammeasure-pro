@@ -209,49 +209,69 @@ export class PerformanceOptimizer {
   }
 
   /**
-   * OBTENER PARÁMETROS OPTIMIZADOS PARA PROCESAMIENTO
+   * OBTENER PARÁMETROS OPTIMIZADOS
    */
-  public getOptimizedParameters(): any {
-    const baseParams = {
-      low: {
-        scaleFactor: 0.5,
-        cannyLowThreshold: 30,
-        cannyHighThreshold: 100,
-        blurSize: 3,
-        minContourArea: 100,
-        maxContours: 3,
-        skipFrames: 3
-      },
-      medium: {
-        scaleFactor: 0.75,
-        cannyLowThreshold: 20,
-        cannyHighThreshold: 80,
-        blurSize: 5,
-        minContourArea: 50,
-        maxContours: 5,
-        skipFrames: 2
-      },
-      high: {
-        scaleFactor: 1.0,
-        cannyLowThreshold: 10,
-        cannyHighThreshold: 60,
-        blurSize: 5,
-        minContourArea: 30,
-        maxContours: 8,
-        skipFrames: 1
-      },
-      ultra: {
-        scaleFactor: 1.0,
-        cannyLowThreshold: 5,
-        cannyHighThreshold: 50,
-        blurSize: 7,
-        minContourArea: 20,
-        maxContours: 10,
-        skipFrames: 0
-      }
-    };
-
-    return baseParams[this.settings.quality];
+  getOptimizedParameters(): {
+    scaleFactor: number;
+    cannyLowThreshold: number;
+    cannyHighThreshold: number;
+    blurSize: number;
+    skipFrames: number;
+    maxContours: number;
+  } {
+    const { quality } = this.settings;
+    
+    switch (quality) {
+      case 'low':
+        return {
+          scaleFactor: 0.5,
+          cannyLowThreshold: 30,
+          cannyHighThreshold: 100,
+          blurSize: 3,
+          skipFrames: 3,
+          maxContours: 5
+        };
+      
+      case 'medium':
+        return {
+          scaleFactor: 0.7,
+          cannyLowThreshold: 20,
+          cannyHighThreshold: 80,
+          blurSize: 5,
+          skipFrames: 2,
+          maxContours: 10
+        };
+      
+      case 'high':
+        return {
+          scaleFactor: 0.85,
+          cannyLowThreshold: 10,
+          cannyHighThreshold: 60,
+          blurSize: 5,
+          skipFrames: 1,
+          maxContours: 15
+        };
+      
+      case 'ultra':
+        return {
+          scaleFactor: 1.0,
+          cannyLowThreshold: 5,
+          cannyHighThreshold: 40,
+          blurSize: 7,
+          skipFrames: 0,
+          maxContours: 20
+        };
+      
+      default:
+        return {
+          scaleFactor: 0.7,
+          cannyLowThreshold: 20,
+          cannyHighThreshold: 80,
+          blurSize: 5,
+          skipFrames: 2,
+          maxContours: 10
+        };
+    }
   }
 
   /**

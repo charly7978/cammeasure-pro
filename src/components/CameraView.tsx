@@ -162,15 +162,25 @@ export const CameraView: React.FC<CameraViewProps> = ({
       canvas.height = video.videoHeight;
       
       if (canvas.width === 0 || canvas.height === 0) {
+        console.log('⚠️ Canvas con dimensiones inválidas');
         return;
       }
+      
+      console.log(`📹 Procesando frame: ${canvas.width}x${canvas.height}`);
       
       // Capturar frame
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
       
       // DETECCIÓN HÍPER AVANZADA CON OPENCV
+      console.log('🔄 Llamando a unifiedOpenCV.detectObjectSilhouettes...');
       const result = await unifiedOpenCV.detectObjectSilhouettes(imageData, calibrationData);
+      
+      console.log(`📊 Resultado:`, {
+        objetosDetectados: result.objects.length,
+        tiempoProcesamiento: result.processingTime,
+        contornosEncontrados: result.contours.length
+      });
       
       if (result.objects.length > 0) {
         console.log(`✅ Detectados ${result.objects.length} objetos en ${result.processingTime.toFixed(1)}ms`);
@@ -178,6 +188,7 @@ export const CameraView: React.FC<CameraViewProps> = ({
         setDetectedObjects(result.objects);
         onRealTimeObjects(result.objects);
       } else {
+        console.log('❌ No se detectaron objetos en este frame');
         // Si no se detectan objetos, mantener los anteriores por un momento
         setTimeout(() => {
           if (!isProcessing) {

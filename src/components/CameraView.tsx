@@ -94,10 +94,10 @@ export const CameraView: React.FC<CameraViewProps> = ({
           // INICIAR DETECCIÓN AUTOMÁTICA CUANDO LA CÁMARA ESTÉ LISTA
           if (isActive && isRealTimeMeasurement) {
             intervalId = setInterval(async () => {
-              if (isMounted && videoRef.current && videoRef.current.readyState === 4) {
-                await processVideoFrame();
-              }
-            }, 3000); // Procesar cada 3 segundos para mejor estabilidad
+              if (!isMounted || !videoRef.current || videoRef.current.readyState !== 4) return;
+              if (isProcessing) return; // Evitar solapes
+              await processVideoFrame();
+            }, 500); // Procesar cada 500ms para mayor reactividad
           }
         }
       } catch (error) {

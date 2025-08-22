@@ -7,6 +7,7 @@ import { ImageProcessor } from '../core/ImageProcessor';
 import { CannyEdgeDetector } from '../algorithms/CannyEdgeDetector';
 import { ContourDetector } from '../algorithms/ContourDetector';
 import type { DetectedObject } from '../../types';
+import { preciseObjectDetector } from '@/lib/preciseObjectDetection';
 
 export interface SilhouetteDetectionResult {
   objects: DetectedObject[];
@@ -66,22 +67,28 @@ export class SilhouetteDetector {
       console.log('🌟 Paso 2: Mejora de contraste...');
       const enhanced = this.imageProcessor.enhanceContrast(processed.blurred, width, height);
       
-      // PASO 3: DETECCIÓN DE BORDES CANNY ULTRA SENSIBLE
+      // PASO 2.1: PRIORIZAR ROI CENTRAL (ventana 60% centrada)
+      const roi = this.applyCentralROI(enhanced, width, height, 0.6);
+      
+      // PASO 3: DETECCIÓN DE BORDES CANNY ULTRA SENSIBLE (umbrales adaptativos)
       console.log('🔍 Paso 3: Detección de bordes Canny...');
-      const cannyResult = this.edgeDetector.detectEdges(enhanced, width, height, {
-        lowThreshold: 8,     // Muy sensible
-        highThreshold: 60,   // Permisivo
+      const cannyResult = this.edgeDetector.detectEdges(roi.data, width, height, {
+        lowThreshold: 0,     // 0 => adaptativo
+        highThreshold: 0,    // 0 => adaptativo
         sigma: 1.2,
         sobelKernelSize: 3,
         l2Gradient: true
       });
       
-      console.log(`✅ Bordes detectados: ${cannyResult.edgePixels} píxeles`);
+      // PASO 3.1: CIERRE MORFOLÓGICO SIMPLE EN EL MAPA DE BORDES PARA CONECTAR GAPS
+      const closedEdges = this.morphologicalCloseEdges(cannyResult.edges, width, height);
+      const cannyEdgePixels = this.countEdgePixels(closedEdges);
+      console.log(`✅ Bordes detectados (post-cierre): ${cannyEdgePixels} píxeles`);
       
       // PASO 4: DETECCIÓN DE CONTORNOS AVANZADA
       console.log('📐 Paso 4: Detección de contornos...');
       const detectedContours = this.contourDetector.findContours(
-        cannyResult.edges,
+        closedEdges,
         width,
         height,
         'external',
@@ -92,12 +99,36 @@ export class SilhouetteDetector {
       
       // PASO 5: CONVERTIR A OBJETOS DETECTADOS CON CALIBRACIÓN
       console.log('🎯 Paso 5: Conversión a objetos detectados...');
-      const objects = this.convertContoursToDetectedObjects(
+      let objects = this.convertContoursToDetectedObjects(
         detectedContours,
         width,
         height,
         calibrationData
       );
+      
+      // Priorizar objeto dominante en centro (re-rank) y filtrar por ROI
+      objects = this.prioritizeCentralDominantObject(objects, width, height);
+
+      // FALLBACK: si no hay objetos robustos, intentar segmentación ML precisa del objeto dominante
+      if (objects.length === 0 || (objects[0]?.confidence ?? 0) < 0.55) {
+        console.log('🛟 Fallback preciso: intentando segmentación ML para objeto central...');
+        const fallbackObj = await this.tryPreciseSegmentationFallback(imageData, calibrationData);
+        if (fallbackObj) {
+          const processingTime = performance.now() - startTime;
+          return {
+            objects: [fallbackObj],
+            processingTime,
+            edgeMap: closedEdges,
+            contours: [fallbackObj.contours || []],
+            debugInfo: {
+              edgePixels: cannyEdgePixels,
+              contoursFound: detectedContours.length,
+              validContours: 1,
+              averageConfidence: fallbackObj.confidence
+            }
+          };
+        }
+      }
       
       const processingTime = performance.now() - startTime;
       const averageConfidence = objects.length > 0 
@@ -116,10 +147,10 @@ export class SilhouetteDetector {
       return {
         objects,
         processingTime,
-        edgeMap: cannyResult.edges,
+        edgeMap: closedEdges,
         contours: detectedContours.map(c => c.points),
         debugInfo: {
-          edgePixels: cannyResult.edgePixels,
+          edgePixels: cannyEdgePixels,
           contoursFound: detectedContours.length,
           validContours: objects.length,
           averageConfidence
@@ -417,6 +448,148 @@ export class SilhouetteDetector {
       debugText.forEach((text, i) => {
         ctx.fillText(text, 15, 25 + i * 20);
       });
+    }
+  }
+
+  // --- NUEVOS MÉTODOS PRIVADOS ---
+  private applyCentralROI(data: Uint8Array, width: number, height: number, ratio: number) {
+    const cx = Math.floor(width / 2);
+    const cy = Math.floor(height / 2);
+    const rw = Math.floor(width * ratio);
+    const rh = Math.floor(height * ratio);
+    const x0 = Math.max(0, cx - Math.floor(rw / 2));
+    const y0 = Math.max(0, cy - Math.floor(rh / 2));
+    
+    const roiData = new Uint8Array(width * height);
+    for (let y = y0; y < y0 + rh; y++) {
+      for (let x = x0; x < x0 + rw; x++) {
+        roiData[y * width + x] = data[y * width + x];
+      }
+    }
+    return { data: roiData, rect: { x: x0, y: y0, width: rw, height: rh } };
+  }
+
+  private morphologicalCloseEdges(edges: Uint8Array, width: number, height: number): Uint8Array {
+    const dilated = new Uint8Array(edges.length);
+    const result = new Uint8Array(edges.length);
+    const kernel: Array<[number, number]> = [
+      [-1, 0], [1, 0], [0, -1], [0, 1],
+      [-1, -1], [-1, 1], [1, -1], [1, 1]
+    ];
+    
+    // Dilatar
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        const idx = y * width + x;
+        if (edges[idx] === 255) {
+          dilated[idx] = 255;
+          for (const [dx, dy] of kernel) {
+            const nx = x + dx;
+            const ny = y + dy;
+            dilated[ny * width + nx] = 255;
+          }
+        }
+      }
+    }
+    
+    // Erosionar ligera para cierre (mantener conectividad)
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        let allNeighbors = true;
+        for (const [dx, dy] of kernel) {
+          const nx = x + dx;
+          const ny = y + dy;
+          if (dilated[ny * width + nx] !== 255) {
+            allNeighbors = false;
+            break;
+          }
+        }
+        result[y * width + x] = allNeighbors ? 255 : dilated[y * width + x];
+      }
+    }
+    
+    return result;
+  }
+
+  private countEdgePixels(data: Uint8Array): number {
+    let c = 0; for (let i = 0; i < data.length; i++) if (data[i] === 255) c++; return c;
+  }
+
+  private prioritizeCentralDominantObject(objects: DetectedObject[], width: number, height: number): DetectedObject[] {
+    if (objects.length === 0) return objects;
+    const cx = width / 2;
+    const cy = height / 2;
+    
+    return [...objects].sort((a, b) => {
+      const areaA = Math.max(1, a.width * a.height);
+      const areaB = Math.max(1, b.width * b.height);
+      const dA = Math.hypot((a.centerX ?? (a.x + a.width / 2)) - cx, (a.centerY ?? (a.y + a.height / 2)) - cy);
+      const dB = Math.hypot((b.centerX ?? (b.x + b.width / 2)) - cx, (b.centerY ?? (b.y + b.height / 2)) - cy);
+      const scoreA = (a.confidence || 0.5) * (areaA) * (1 / (1 + dA));
+      const scoreB = (b.confidence || 0.5) * (areaB) * (1 / (1 + dB));
+      return scoreB - scoreA;
+    });
+  }
+
+  private async tryPreciseSegmentationFallback(
+    imageData: ImageData,
+    calibrationData: CalibrationData | null
+  ): Promise<DetectedObject | null> {
+    try {
+      // Crear canvas temporal a partir de ImageData
+      const canvas = document.createElement('canvas');
+      canvas.width = imageData.width;
+      canvas.height = imageData.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return null;
+      ctx.putImageData(imageData, 0, 0);
+      
+      const precise = await preciseObjectDetector.detectLargestObject(canvas);
+      if (!precise) return null;
+      
+      // Aplicar calibración si corresponde
+      let unit: 'px' | 'mm' = 'px';
+      let widthReal = precise.width;
+      let heightReal = precise.height;
+      let areaReal = precise.area;
+      let perimeterReal = (precise.contours || []).reduce((sum, p, idx, arr) => {
+        if (idx === 0) return 0; const prev = arr[idx - 1]; return sum + Math.hypot(p.x - prev.x, p.y - prev.y);
+      }, 0);
+      if (calibrationData?.isCalibrated && calibrationData.pixelsPerMm > 0) {
+        const mmPerPixel = 1 / calibrationData.pixelsPerMm;
+        widthReal *= mmPerPixel;
+        heightReal *= mmPerPixel;
+        areaReal *= mmPerPixel * mmPerPixel;
+        perimeterReal *= mmPerPixel;
+        unit = 'mm';
+      }
+      
+      const detected: DetectedObject = {
+        id: `precise_${Date.now()}`,
+        type: 'precise_fallback',
+        x: precise.x,
+        y: precise.y,
+        width: precise.width,
+        height: precise.height,
+        area: areaReal,
+        confidence: precise.confidence,
+        contours: precise.contours,
+        boundingBox: precise.boundingBox,
+        dimensions: { width: widthReal, height: heightReal, area: areaReal, unit, perimeter: perimeterReal },
+        points: precise.points,
+        centerX: precise.boundingBox.x + precise.boundingBox.width / 2,
+        centerY: precise.boundingBox.y + precise.boundingBox.height / 2,
+        geometricProperties: {
+          aspectRatio: precise.boundingBox.width / Math.max(1, precise.boundingBox.height),
+          solidity: 1,
+          circularity: 0.7,
+          perimeter: perimeterReal
+        }
+      };
+      return detected;
+    } catch (e) {
+      console.warn('Precise fallback no disponible:', e);
+      return null;
     }
   }
 }

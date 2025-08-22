@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Ruler, Target, CheckCircle, AlertCircle, Camera, Info } from 'lucide-react';
 import { CalibrationData } from '@/lib/types';
 import { realCalibrationSystem } from '@/lib/realCalibration';
+import { ImmersiveMode } from '@/components/ImmersiveMode';
 
 interface CalibrationPanelProps {
   onCalibrationChange: (data: CalibrationData) => void;
@@ -108,6 +109,15 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
       }
     }
     try {
+      // Intentar pantalla completa para experiencia inmersiva (si está disponible)
+      try {
+        if (document.documentElement.requestFullscreen) {
+          await document.documentElement.requestFullscreen();
+        }
+      } catch (e) {
+        // Ignorar errores de fullscreen
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: { 
           facingMode: 'environment',
@@ -117,16 +127,28 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
       });
       setCameraStream(stream);
       if (videoRef.current) {
+        // Asegurar atributos para autoplay en móviles
+        videoRef.current.setAttribute('playsinline', '');
+        videoRef.current.muted = true;
         videoRef.current.srcObject = stream;
-        // Reproducir cuando los metadatos estén listos (evita pantalla negra)
-        videoRef.current.onloadedmetadata = () => {
-          videoRef.current?.play().catch(() => {});
+
+        const tryPlay = async () => {
+          try {
+            await videoRef.current?.play();
+          } catch (err) {
+            // Retentar en el siguiente frame para evitar pantallas negras
+            requestAnimationFrame(() => {
+              videoRef.current?.play().catch(() => {});
+            });
+          }
         };
-        // Intentar también reproducir inmediatamente
-        try { await videoRef.current.play(); } catch {}
+
+        // Reproducir al cargar metadatos y también intentar inmediatamente
+        videoRef.current.onloadedmetadata = () => {
+          tryPlay();
+        };
+        await tryPlay();
       }
-      // Desactivar scroll para evitar saltos visuales durante la calibración
-      document.body.style.overflow = 'hidden';
       setIsCalibrating(true);
       setCalibrationPoints([]);
       setReferencePixelLength(0);
@@ -143,8 +165,12 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
     }
     setIsCalibrating(false);
     setCalibrationPoints([]);
-    // Restaurar scroll
-    document.body.style.overflow = '';
+    // Salir de fullscreen si está activo
+    try {
+      if (document.fullscreenElement) {
+        document.exitFullscreen().catch(() => {});
+      }
+    } catch {}
   };
 
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -401,48 +427,50 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
 
         {/* Vista de calibración con cámara */}
         {isCalibrating && (
-          <div className="space-y-4">
-            <div className="relative">
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted
-                className="w-full h-64 object-cover rounded-lg bg-black"
-              />
-              <canvas
-                ref={canvasRef}
-                className="absolute inset-0 w-full h-full cursor-crosshair"
-                onClick={handleCanvasClick}
-              />
-              
-              {/* Instrucciones superpuestas */}
-              <div className="absolute top-2 left-2 bg-black/80 text-white p-2 rounded text-sm">
-                {calibrationPoints.length === 0 && "1. Haz clic en un extremo del objeto"}
-                {calibrationPoints.length === 1 && "2. Haz clic en el otro extremo"}
-                {calibrationPoints.length === 2 && `Distancia: ${referencePixelLength.toFixed(1)} píxeles`}
-              </div>
-            </div>
+          <div className="fixed inset-0 z-50">
+            <ImmersiveMode>
+              <div className="relative w-full h-full bg-black">
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="absolute inset-0 w-full h-full object-cover"
+                />
+                <canvas
+                  ref={canvasRef}
+                  className="absolute inset-0 w-full h-full cursor-crosshair"
+                  onClick={handleCanvasClick}
+                />
+                
+                {/* Instrucciones superpuestas */}
+                <div className="absolute top-4 left-4 bg-black/70 text-white p-2 rounded text-sm">
+                  {calibrationPoints.length === 0 && "1. Toca un extremo del objeto"}
+                  {calibrationPoints.length === 1 && "2. Toca el otro extremo"}
+                  {calibrationPoints.length === 2 && `Distancia: ${referencePixelLength.toFixed(1)} px`}
+                </div>
 
-            <div className="flex gap-2">
-              {referencePixelLength > 0 && (
-                <Button
-                  onClick={completeCalibration}
-                  className="flex-1 bg-calibration text-background hover:bg-calibration/90"
-                >
-                  <CheckCircle className="w-4 h-4 mr-2" />
-                  Confirmar Calibración
-                </Button>
-              )}
-              
-              <Button
-                onClick={stopCameraCalibration}
-                variant="outline"
-                className="flex-1"
-              >
-                Cancelar
-              </Button>
-            </div>
+                {/* Acciones */}
+                <div className="absolute bottom-4 left-4 right-4 flex gap-2">
+                  {referencePixelLength > 0 && (
+                    <Button
+                      onClick={completeCalibration}
+                      className="flex-1 bg-calibration text-background hover:bg-calibration/90"
+                    >
+                      <CheckCircle className="w-4 h-4 mr-2" />
+                      Confirmar
+                    </Button>
+                  )}
+                  <Button
+                    onClick={stopCameraCalibration}
+                    variant="outline"
+                    className="flex-1 bg-black/60 text-white border-white/30"
+                  >
+                    Cancelar
+                  </Button>
+                </div>
+              </div>
+            </ImmersiveMode>
           </div>
         )}
 

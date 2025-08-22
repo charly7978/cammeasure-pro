@@ -94,7 +94,7 @@ export class VanguardDetectionSystem {
   };
 
   // Cache de calibración
-  private calibrationCache = new Map<string, Record<string, unknown>>();
+  private calibrationCache = new Map<string, any>();
   
   private constructor() {}
 
@@ -298,7 +298,7 @@ export class VanguardDetectionSystem {
     }
     
     // Detectar objetos
-    const predictions = await this.cocoModel.detect(image as tf.Tensor3D);
+    const predictions = await this.cocoModel.detect(image as any);
     
     // Filtrar por confianza
     return predictions.filter(p => p.score >= this.config.minConfidence);
@@ -622,7 +622,7 @@ export class VanguardDetectionSystem {
     return tf.zeros([image.shape[0], image.shape[1]]);
   }
 
-  private detectVanishingPoints(gradX: tf.Tensor3D, gradY: tf.Tensor3D): Array<{ x: number; y: number }> {
+  private detectVanishingPoints(gradX: tf.Tensor3D, gradY: tf.Tensor3D): any[] {
     // Detección de puntos de fuga simplificada
     return [];
   }
@@ -630,7 +630,7 @@ export class VanguardDetectionSystem {
   private combineDepthCues(
     gradMag: tf.Tensor3D,
     texture: tf.Tensor2D,
-    vanishingPoints: Array<{ x: number; y: number }>,
+    vanishingPoints: any[],
     height: number,
     width: number
   ): tf.Tensor2D {
@@ -638,18 +638,18 @@ export class VanguardDetectionSystem {
     return tf.fill([height, width], 1000); // Profundidad constante por ahora
   }
 
-  private async detectLines(image: tf.Tensor3D): Promise<Array<{ start: { x: number; y: number }; end: { x: number; y: number } }>> {
+  private async detectLines(image: tf.Tensor3D): Promise<any[]> {
     // Detección de líneas con Hough Transform
     return [];
   }
 
-  private calculateVanishingPoints(lines: Array<{ start: { x: number; y: number }; end: { x: number; y: number } }>): Array<{ x: number; y: number }> {
+  private calculateVanishingPoints(lines: any[]): any[] {
     // Calcular puntos de fuga desde líneas
     return [];
   }
 
   private computeRotationFromVanishingPoints(
-    vanishingPoints: Array<{ x: number; y: number }>,
+    vanishingPoints: any[],
     focalLength: number,
     principalPoint: {x: number, y: number}
   ): Matrix {
@@ -851,7 +851,7 @@ export class VanguardDetectionSystem {
 
   private assessCalibrationConfidence(
     object: VanguardObject,
-    knownSizes: Record<string, { width: number; height: number; depth: number }>,
+    knownSizes: any,
     perspective: PerspectiveData,
     depthMap?: Float32Array
   ): number {

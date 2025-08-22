@@ -23,7 +23,7 @@ import { useCamera } from '@/hooks/useCamera';
 import { toast } from 'sonner';
 
 interface VanguardCameraProps {
-  onMeasurement?: (measurement: Record<string, unknown>) => void;
+  onMeasurement?: (measurement: any) => void;
   isActive: boolean;
 }
 

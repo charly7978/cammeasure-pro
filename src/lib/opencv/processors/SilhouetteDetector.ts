@@ -6,7 +6,6 @@
 import { ImageProcessor } from '../core/ImageProcessor';
 import { CannyEdgeDetector } from '../algorithms/CannyEdgeDetector';
 import { ContourDetector } from '../algorithms/ContourDetector';
-import { depthVolumeCalculator, type DepthMeasurement } from './DepthVolumeCalculator';
 import type { DetectedObject } from '../../types';
 
 export interface SilhouetteDetectionResult {
@@ -67,13 +66,13 @@ export class SilhouetteDetector {
       console.log('🌟 Paso 2: Mejora de contraste...');
       const enhanced = this.imageProcessor.enhanceContrast(processed.blurred, width, height);
       
-      // PASO 3: DETECCIÓN DE BORDES CANNY OPTIMIZADA PARA OBJETOS GRANDES CENTRALES
-      console.log('🔍 Paso 3: Detección de bordes Canny para objetos centrales...');
+      // PASO 3: DETECCIÓN DE BORDES CANNY ULTRA SENSIBLE
+      console.log('🔍 Paso 3: Detección de bordes Canny...');
       const cannyResult = this.edgeDetector.detectEdges(enhanced, width, height, {
-        lowThreshold: 15,    // Reducir sensibilidad para objetos grandes
-        highThreshold: 80,   // Mayor umbral para bordes más definidos
-        sigma: 2.0,          // Mayor sigma para suavizar detalles pequeños
-        sobelKernelSize: 5,  // Kernel más grande para detectar bordes de objetos grandes
+        lowThreshold: 8,     // Muy sensible
+        highThreshold: 60,   // Permisivo
+        sigma: 1.2,
+        sobelKernelSize: 3,
         l2Gradient: true
       });
       
@@ -146,29 +145,8 @@ export class SilhouetteDetector {
   ): DetectedObject[] {
     const objects: DetectedObject[] = [];
     
-    // FILTRAR POR OBJETOS CENTRALES GRANDES PRIMERO
-    const centerX = width / 2;
-    const centerY = height / 2;
-    const minAreaPercentage = 0.15; // Mínimo 15% del área total para objetos centrales
-    const maxDistanceFromCenter = Math.min(width, height) * 0.4; // Máximo 40% de distancia del centro
-    
-    const filteredContours = contours.filter(contour => {
-      const { properties } = contour;
-      const objCenterX = properties.centroid.x;
-      const objCenterY = properties.centroid.y;
-      const distanceFromCenter = Math.sqrt((objCenterX - centerX) ** 2 + (objCenterY - centerY) ** 2);
-      const areaPercentage = properties.area / (width * height);
-      
-      return distanceFromCenter <= maxDistanceFromCenter && areaPercentage >= minAreaPercentage;
-    });
-    
-    console.log(`🎯 Objetos filtrados para detección central: ${filteredContours.length} de ${contours.length}`);
-    
-    // Si no hay objetos centrales grandes, usar los 3 más grandes
-    const contoursToProcess = filteredContours.length > 0 ? filteredContours : contours.slice(0, 3);
-    
-    for (let i = 0; i < Math.min(contoursToProcess.length, 3); i++) {
-      const contour = contoursToProcess[i];
+    for (let i = 0; i < Math.min(contours.length, 5); i++) {
+      const contour = contours[i];
       const { properties, confidence } = contour;
       
       // Aplicar calibración real
@@ -243,30 +221,6 @@ export class SilhouetteDetector {
         isConvex: properties.convexity > 0.95,
         boundingCircleRadius: properties.minEnclosingCircle.radius
       };
-
-      // CALCULAR PROFUNDIDAD Y VOLUMEN 3D REALES
-      try {
-        const depthMeasurement = depthVolumeCalculator.calculateDepthAndVolume(
-          detectedObject, 
-          width, 
-          height, 
-          calibrationData
-        );
-        
-        // Agregar mediciones 3D al objeto
-        detectedObject.depth3D = {
-          distance: depthMeasurement.distance,
-          depth: depthMeasurement.depth,
-          volume: depthMeasurement.volume,
-          confidence: depthMeasurement.confidence,
-          method: depthMeasurement.method
-        };
-        
-        console.log(`🎯 Objeto ${i + 1} - Mediciones 3D: distancia=${depthMeasurement.distance.toFixed(0)}mm, volumen=${depthMeasurement.volume.toFixed(0)}mm³`);
-        
-      } catch (error) {
-        console.error('❌ Error calculando profundidad 3D:', error);
-      }
       
       objects.push(detectedObject);
     }

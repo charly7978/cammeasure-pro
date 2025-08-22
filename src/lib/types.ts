@@ -101,15 +101,6 @@ export interface DetectedObject extends BoundingRect {
     confidence: number;
   };
   
-  // MEDICIONES 3D REALES
-  depth3D?: {
-    distance: number;    // Distancia a la cámara en mm
-    depth: number;       // Profundidad del objeto en mm
-    volume: number;      // Volumen estimado en mm³
-    confidence: number;  // Confianza de la medición 3D
-    method: 'stereo' | 'monocular' | 'estimated';
-  };
-  
   // Propiedades geométricas adicionales
   geometricProperties?: {
     aspectRatio: number;
@@ -411,7 +402,6 @@ export interface OpenCVFunctions {
   GaussianBlur: (src: ImageData, dst: ImageData, ksize: number[], sigma: number) => void;
   Canny: (src: ImageData, dst: ImageData, threshold1: number, threshold2: number) => void;
   findContours: (src: ImageData, contours: any[], hierarchy: any[], mode: number, method: number) => void;
-  findContoursAtTouch: (src: ImageData, touchX: number, touchY: number) => any[];
   contourArea: (contour: any) => number;
   boundingRect: (contour: any) => { x: number; y: number; width: number; height: number };
   arcLength: (contour: any, closed: boolean) => number;

@@ -1,14 +1,5 @@
 // HOOK REAL DE OPENCV - ALGORITMOS MATEMÁTICOS NATIVOS COMPLETOS
 // Implementación nativa de funciones de OpenCV sin dependencias externas
-// 
-// MEJORAS IMPLEMENTADAS PARA DETECCIÓN DE OBJETOS GRANDES:
-// ✅ Filtros estrictos de tamaño mínimo (8% de pantalla)
-// ✅ Filtro de posición central (solo 25-30% central)
-// ✅ Priorización de objetos más grandes (70% peso en puntuación)
-// ✅ Eliminación de bordes pequeños y ruido
-// ✅ Filtros morfológicos para conectar objetos cercanos
-// ✅ Umbrales ajustados para objetos grandes
-// ❌ NO detecta objetos minúsculos
 
 import { useState, useEffect, useCallback } from 'react';
 import { OpenCVFunctions } from '@/lib/types';
@@ -384,7 +375,7 @@ class NativeOpenCV {
     }
   }
 
-  // FUNCIÓN REAL DE DETECCIÓN DE BORDES CANNY MEJORADA - PARA OBJETOS GRANDES
+  // FUNCIÓN REAL DE DETECCIÓN DE BORDES CANNY
   Canny(src: ImageData, threshold1: number, threshold2: number): ImageData {
     try {
       if (!this.isInitialized) {
@@ -397,7 +388,7 @@ class NativeOpenCV {
       // 1. CONVERSIÓN A ESCALA DE GRISES
       const grayData = this.convertToGrayscale(data);
       
-      // 2. APLICACIÓN DE FILTRO GAUSSIANO MÁS FUERTE PARA OBJETOS GRANDES
+      // 2. APLICACIÓN DE FILTRO GAUSSIANO
       const blurredData = this.applyGaussianBlurToArray(grayData, width, height);
       
       // 3. CÁLCULO DE GRADIENTES SOBEL
@@ -406,14 +397,11 @@ class NativeOpenCV {
       // 4. SUPRESIÓN NO MÁXIMA
       const suppressed = this.nonMaxSuppression(magnitude, direction, width, height);
       
-      // 5. DETECCIÓN DE BORDES CON UMBRALES AJUSTADOS PARA OBJETOS GRANDES
+      // 5. DETECCIÓN DE BORDES CON UMBRALES
       const edges = this.hysteresisThresholding(suppressed, width, height, threshold1, threshold2);
       
-      // 6. FILTRO ADICIONAL: ELIMINAR BORDES PEQUEÑOS
-      const filteredEdges = this.removeSmallEdges(edges, width, height);
-      
-      // 7. CONVERTIR RESULTADO A IMAGEDATA
-      this.convertArrayToImageData(filteredEdges, result.data, width, height);
+      // 6. CONVERTIR RESULTADO A IMAGEDATA
+      this.convertArrayToImageData(edges, result.data, width, height);
       
       return result;
       
@@ -545,36 +533,32 @@ class NativeOpenCV {
     return suppressed;
   }
 
-  // UMBRALIZACIÓN CON HISTÉRESIS REAL MEJORADA - PARA OBJETOS GRANDES
+  // UMBRALIZACIÓN CON HISTÉRESIS REAL
   private hysteresisThresholding(data: Float32Array, width: number, height: number, lowThreshold: number, highThreshold: number): Uint8Array {
     const result = new Uint8Array(width * height);
     
-    // UMBRALES AJUSTADOS PARA OBJETOS GRANDES
-    const adjustedHighThreshold = highThreshold * 0.8; // Reducir umbral alto
-    const adjustedLowThreshold = lowThreshold * 0.6;   // Reducir umbral bajo
-    
     // Aplicar umbral alto
     for (let i = 0; i < data.length; i++) {
-      if (data[i] >= adjustedHighThreshold) {
+      if (data[i] >= highThreshold) {
         result[i] = 255;
-      } else if (data[i] < adjustedLowThreshold) {
+      } else if (data[i] < lowThreshold) {
         result[i] = 0;
       } else {
         result[i] = 128; // Píxel débil
       }
     }
     
-    // CONEXIÓN MEJORADA: Conectar píxeles fuertes con débiles usando vecindario más grande
-    for (let y = 2; y < height - 2; y++) {
-      for (let x = 2; x < width - 2; x++) {
+    // Conectar píxeles fuertes con débiles
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
         const index = y * width + x;
         
         if (result[index] === 128) {
-          // Verificar si hay píxeles fuertes en vecindario 5x5 (más permisivo)
+          // Verificar si hay píxeles fuertes en el vecindario
           let hasStrongNeighbor = false;
           
-          for (let dy = -2; dy <= 2; dy++) {
-            for (let dx = -2; dx <= 2; dx++) {
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
               const neighborIndex = (y + dy) * width + (x + dx);
               if (result[neighborIndex] === 255) {
                 hasStrongNeighbor = true;
@@ -609,171 +593,8 @@ class NativeOpenCV {
     }
   }
 
-  // FILTRO MORFOLÓGICO DE CIERRE PARA CONECTAR OBJETOS CERCANOS
-  private applyMorphologicalClosing(data: Uint8Array, width: number, height: number): void {
-    try {
-      // 1. DILATACIÓN para expandir objetos
-      const dilated = new Uint8Array(data.length);
-      this.applyDilation(data, dilated, width, height);
-      
-      // 2. EROSIÓN para contraer objetos
-      this.applyErosion(dilated, data, width, height);
-      
-    } catch (error) {
-      console.error('❌ Error en filtro morfológico:', error);
-    }
-  }
-
-  // DILATACIÓN MORFOLÓGICA
-  private applyDilation(src: Uint8Array, dst: Uint8Array, width: number, height: number): void {
-    const kernelSize = 3; // Kernel 3x3
-    const radius = Math.floor(kernelSize / 2);
-    
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        let maxValue = 0;
-        
-        for (let ky = -radius; ky <= radius; ky++) {
-          for (let kx = -radius; kx <= radius; kx++) {
-            const px = Math.max(0, Math.min(width - 1, x + kx));
-            const py = Math.max(0, Math.min(height - 1, y + ky));
-            const value = src[py * width + px];
-            maxValue = Math.max(maxValue, value);
-          }
-        }
-        
-        dst[y * width + x] = maxValue;
-      }
-    }
-  }
-
-  // EROSIÓN MORFOLÓGICA
-  private applyErosion(src: Uint8Array, dst: Uint8Array, width: number, height: number): void {
-    const kernelSize = 3; // Kernel 3x3
-    const radius = Math.floor(kernelSize / 2);
-    
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        let minValue = 255;
-        
-        for (let ky = -radius; ky <= radius; ky++) {
-          for (let kx = -radius; kx <= radius; kx++) {
-            const px = Math.max(0, Math.min(width - 1, x + kx));
-            const py = Math.max(0, Math.min(height - 1, y + ky));
-            const value = src[py * width + px];
-            minValue = Math.min(minValue, value);
-          }
-        }
-        
-        dst[y * width + x] = minValue;
-      }
-    }
-  }
-
-  // ELIMINAR BORDES PEQUEÑOS - SOLO MANTENER BORDES DE OBJETOS GRANDES
-  private removeSmallEdges(edges: Uint8Array, width: number, height: number): Uint8Array {
-    const filteredEdges = new Uint8Array(edges);
-    const visited = new Set<number>();
-    const minEdgeLength = Math.min(width, height) * 0.1; // Solo bordes del 10% mínimo
-    
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        const index = y * width + x;
-        
-        if (edges[index] > 0 && !visited.has(index)) {
-          const edgeLength = this.traceEdgeLength(edges, width, height, x, y, visited);
-          
-          // Eliminar bordes muy pequeños
-          if (edgeLength < minEdgeLength) {
-            this.removeEdge(edges, width, height, x, y);
-          }
-        }
-      }
-    }
-    
-    return filteredEdges;
-  }
-
-  // TRAZAR LONGITUD DE BORDE
-  private traceEdgeLength(edges: Uint8Array, width: number, height: number, startX: number, startY: number, visited: Set<number>): number {
-    const stack: { x: number; y: number }[] = [{ x: startX, y: startY }];
-    let length = 0;
-    
-    while (stack.length > 0) {
-      const { x, y } = stack.pop()!;
-      const index = y * width + x;
-      
-      if (x < 0 || x >= width || y < 0 || y >= height || 
-          edges[index] === 0 || visited.has(index)) {
-        continue;
-      }
-      
-      visited.add(index);
-      length++;
-      
-      // Vecinos 8-direccionales
-      const neighbors = [
-        { dx: 1, dy: 0 }, { dx: -1, dy: 0 },
-        { dx: 0, dy: 1 }, { dx: 0, dy: -1 },
-        { dx: 1, dy: 1 }, { dx: 1, dy: -1 },
-        { dx: -1, dy: 1 }, { dx: -1, dy: -1 }
-      ];
-      
-      for (const neighbor of neighbors) {
-        const nx = x + neighbor.dx;
-        const ny = y + neighbor.dy;
-        const nIndex = ny * width + nx;
-        
-        if (nx >= 0 && nx < width && ny >= 0 && ny < height && 
-            edges[nIndex] > 0 && !visited.has(nIndex)) {
-          stack.push({ x: nx, y: ny });
-        }
-      }
-    }
-    
-    return length;
-  }
-
-  // ELIMINAR BORDE COMPLETO
-  private removeEdge(edges: Uint8Array, width: number, height: number, startX: number, startY: number): void {
-    const stack: { x: number; y: number }[] = [{ x: startX, y: startY }];
-    const visited = new Set<number>();
-    
-    while (stack.length > 0) {
-      const { x, y } = stack.pop()!;
-      const index = y * width + x;
-      
-      if (x < 0 || x >= width || y < 0 || y >= height || 
-          edges[index] === 0 || visited.has(index)) {
-        continue;
-      }
-      
-      visited.add(index);
-      edges[index] = 0; // Eliminar píxel del borde
-      
-      // Vecinos 8-direccionales
-      const neighbors = [
-        { dx: 1, dy: 0 }, { dx: -1, dy: 0 },
-        { dx: 0, dy: 1 }, { dx: 0, dy: -1 },
-        { dx: 1, dy: 1 }, { dx: 1, dy: -1 },
-        { dx: -1, dy: 1 }, { dx: -1, dy: -1 }
-      ];
-      
-      for (const neighbor of neighbors) {
-        const nx = x + neighbor.dx;
-        const ny = y + neighbor.dy;
-        const nIndex = ny * width + nx;
-        
-        if (nx >= 0 && nx < width && ny >= 0 && ny < height && 
-            edges[nIndex] > 0 && !visited.has(nIndex)) {
-          stack.push({ x: nx, y: ny });
-        }
-      }
-    }
-  }
-
   // FUNCIÓN REAL DE BÚSQUEDA DE CONTORNOS
-  findContours(src: ImageData, mode: number, method: number, touchPoint?: { x: number; y: number }): any[] {
+  findContours(src: ImageData, mode: number, method: number): any[] {
     try {
       if (!this.isInitialized) {
         throw new Error('OpenCV nativo no inicializado');
@@ -786,12 +607,9 @@ class NativeOpenCV {
       const thresholded = this.applyBinaryThreshold(grayData, width, height);
       
       // Encontrar contornos reales
-      const allContours = this.findContoursReal(thresholded, width, height);
+      const contours = this.findContoursReal(thresholded, width, height);
       
-      // FILTRAR OBJETO CON TOQUE DE PANTALLA O CENTRO AUTOMÁTICO
-      const selectedContour = this.filterCentralDominantContour(allContours, width, height, touchPoint);
-      
-      return selectedContour ? [selectedContour] : [];
+      return contours;
       
     } catch (error) {
       console.error('❌ Error en búsqueda de contornos:', error);
@@ -799,126 +617,11 @@ class NativeOpenCV {
     }
   }
 
-  // FILTRO MEJORADO PARA OBJETO CENTRAL Y PREDOMINANTE - SIN OBJETOS MINÚSCULOS
-  private filterCentralDominantContour(contours: any[], width: number, height: number, touchPoint?: { x: number; y: number }): any | null {
-    if (contours.length === 0) return null;
-    
-    const centerX = width / 2;
-    const centerY = height / 2;
-    const screenArea = width * height;
-    
-    // FILTROS ESTRICTOS PARA SOLO OBJETOS GRANDES Y CENTRALES
-    const validContours = contours.filter(contour => {
-      const { area, boundingBox, points } = contour;
-      
-      // 1. FILTRAR POR TAMAÑO MÍNIMO ESTRICTO (solo objetos grandes)
-      const minAreaThreshold = screenArea * 0.08; // 8% mínimo (más estricto)
-      if (area < minAreaThreshold) return false;
-      
-      // 2. FILTRAR POR TAMAÑO MÁXIMO
-      const maxAreaThreshold = screenArea * 0.7; // 70% máximo (más estricto)
-      if (area > maxAreaThreshold) return false;
-      
-      // 3. FILTRAR POR RELACIÓN DE ASPECTO MÁS ESTRICTA
-      const aspectRatio = boundingBox.width / boundingBox.height;
-      if (aspectRatio < 0.3 || aspectRatio > 3.0) return false; // Más estricto
-      
-      // 4. FILTRAR POR PERÍMETRO MÍNIMO MÁS ALTO
-      const minPerimeter = Math.sqrt(area) * 3; // Perímetro mínimo más alto
-      if (points.length < minPerimeter) return false;
-      
-      // 5. FILTRAR POR DIMENSIONES MÍNIMAS ABSOLUTAS MÁS ALTAS
-      const minWidth = width * 0.08;   // 8% del ancho de pantalla
-      const minHeight = height * 0.08;  // 8% del alto de pantalla
-      if (boundingBox.width < minWidth || boundingBox.height < minHeight) return false;
-      
-      // 6. NUEVO FILTRO: VERIFICAR QUE EL OBJETO ESTÉ EN LA ZONA CENTRAL
-      const contourCenterX = boundingBox.x + boundingBox.width / 2;
-      const contourCenterY = boundingBox.y + boundingBox.height / 2;
-      const distanceToCenter = Math.sqrt(
-        Math.pow(contourCenterX - centerX, 2) + 
-        Math.pow(contourCenterY - centerY, 2)
-      );
-      const maxCenterDistance = Math.min(width, height) * 0.3; // Solo 30% central
-      if (distanceToCenter > maxCenterDistance) return false;
-      
-      return true;
-    });
-    
-    if (validContours.length === 0) return null;
-    
-    // SELECCIÓN INTELIGENTE MEJORADA - PRIORIZAR OBJETO MÁS GRANDE Y CENTRAL
-    let bestContour = validContours[0];
-    let bestScore = 0;
-    
-    for (const contour of validContours) {
-      const { area, boundingBox } = contour;
-      
-      // Calcular centro del contorno
-      const contourCenterX = boundingBox.x + boundingBox.width / 2;
-      const contourCenterY = boundingBox.y + boundingBox.height / 2;
-      
-      let finalScore = 0;
-      
-      if (touchPoint) {
-        // MODO TOQUE: Priorizar objetos cerca del punto tocado
-        const distanceToTouch = Math.sqrt(
-          Math.pow(contourCenterX - touchPoint.x, 2) + 
-          Math.pow(contourCenterY - touchPoint.y, 2)
-        );
-        const maxTouchDistance = Math.min(width, height) * 0.3; // 30% de la pantalla (más estricto)
-        
-        if (distanceToTouch <= maxTouchDistance) {
-          // PUNTUACIÓN TOQUE MEJORADA: 40% proximidad al toque + 60% tamaño
-          const touchScore = 1 - (distanceToTouch / maxTouchDistance);
-          const relativeArea = area / screenArea;
-          finalScore = (touchScore * 0.4) + (relativeArea * 0.6); // Priorizar tamaño
-        }
-      } else {
-        // MODO CENTRO: Priorizar objetos en el centro y más grandes
-        const distanceToCenter = Math.sqrt(
-          Math.pow(contourCenterX - centerX, 2) + 
-          Math.pow(contourCenterY - centerY, 2)
-        );
-        const maxCenterDistance = Math.min(width, height) * 0.25; // Solo 25% central (más estricto)
-        
-        if (distanceToCenter <= maxCenterDistance) {
-          // PUNTUACIÓN CENTRO MEJORADA: 30% posición central + 70% tamaño
-          const centerScore = 1 - (distanceToCenter / maxCenterDistance);
-          const relativeArea = area / screenArea;
-          finalScore = (centerScore * 0.3) + (relativeArea * 0.7); // Priorizar mucho el tamaño
-        }
-      }
-      
-      if (finalScore > bestScore) {
-        bestScore = finalScore;
-        bestContour = contour;
-      }
-    }
-    
-    // VERIFICACIÓN FINAL MEJORADA - MÁS ESTRICTA
-    if (bestScore < 0.15) { // Umbral más alto para ser más estricto
-      console.log('⚠️ Ningún contorno cumple con los criterios de calidad estricta');
-      return null;
-    }
-    
-    const mode = touchPoint ? 'TOQUE' : 'CENTRO';
-    console.log(`🎯 Contorno seleccionado (${mode}):`, {
-      score: bestScore.toFixed(3),
-      area: bestContour.area,
-      relativeArea: ((bestContour.area / screenArea) * 100).toFixed(1) + '%',
-      dimensions: `${bestContour.boundingBox.width}x${bestContour.boundingBox.height}`,
-      touchPoint: touchPoint ? `(${touchPoint.x}, ${touchPoint.y})` : 'Centro automático'
-    });
-    
-    return bestContour;
-  }
-
-  // UMBRAL BINARIO REAL MEJORADO - PARA OBJETOS GRANDES
+  // UMBRAL BINARIO REAL
   private applyBinaryThreshold(data: Uint8Array, width: number, height: number): Uint8Array {
     const thresholded = new Uint8Array(data.length);
     
-    // Calcular umbral de Otsu mejorado
+    // Calcular umbral de Otsu
     const histogram = new Array(256).fill(0);
     for (let i = 0; i < data.length; i++) {
       histogram[data[i]]++;
@@ -955,24 +658,18 @@ class NativeOpenCV {
       }
     }
     
-    // APLICAR UMBRAL MEJORADO: Ajustar para objetos más grandes
-    const adjustedThreshold = Math.max(threshold - 20, 0); // Reducir umbral para capturar más píxeles
-    
+    // Aplicar umbral
     for (let i = 0; i < data.length; i++) {
-      thresholded[i] = data[i] > adjustedThreshold ? 255 : 0;
+      thresholded[i] = data[i] > threshold ? 255 : 0;
     }
-    
-    // APLICAR FILTRO MORFOLÓGICO PARA CONECTAR OBJETOS CERCANOS
-    this.applyMorphologicalClosing(thresholded, width, height);
     
     return thresholded;
   }
 
-  // BÚSQUEDA REAL DE CONTORNOS MEJORADA - SOLO OBJETOS GRANDES
+  // BÚSQUEDA REAL DE CONTORNOS
   private findContoursReal(data: Uint8Array, width: number, height: number): any[] {
     const visited = new Set<number>();
     const contours: any[] = [];
-    const screenArea = width * height;
     
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
@@ -980,10 +677,7 @@ class NativeOpenCV {
         
         if (data[index] > 0 && !visited.has(index)) {
           const contour = this.traceContourReal(data, width, height, x, y, visited);
-          
-          // FILTRO ESTRICTO: Solo contornos con área mínima significativa
-          const minAreaThreshold = screenArea * 0.05; // 5% mínimo para búsqueda inicial
-          if (contour.points.length > 20 && contour.area >= minAreaThreshold) {
+          if (contour.points.length > 10) {
             contours.push(contour);
           }
         }
@@ -1056,19 +750,13 @@ class NativeOpenCV {
     };
   }
 
-  // FUNCIONES ADICIONALES REALES MEJORADAS - PARA OBJETOS GRANDES
+  // FUNCIONES ADICIONALES REALES
   detectEdges(src: ImageData): ImageData {
-    // UMBRALES AJUSTADOS PARA DETECTAR SOLO BORDES DE OBJETOS GRANDES
-    return this.Canny(src, 30, 100); // Umbrales más bajos para capturar más bordes
+    return this.Canny(src, 50, 150);
   }
 
   findContoursSimple(src: ImageData): any[] {
     return this.findContours(src, 0, 0);
-  }
-
-  // NUEVA FUNCIÓN: DETECCIÓN CON TOQUE DE PANTALLA
-  findContoursAtTouch(src: ImageData, touchX: number, touchY: number): any[] {
-    return this.findContours(src, 0, 0, { x: touchX, y: touchY });
   }
 
   warpAffine(src: ImageData, matrix: number[][], size: number[]): ImageData {
@@ -1163,10 +851,6 @@ export function useOpenCV() {
       if (contours && result) {
         contours.splice(0, contours.length, ...result);
       }
-    },
-    // NUEVA FUNCIÓN: DETECCIÓN CON TOQUE DE PANTALLA
-    findContoursAtTouch: (src: ImageData, touchX: number, touchY: number) => {
-      return nativeOpenCV.findContoursAtTouch(src, touchX, touchY);
     },
     // Funciones adicionales (mantener compatibilidad)
     // Funciones adicionales (mantener compatibilidad)

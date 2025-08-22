@@ -511,12 +511,16 @@ const Index = () => {
 
         <div className="mt-4">
           <TabsContent value="camera" className="space-y-4">
-            <CameraView
-              onImageCapture={handleImageCapture}
-              isActive={activeTab === 'camera'}
-              calibrationData={calibrationData}
-              onRealTimeObjects={handleRealTimeObjects}
-            />
+            {activeTab === 'camera' ? (
+              <ImmersiveMode>
+                <CameraView
+                  onImageCapture={handleImageCapture}
+                  isActive={activeTab === 'camera'}
+                  calibrationData={calibrationData}
+                  onRealTimeObjects={handleRealTimeObjects}
+                />
+              </ImmersiveMode>
+            ) : null}
             
             {/* Instrucciones */}
             <Card className="p-3 bg-primary/5 border-primary/20">

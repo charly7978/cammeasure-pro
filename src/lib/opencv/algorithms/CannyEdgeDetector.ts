@@ -61,12 +61,21 @@ export class CannyEdgeDetector {
     const suppressed = this.nonMaximumSuppression(magnitude, direction, width, height);
     
     // 3. HISTÉRESIS DE DOBLE UMBRAL CON CONECTIVIDAD 8
+    // Si los umbrales son <= 0, calcularlos de forma adaptativa sobre la magnitud ya calculada
+    let low = params.lowThreshold;
+    let high = params.highThreshold;
+    if (low <= 0 || high <= 0) {
+      const adaptive = this.calculateAdaptiveThresholds(magnitude, 0.06, 0.16);
+      low = adaptive.lowThreshold;
+      high = adaptive.highThreshold;
+      console.log(`🧠 Umbrales Canny adaptativos: ${low.toFixed(2)} - ${high.toFixed(2)}`);
+    }
     const edges = this.doubleThresholdHysteresis(
       suppressed, 
       width, 
       height, 
-      params.lowThreshold, 
-      params.highThreshold
+      low, 
+      high
     );
     
     const processingTime = performance.now() - startTime;

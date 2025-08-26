@@ -4,6 +4,7 @@
  */
 
 import { openCVSystem, detectObjectsWithOpenCV, type CalibrationData } from './opencv';
+import { preciseObjectDetector } from './preciseObjectDetection';
 import { DetectedObject } from '@/lib/types';
 
 interface OpenCVDetectionResult {
@@ -34,9 +35,32 @@ class UnifiedOpenCVSystem {
       
       // Usar el nuevo sistema modular ultra avanzado
       const result = await detectObjectsWithOpenCV(imageData, calibrationData);
-      
+
+      // Si no se detectaron objetos o la confianza es baja, intentar con preciseObjectDetector
+      let finalObjects = result.objects;
+
+      const needsFallback =
+        finalObjects.length === 0 ||
+        (finalObjects[0] && finalObjects[0].confidence < 0.5);
+
+      if (needsFallback) {
+        console.log('⚠️ Resultado insuficiente con OpenCV, intentando con preciseObjectDetector...');
+
+        try {
+          // Convertir ImageData a Canvas para el detector basado en Transformers
+          const canvas = this.imageDataToCanvas(imageData);
+          const precise = await preciseObjectDetector.detectLargestObject(canvas);
+
+          if (precise) {
+            finalObjects = [precise];
+          }
+        } catch (preciseErr) {
+          console.error('❌ Error en preciseObjectDetector:', preciseErr);
+        }
+      }
+
       return {
-        objects: result.objects,
+        objects: finalObjects,
         processingTime: result.processingTime,
         edgeMap: result.edgeMap,
         contours: result.contours
@@ -137,6 +161,18 @@ class UnifiedOpenCVSystem {
   ): void {
     // Usar el nuevo sistema para dibujar
     openCVSystem.drawDetectionOverlay(overlayCanvas, result, showEdges);
+  }
+
+  /**
+   * Convierte un ImageData a un elemento Canvas utilizable por preciseObjectDetector
+   */
+  private imageDataToCanvas(imageData: ImageData): HTMLCanvasElement {
+    const canvas = document.createElement('canvas');
+    canvas.width = imageData.width;
+    canvas.height = imageData.height;
+    const ctx = canvas.getContext('2d')!;
+    ctx.putImageData(imageData, 0, 0);
+    return canvas;
   }
 }
 
